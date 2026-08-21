@@ -1,0 +1,23 @@
+/* Blocos ADICIONADOS ao Additional CSS do tema (post custom_css #254, tema twentytwentyfive)
+   em 21/08/2026 — correção mobile do blog BFF. O restante do CSS do post 254 permanece igual. */
+
+/* ===== FIX MOBILE (2026-08-21): artigo cortado na lateral no celular =====
+   A regra antiga ".single-post .entry-content{max-width:100%}" prendia a largura
+   do entry-content enquanto o WordPress aplicava margens negativas de alignfull,
+   empurrando o artigo ~30px para fora da tela (mobile e desktop).
+   max-width:none devolve o comportamento padrão do tema. */
+.entry-content.alignfull,
+.wp-block-post-content.alignfull{max-width:none !important}
+
+/* Remove a linha órfã "Escrito por  em" acima do hero dos artigos
+   (o grupo de meta do tema fica vazio porque autor/data/categoria já são ocultados) */
+.single .wp-block-group:has(> .wp-block-post-author-name),
+.single-post .wp-block-group:has(> .wp-block-post-author-name){display:none !important}
+
+/* /blog/ — página "Todos os artigos" (page-id-56) em largura total, sem chrome do tema */
+body.page-id-56 header.wp-block-template-part{display:none !important}
+body.page-id-56 .wp-block-post-title,
+body.page-id-56 .wp-block-post-featured-image{display:none !important}
+body.page-id-56 .wp-site-blocks{padding-top:0 !important}
+body.page-id-56 main{margin-top:0 !important;padding-top:0 !important}
+body.page-id-56{background:#fffdfd !important}
