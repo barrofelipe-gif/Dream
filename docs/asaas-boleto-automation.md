@@ -8,6 +8,14 @@ precisa entrar no Asaas manualmente e criar a cobrança à mão. É esse passo m
 eliminar: gerar a notificação e o boleto real (com link) no mesmo fluxo, para poder mandar tudo
 junto e rápido.
 
+**Status:** validado em produção em 25/08/2026. O caminho pela extensão do Claude no
+Chrome (seção 4-B) foi testado de ponta a ponta com uma cobrança real de configuração
+(`TESTE-CONFIG-001`) e confirmado: valor, vencimento, descrição e cliente corretos,
+boleto + Pix disponíveis juntos, juros/multa zerados, status "Aguardando Pagamento". O
+prompt validado está salvo em `assets/prompt_extensao_chrome_asaas.md` dentro da skill
+`bff-chargeback`. O caminho por API (`gerar_boleto_asaas.js`, seção 4-A) ainda depende de
+`ASAAS_API_KEY` ser configurada — não testado neste ciclo.
+
 Este documento cobre (1) como a API do Asaas funciona para emitir boleto, (2) como configurar o
 acesso com segurança, (3) a arquitetura recomendada para automatizar isso e (4) um script pronto
 (`scripts/asaas/gerar_boleto_asaas.js`) que substitui o passo manual por uma chamada real à API.
@@ -133,7 +141,7 @@ disparo do processo.
 
 ---
 
-## 4. Entregável: script de emissão real de boleto
+## 4-A. Entregável: script de emissão real de boleto (via API)
 
 Arquivo: [`scripts/asaas/gerar_boleto_asaas.js`](../scripts/asaas/gerar_boleto_asaas.js)
 
@@ -162,22 +170,42 @@ O script:
 - Imprime e salva em `/mnt/user-data/outputs/Cobranca_<PEDIDO>.json` o `invoiceUrl`,
   `bankSlipUrl` e `id` — prontos para entrar na mensagem de WhatsApp e no e-mail.
 
-Para plugar na skill de verdade, o passo seguinte é: copiar este script para
-`assets/gerar_boleto_asaas.js` dentro da skill `bff-chargeback` (fora deste repositório, junto
-dos outros scripts da skill) e ajustar o passo 5 do `SKILL.md` para chamá-lo em vez de gerar só o
-`.txt` de instrução manual.
+Já foi copiado para dentro da skill de verdade: `assets/gerar_boleto_asaas.js` dentro da skill
+`bff-chargeback` (fora deste repositório, junto dos outros scripts da skill). Falta apenas
+configurar `ASAAS_API_KEY`/`ASAAS_ENV` no ambiente para esse caminho poder ser usado — enquanto
+isso não acontece, o `SKILL.md` cai automaticamente no caminho 4-B abaixo.
+
+---
+
+## 4-B. Alternativa validada: prompt para a extensão do Claude no Chrome
+
+Não depende de `ASAAS_API_KEY`. Em vez de chamar a API, dá o mesmo roteiro passo a passo pra um
+agente de navegador (a extensão do Claude no Chrome) preencher a tela do Asaas exatamente como um
+humano faria — busca/cria o cliente, cria a cobrança com boleto + Pix, zera juros/multa, para
+para confirmação antes de salvar, e devolve o link da fatura + a mensagem de WhatsApp pronta.
+
+Arquivo com o prompt completo (com os placeholders `{PEDIDO}`, `{NOME_COMPLETO}`, `{CPF}`,
+`{EMAIL}`, `{TELEFONE}`, `{VALOR}`, `{VENCIMENTO}`, `{PRIMEIRO_NOME}`, `{FATO}`):
+`assets/prompt_extensao_chrome_asaas.md` dentro da skill `bff-chargeback`.
+
+**Validado em produção em 25/08/2026** com uma cobrança real de teste
+(`TESTE-CONFIG-001`, cliente Felipe Barros, R$ 1.000,00, vencimento 30/10/2026): valor,
+vencimento, descrição e cliente saíram corretos; boleto e Pix disponíveis no mesmo link;
+juros/multa em branco (zerados); status "Aguardando Pagamento" — igual ao que o script por
+API teria produzido, só que sem precisar de chave de API.
 
 ---
 
 ## 5. Próximos passos práticos
 
-1. Confirmar que a conta Asaas da BFF (CNPJ 38.261.132/0001-40) já existe e tem sandbox
-   disponível; se não tiver, criar conta e habilitar sandbox.
-2. Gerar a API Key de sandbox e rodar o script acima num pedido de teste até o boleto sair
-   redondo (valor, vencimento, descrição, PIX habilitado).
-3. Gerar a API Key de produção, guardar como variável de ambiente (nunca em arquivo versionado)
-   e trocar `ASAAS_ENV=production`.
-4. Copiar o script para dentro da skill `bff-chargeback` e atualizar o `SKILL.md` (passo 5) para
-   chamá-lo automaticamente, substituindo `gerar_prompt_cobranca.js`.
+1. ~~Confirmar que a conta Asaas da BFF já existe~~ — confirmado: cobrança criada com sucesso
+   em produção em 25/08/2026 (ver 4-B).
+2. ~~Validar que o fluxo de criação de cobrança sai redondo~~ — validado via extensão do
+   Chrome (4-B). O caminho por API (4-A) ainda não foi testado de fato (falta a chave).
+3. Se quiser o caminho mais rápido/automatizável (sem depender do Chrome aberto): gerar a API
+   Key da BFF (sandbox primeiro, depois produção), guardar como variável de ambiente (nunca em
+   arquivo versionado) e testar `gerar_boleto_asaas.js` (4-A) num pedido de teste.
+4. Cancelar ou deixar vencer a cobrança de teste `TESTE-CONFIG-001` no painel do Asaas quando
+   não precisar mais dela — ela ficará "Aguardando Pagamento" indefinidamente até isso.
 5. (Opcional, fase 2) Configurar webhook do Asaas para saber automaticamente quando cada boleto
    extrajudicial foi pago.
