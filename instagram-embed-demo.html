@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Exemplo: vídeos do Instagram e YouTube embutidos no site</title>
+<style>
+  body {
+    font-family: system-ui, sans-serif;
+    max-width: 900px;
+    margin: 40px auto;
+    padding: 0 20px;
+    background: #fafafa;
+    color: #222;
+  }
+  h1 { font-size: 1.4rem; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 24px;
+    margin-top: 24px;
+  }
+  .card {
+    background: #fff;
+    border: 1px solid #e5e5e5;
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .card h2 { margin-top: 0; font-size: 1rem; }
+  iframe { max-width: 100%; border: 0; border-radius: 8px; }
+  code, pre {
+    background: #f3f3f3;
+    border-radius: 6px;
+    padding: 2px 6px;
+    font-size: 0.85rem;
+  }
+  pre { padding: 12px; overflow-x: auto; }
+</style>
+</head>
+<body>
+
+<h1>Como embutir vídeos do Instagram e do YouTube que "abrem" a rede original ao clicar</h1>
+<p>
+  Os dois exemplos abaixo carregam o conteúdo <strong>direto do domínio original</strong> (instagram.com / youtube.com)
+  dentro de um iframe. O vídeo em si nunca sai de lá — o seu site só "encaixa a janela".
+  Clicar no post do Instagram ou no logo do YouTube leva o visitante pra rede social.
+</p>
+
+<div class="grid">
+
+  <div class="card">
+    <h2>1. Instagram (embed oficial)</h2>
+    <p>
+      Pegue o link do post/reel → botão "..." → <em>Incorporar</em> (ou <em>Embed</em>) → copie o código.
+      Ele sempre tem esse formato:
+    </p>
+
+    <!--
+      Troque data-instgrm-permalink pelo link real do post/reel público que você quer mostrar.
+      Não precisa de API key: o script embed.js do próprio Instagram faz a mágica.
+    -->
+    <blockquote
+      class="instagram-media"
+      data-instgrm-permalink="https://www.instagram.com/p/CxampleReelId/"
+      data-instgrm-version="14"
+      style="background:#FFF; border:0; border-radius:8px; margin: 1px; max-width:400px; min-width:326px; padding:0; width:100%;">
+    </blockquote>
+
+    <pre><code>&lt;blockquote class="instagram-media"
+  data-instgrm-permalink="https://www.instagram.com/p/SEU_POST/"
+  data-instgrm-version="14"&gt;
+&lt;/blockquote&gt;
+
+&lt;script async src="//www.instagram.com/embed.js"&gt;&lt;/script&gt;</code></pre>
+  </div>
+
+  <div class="card">
+    <h2>2. YouTube (iframe padrão)</h2>
+    <p>Mais simples: pegue o ID do vídeo na URL e monte o iframe.</p>
+
+    <iframe
+      width="100%"
+      height="220"
+      src="https://www.youtube.com/embed/dQw4w9WgXcQ"
+      title="Exemplo de vídeo do YouTube"
+      frameborder="0"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+      allowfullscreen>
+    </iframe>
+
+    <pre><code>&lt;iframe
+  width="100%" height="220"
+  src="https://www.youtube.com/embed/ID_DO_VIDEO"
+  frameborder="0" allowfullscreen&gt;
+&lt;/iframe&gt;</code></pre>
+  </div>
+
+</div>
+
+<h2>Pontos importantes</h2>
+<ul>
+  <li><strong>O post/reel precisa ser público.</strong> Conta privada não embuta.</li>
+  <li>
+    Cada blockquote do Instagram precisa do script <code>embed.js</code> na página.
+    Se você tiver <strong>vários</strong> posts na mesma página, inclua o script <strong>uma única vez</strong>
+    (não repita por card).
+  </li>
+  <li>
+    Se os posts forem carregados dinamicamente (ex: via JS, depois que a página já abriu),
+    chame <code>window.instgrm.Embeds.process()</code> manualmente depois de inserir os novos blockquotes —
+    é isso que faz o script reprocessar e transformar os blockquotes em iframe.
+  </li>
+  <li>
+    Isso é <em>renderização client-side</em>: o HTML original mostra só o blockquote (texto/link cru);
+    o card bonito com o vídeo só aparece depois que o JS do Instagram roda no navegador do visitante.
+    Bom pra evitar hospedar vídeo você mesmo; ruim pra SEO/carregamento se você abusar de muitos embeds na mesma página.
+  </li>
+  <li>
+    Existe também a <strong>oEmbed API</strong> oficial do Instagram (via Graph API), usada quando você quer
+    gerar o HTML do embed <em>programaticamente</em> no seu backend (ex: o usuário só cola o link e o sistema
+    busca o código pronto). Isso exige um app registrado no Facebook for Developers e um access token —
+    só vale a pena se for gerar embeds em massa/automatizado. Pra colar 5-10 posts fixos no site, o blockquote manual acima já resolve.
+  </li>
+</ul>
+
+<script async src="//www.instagram.com/embed.js"></script>
+</body>
+</html>
