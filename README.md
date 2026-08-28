@@ -1,0 +1,177 @@
+# Painel de Pendências
+
+Sistema web com login que centraliza pendências de trabalho por categoria
+(Processos, Empresa BFF, E-mails, Viagens), com quadro estilo Kanban
+(arrastar e soltar entre Pendente / Em andamento / Concluído), filtros e
+sincronização automática de e-mails pendentes do Gmail.
+
+**Fase 1** (atual): uso individual, um único login.
+**Fase 2** (futura): login por pessoa, cada uma vendo só a própria pendência,
+painel de admin vendo tudo — o modelo de dados já foi desenhado pra isso
+(`User.role`, `Item.ownerId`).
+
+## Stack
+
+- **Next.js 16** (App Router) + TypeScript + Tailwind CSS
+- **Prisma 6** como ORM, Postgres como banco
+- **NextAuth (Auth.js) v5** — login por e-mail/senha (credentials)
+- **googleapis** — integração com Gmail (OAuth 2.0, escopo somente leitura)
+- **@hello-pangea/dnd** — quadro Kanban com arrastar e soltar
+- Pensado pra rodar 100% nos planos gratuitos: **Vercel** (hospedagem +
+  cron), **Neon** ou **Supabase** (Postgres)
+
+---
+
+## 1. Rodando localmente
+
+```bash
+npm install
+cp .env.example .env
+```
+
+Preencha o `.env`:
+
+| Variável | Como gerar |
+|---|---|
+| `DATABASE_URL` | URL de um Postgres (local, Neon ou Supabase — veja seção 2) |
+| `AUTH_SECRET` | `npx auth secret` ou `openssl rand -base64 32` |
+| `TOKEN_ENCRYPTION_KEY` | `openssl rand -base64 32` |
+| `SEED_USER_EMAIL` / `SEED_USER_PASSWORD` | o e-mail e senha que você vai usar pra logar |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | veja seção 4 (Gmail) — pode deixar em branco por enquanto |
+| `CRON_SECRET` | `openssl rand -hex 32` |
+
+Depois:
+
+```bash
+npx prisma db push     # cria as tabelas no banco
+npm run seed            # cria seu usuário de login
+npm run dev              # http://localhost:3000
+```
+
+---
+
+## 2. Banco de dados (Neon ou Supabase — plano gratuito)
+
+**Neon** (recomendado, mais simples pra Postgres puro):
+1. Crie conta em [neon.tech](https://neon.tech) → **New Project**.
+2. Copie a **Connection string** (formato `postgresql://...`) — já vem com
+   `?sslmode=require`, mantenha assim.
+3. Cole em `DATABASE_URL` no `.env` (local) e depois nas variáveis de
+   ambiente da Vercel (produção).
+
+**Supabase** (alternativa, se já usa Supabase por outro motivo):
+1. Crie um projeto em [supabase.com](https://supabase.com).
+2. Em **Project Settings → Database → Connection string**, use a URL no
+   modo **Transaction** (porta 6543) para produção na Vercel (funções
+   serverless) — mantenha o `?sslmode=require`.
+
+Depois de configurar, rode `npx prisma db push` para criar as tabelas.
+
+---
+
+## 3. Deploy na Vercel
+
+1. Suba este repositório no GitHub (já deve estar em
+   `barrofelipe-gif/dream`, branch `claude/painel-pendencias-jcv4lq` — dá
+   pra abrir um PR pra `main`/produção quando estiver satisfeito).
+2. Em [vercel.com](https://vercel.com) → **Add New → Project** → importe o
+   repositório.
+3. Em **Environment Variables**, adicione todas as variáveis do `.env`
+   (menos as que são só de seed, se preferir rodar o seed uma vez local
+   apontando pro banco de produção).
+4. Deploy. Você recebe uma URL tipo `painel-pendencias.vercel.app`.
+5. Rode o seed apontando pro banco de produção (uma vez só, do seu
+   computador ou daqui):
+   ```bash
+   DATABASE_URL="<url de produção>" npm run seed
+   ```
+
+O `vercel.json` já configura o cron job de sincronização do Gmail (roda de
+hora em hora) — a Vercel ativa automaticamente ao detectar o arquivo.
+
+---
+
+## 4. Domínio próprio
+
+1. Em **Vercel → Project → Settings → Domains**, adicione o domínio ou
+   subdomínio que você quiser usar (ex: `painel.seudominio.com.br`).
+2. A Vercel mostra o registro DNS exato a criar (normalmente um `CNAME`
+   apontando pro subdomínio, ou um `A` se for o domínio raiz).
+3. Entre no painel do seu registrador (Registro.br, GoDaddy, Cloudflare
+   etc.) e crie esse registro.
+4. Aguarde a propagação (geralmente minutos, pode levar até algumas horas)
+   — a Vercel confirma automaticamente quando detecta o DNS certo e emite
+   o certificado HTTPS.
+
+*Decisão em aberto: qual domínio/subdomínio exato usar — me diga quando
+for configurar essa parte.*
+
+---
+
+## 5. Conectar o Gmail (Google Cloud Console)
+
+Critério adotado para "e-mail pendente": **o próprio Gmail com uma label
+chamada "Pendente"**. Você marca manualmente (ou com um filtro automático
+do Gmail) os e-mails que quer ver no painel, e o sistema cria essa label
+sozinho na primeira sincronização, se ela ainda não existir.
+
+Passo a passo pra criar as credenciais OAuth:
+
+1. Acesse [console.cloud.google.com](https://console.cloud.google.com) e
+   crie um projeto novo (ou use um existente).
+2. **APIs e serviços → Biblioteca** → ative a **Gmail API**.
+3. **APIs e serviços → Tela de consentimento OAuth**:
+   - Tipo de usuário: **Externo** (ou Interno, se sua conta Google for
+     Workspace com domínio próprio).
+   - Preencha nome do app ("Painel de Pendências"), e-mail de suporte.
+   - Em **Escopos**, adicione `gmail.readonly` e `gmail.labels`.
+   - Em **Usuários de teste** (se o app ficar em modo "Teste"), adicione
+     seu próprio e-mail — assim você consegue autorizar sem precisar
+     publicar o app publicamente.
+4. **APIs e serviços → Credenciais → Criar credenciais → ID do cliente
+   OAuth**:
+   - Tipo de aplicativo: **Aplicativo da Web**.
+   - **URIs de redirecionamento autorizados**, adicione:
+     - `http://localhost:3000/api/gmail/callback` (para testar local)
+     - `https://SEU_DOMINIO/api/gmail/callback` (produção)
+5. Copie o **Client ID** e o **Client Secret** gerados para
+   `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` (local e na Vercel), e
+   ajuste `GOOGLE_REDIRECT_URI` para a URL de produção.
+6. No app, vá em **Conectar Gmail** (link no menu lateral) e autorize.
+
+> Se você reconectar depois de já ter autorizado uma vez, o Google às
+> vezes não reenvia o `refresh_token`. Se isso acontecer, revogue o acesso
+> em [myaccount.google.com/permissions](https://myaccount.google.com/permissions)
+> e conecte de novo.
+
+---
+
+## 6. Estrutura do projeto
+
+```
+prisma/schema.prisma       modelo de dados (User, Item, GmailConnection)
+prisma/seed.ts              cria o usuário inicial
+src/auth.ts                  configuração do NextAuth (credentials)
+src/proxy.ts                  protege as rotas (redireciona pra /login)
+src/lib/gmail.ts              OAuth + sincronização do Gmail
+src/lib/crypto.ts             criptografia do refresh_token (AES-256-GCM)
+src/app/painel/                painel principal (Kanban)
+src/app/conectar-gmail/        tela de conexão com o Gmail
+src/app/api/items/             CRUD de pendências
+src/app/api/gmail/             conectar/sincronizar/desconectar Gmail
+src/app/api/cron/sync-gmail/   endpoint chamado pelo cron da Vercel
+vercel.json                    agenda do cron (a cada hora)
+```
+
+## Decisões em aberto
+
+- **Domínio/subdomínio exato** a usar em produção.
+- **Notificação por e-mail/WhatsApp** quando algo fica atrasado — fora do
+  escopo da Fase 1, mas o modelo de dados já suporta adicionar depois
+  (basta um novo cron olhando `Item.due` e `Item.status`).
+
+## Fase 2 (futura)
+
+- Tela de "convidar usuário" (admin cria login pra cada pessoa).
+- Cada pessoa só vê os próprios itens (`Item.ownerId` já isola isso).
+- Painel de admin vendo tudo (`User.role === "admin"`).

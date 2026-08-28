@@ -1,0 +1,111 @@
+// Painel de Pendências — schema do banco de dados
+// Postgres gerenciado (Neon ou Supabase, plano gratuito)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+  membro
+}
+
+enum Category {
+  processos
+  bff
+  emails
+  viagens
+}
+
+enum BffSub {
+  financeiro
+  fornecedor
+  produto
+  outro
+}
+
+enum Priority {
+  alta
+  media
+  baixa
+}
+
+enum Status {
+  pendente
+  andamento
+  concluido
+}
+
+enum Recurring {
+  none
+  daily
+  weekly
+  monthly
+}
+
+enum Source {
+  manual
+  gmail
+}
+
+model User {
+  id             String   @id @default(cuid())
+  name           String
+  email          String   @unique
+  passwordHash   String
+  role           Role     @default(admin) // já nasce pronto pra Fase 2 (admin | membro)
+  createdAt      DateTime @default(now())
+
+  items            Item[]
+  gmailConnection  GmailConnection?
+}
+
+model Item {
+  id            String     @id @default(cuid())
+  owner         User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId       String
+
+  category      Category
+  bffSub        BffSub?
+
+  title         String
+  detail        String?
+
+  // campos específicos de "processos"
+  company       String?
+  lawyer        String?
+  processNumber String?
+  lastMovement  String?
+
+  due           DateTime?
+  priority      Priority   @default(media)
+  status        Status     @default(pendente)
+  recurring     Recurring  @default(none)
+
+  source        Source     @default(manual)
+  sourceRef     String?    // id da thread/e-mail no Gmail, quando source = gmail
+
+  updatedAt     DateTime   @updatedAt
+  createdAt     DateTime   @default(now())
+
+  @@index([ownerId, category])
+  @@index([ownerId, status])
+  @@index([due])
+  @@index([sourceRef])
+}
+
+model GmailConnection {
+  id            String   @id @default(cuid())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String   @unique
+
+  refreshToken  String   // criptografado (AES-256-GCM) antes de salvar — ver src/lib/crypto.ts
+  email         String?  // conta Gmail conectada, pra exibir na UI
+  lastSyncAt    DateTime?
+  createdAt     DateTime @default(now())
+}
