@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { serializeItem } from "@/lib/serialize";
 
 const itemPatch = z.object({
   category: z.enum(["processos", "bff", "emails", "viagens"]).optional(),
   bffSub: z.enum(["financeiro", "fornecedor", "produto", "outro"]).nullish(),
+  columnId: z.string().optional(),
   title: z.string().trim().min(1).optional(),
   detail: z.string().trim().nullish(),
   company: z.string().trim().nullish(),
@@ -14,9 +16,10 @@ const itemPatch = z.object({
   lastMovement: z.string().trim().nullish(),
   due: z.string().datetime().nullish().or(z.literal("").transform(() => null)),
   priority: z.enum(["alta", "media", "baixa"]).optional(),
-  status: z.enum(["pendente", "andamento", "concluido"]).optional(),
   recurring: z.enum(["none", "daily", "weekly", "monthly"]).optional(),
 });
+
+const itemWithColumn = { include: { column: { select: { isDone: true } } } } as const;
 
 async function findOwnedItem(id: string, ownerId: string) {
   const item = await prisma.item.findUnique({ where: { id } });
@@ -29,10 +32,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!session?.user?.id) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
   const { id } = await params;
-  const item = await findOwnedItem(id, session.user.id);
-  if (!item) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
+  const item = await prisma.item.findUnique({ where: { id }, ...itemWithColumn });
+  if (!item || item.ownerId !== session.user.id) {
+    return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
+  }
 
-  return NextResponse.json(item);
+  return NextResponse.json(serializeItem(item));
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -49,8 +54,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
   const data = parsed.data;
-
   const nextCategory = data.category ?? existing.category;
+
+  if (data.columnId) {
+    const column = await prisma.column.findUnique({ where: { id: data.columnId } });
+    if (!column || column.ownerId !== session.user.id || column.category !== nextCategory) {
+      return NextResponse.json({ error: "Coluna inválida pra essa categoria" }, { status: 400 });
+    }
+  }
 
   const item = await prisma.item.update({
     where: { id },
@@ -59,9 +70,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       bffSub: nextCategory === "bff" ? (data.bffSub ?? existing.bffSub) : null,
       due: data.due === undefined ? undefined : data.due ? new Date(data.due) : null,
     },
+    ...itemWithColumn,
   });
 
-  return NextResponse.json(item);
+  return NextResponse.json(serializeItem(item));
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

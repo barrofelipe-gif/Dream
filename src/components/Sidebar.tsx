@@ -15,7 +15,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ items, activeCategory, onSelectCategory, userName }: SidebarProps) {
-  const openItems = items.filter((i) => i.status !== "concluido");
+  const openItems = items.filter((i) => !i.columnIsDone);
 
   const categoryList: (Category | "todas")[] = ["todas", "processos", "bff", "emails", "viagens"];
 
@@ -38,7 +38,7 @@ export default function Sidebar({ items, activeCategory, onSelectCategory, userN
           const Icon = style.icon;
           const scoped = isAll ? openItems : openItems.filter((i) => i.category === cat);
           const count = scoped.length;
-          const overdueCount = scoped.filter((i) => isOverdue(i.due, i.status)).length;
+          const overdueCount = scoped.filter((i) => isOverdue(i.due, i.columnIsDone)).length;
           const active = activeCategory === cat;
 
           return (

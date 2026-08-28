@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { serializeItem } from "@/lib/serialize";
 
 const itemInput = z.object({
   category: z.enum(["processos", "bff", "emails", "viagens"]),
   bffSub: z.enum(["financeiro", "fornecedor", "produto", "outro"]).nullish(),
+  columnId: z.string().min(1, "Escolha uma coluna"),
   title: z.string().trim().min(1, "Título é obrigatório"),
   detail: z.string().trim().nullish(),
   company: z.string().trim().nullish(),
@@ -14,7 +16,6 @@ const itemInput = z.object({
   lastMovement: z.string().trim().nullish(),
   due: z.string().datetime().nullish().or(z.literal("").transform(() => null)),
   priority: z.enum(["alta", "media", "baixa"]).default("media"),
-  status: z.enum(["pendente", "andamento", "concluido"]).default("pendente"),
   recurring: z.enum(["none", "daily", "weekly", "monthly"]).default("none"),
 });
 
@@ -24,7 +25,6 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const category = searchParams.get("category");
-  const status = searchParams.get("status");
   const priority = searchParams.get("priority");
   const q = searchParams.get("q");
 
@@ -32,7 +32,6 @@ export async function GET(req: NextRequest) {
     where: {
       ownerId: session.user.id,
       ...(category ? { category: category as never } : {}),
-      ...(status ? { status: status as never } : {}),
       ...(priority ? { priority: priority as never } : {}),
       ...(q
         ? {
@@ -45,10 +44,11 @@ export async function GET(req: NextRequest) {
           }
         : {}),
     },
+    include: { column: { select: { isDone: true } } },
     orderBy: [{ due: "asc" }, { createdAt: "desc" }],
   });
 
-  return NextResponse.json(items);
+  return NextResponse.json(items.map(serializeItem));
 }
 
 export async function POST(req: NextRequest) {
@@ -62,11 +62,18 @@ export async function POST(req: NextRequest) {
   }
 
   const data = parsed.data;
+
+  const column = await prisma.column.findUnique({ where: { id: data.columnId } });
+  if (!column || column.ownerId !== session.user.id || column.category !== data.category) {
+    return NextResponse.json({ error: "Coluna inválida pra essa categoria" }, { status: 400 });
+  }
+
   const item = await prisma.item.create({
     data: {
       ownerId: session.user.id,
       category: data.category,
       bffSub: data.category === "bff" ? (data.bffSub ?? null) : null,
+      columnId: data.columnId,
       title: data.title,
       detail: data.detail || null,
       company: data.company || null,
@@ -75,11 +82,11 @@ export async function POST(req: NextRequest) {
       lastMovement: data.lastMovement || null,
       due: data.due ? new Date(data.due) : null,
       priority: data.priority,
-      status: data.status,
       recurring: data.recurring,
       source: "manual",
     },
+    include: { column: { select: { isDone: true } } },
   });
 
-  return NextResponse.json(item, { status: 201 });
+  return NextResponse.json(serializeItem(item), { status: 201 });
 }

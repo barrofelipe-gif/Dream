@@ -35,12 +35,6 @@ enum Priority {
   baixa
 }
 
-enum Status {
-  pendente
-  andamento
-  concluido
-}
-
 enum Recurring {
   none
   daily
@@ -62,7 +56,27 @@ model User {
   createdAt      DateTime @default(now())
 
   items            Item[]
+  columns          Column[]
   gmailConnection  GmailConnection?
+}
+
+// Coluna do quadro Kanban — escopada por categoria, editável pelo usuário
+// (criar, renomear, reordenar). Cada categoria nasce com 3 colunas padrão
+// (Pendente / Em andamento / Concluído), criadas sob demanda.
+model Column {
+  id        String   @id @default(cuid())
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId   String
+
+  category  Category
+  name      String
+  order     Int
+  isDone    Boolean  @default(false) // marca a(s) coluna(s) que contam como "concluído"
+
+  items     Item[]
+  createdAt DateTime @default(now())
+
+  @@index([ownerId, category, order])
 }
 
 model Item {
@@ -72,6 +86,9 @@ model Item {
 
   category      Category
   bffSub        BffSub?
+
+  column        Column     @relation(fields: [columnId], references: [id])
+  columnId      String
 
   title         String
   detail        String?
@@ -84,7 +101,6 @@ model Item {
 
   due           DateTime?
   priority      Priority   @default(media)
-  status        Status     @default(pendente)
   recurring     Recurring  @default(none)
 
   source        Source     @default(manual)
@@ -94,7 +110,7 @@ model Item {
   createdAt     DateTime   @default(now())
 
   @@index([ownerId, category])
-  @@index([ownerId, status])
+  @@index([columnId])
   @@index([due])
   @@index([sourceRef])
 }

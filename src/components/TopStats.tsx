@@ -12,10 +12,10 @@ interface TopStatsProps {
 }
 
 export default function TopStats({ items, active, onSelect }: TopStatsProps) {
-  const open = items.filter((i) => i.status !== "concluido");
-  const overdue = open.filter((i) => isOverdue(i.due, i.status)).length;
-  const today = open.filter((i) => isDueToday(i.due, i.status)).length;
-  const next7 = open.filter((i) => isWithinNextDays(i.due, i.status, 7)).length;
+  const open = items.filter((i) => !i.columnIsDone);
+  const overdue = open.filter((i) => isOverdue(i.due, i.columnIsDone)).length;
+  const today = open.filter((i) => isDueToday(i.due, i.columnIsDone)).length;
+  const next7 = open.filter((i) => isWithinNextDays(i.due, i.columnIsDone, 7)).length;
 
   const pills: { key: StatFilter; label: string; count: number; tone: string }[] = [
     { key: "atrasados", label: "Atrasados", count: overdue, tone: "text-rose-700 bg-rose-50 border-rose-200" },

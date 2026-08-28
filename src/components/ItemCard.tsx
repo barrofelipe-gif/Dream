@@ -14,9 +14,9 @@ interface ItemCardProps {
 }
 
 export default function ItemCard({ item, index, showCategoryChip, onClick }: ItemCardProps) {
-  const overdue = isOverdue(item.due, item.status);
-  const dueToday = isDueToday(item.due, item.status);
-  const done = item.status === "concluido";
+  const overdue = isOverdue(item.due, item.columnIsDone);
+  const dueToday = isDueToday(item.due, item.columnIsDone);
+  const done = item.columnIsDone;
   const catStyle = CATEGORY_STYLE[item.category];
   const prStyle = PRIORITY_STYLE[item.priority];
 

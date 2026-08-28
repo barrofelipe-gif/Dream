@@ -5,10 +5,10 @@ import {
   BFF_SUBS,
   CATEGORIES,
   Category,
+  ColumnDTO,
   ItemDTO,
   PRIORITIES,
   RECURRING_OPTIONS,
-  STATUSES,
 } from "@/lib/types";
 import { IconClose, IconTrash } from "@/components/icons";
 import MicButton from "@/components/MicButton";
@@ -16,7 +16,8 @@ import MicButton from "@/components/MicButton";
 interface ItemModalProps {
   item: ItemDTO | null; // null = criando novo
   defaultCategory: Category;
-  defaultStatus: ItemDTO["status"];
+  defaultColumnId: string;
+  columnsByCategory: Record<Category, ColumnDTO[]>;
   onClose: () => void;
   onSave: (data: Partial<ItemDTO> & { id?: string }) => Promise<void>;
   onDelete?: (id: string) => Promise<void>;
@@ -30,7 +31,8 @@ function toDateInputValue(iso: string | null): string {
 export default function ItemModal({
   item,
   defaultCategory,
-  defaultStatus,
+  defaultColumnId,
+  columnsByCategory,
   onClose,
   onSave,
   onDelete,
@@ -46,9 +48,21 @@ export default function ItemModal({
     lastMovement: item?.lastMovement ?? "",
     due: toDateInputValue(item?.due ?? null),
     priority: item?.priority ?? "media",
-    status: item?.status ?? defaultStatus,
+    columnId: item?.columnId ?? defaultColumnId,
     recurring: item?.recurring ?? "none",
   });
+
+  const columnsForCategory = columnsByCategory[form.category] ?? [];
+
+  function handleCategoryChange(newCategory: Category) {
+    const firstColumn = columnsByCategory[newCategory]?.[0];
+    setForm((f) => ({
+      ...f,
+      category: newCategory,
+      // a coluna atual só faz sentido dentro da categoria antiga
+      columnId: firstColumn ? firstColumn.id : f.columnId,
+    }));
+  }
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -127,7 +141,7 @@ export default function ItemModal({
                 <label className="mb-1 block text-xs font-medium text-zinc-600">Categoria</label>
                 <select
                   value={form.category}
-                  onChange={(e) => setForm((f) => ({ ...f, category: e.target.value as Category }))}
+                  onChange={(e) => handleCategoryChange(e.target.value as Category)}
                   className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-indigo-500"
                 >
                   {CATEGORIES.map((c) => (
@@ -258,15 +272,15 @@ export default function ItemModal({
                 </select>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-zinc-600">Status</label>
+                <label className="mb-1 block text-xs font-medium text-zinc-600">Coluna</label>
                 <select
-                  value={form.status}
-                  onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as never }))}
+                  value={form.columnId}
+                  onChange={(e) => setForm((f) => ({ ...f, columnId: e.target.value }))}
                   className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-indigo-500"
                 >
-                  {STATUSES.map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}
+                  {columnsForCategory.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
                     </option>
                   ))}
                 </select>

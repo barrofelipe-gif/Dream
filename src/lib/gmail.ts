@@ -1,6 +1,7 @@
 import { google } from "googleapis";
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/crypto";
+import { ensureDefaultColumns } from "@/lib/columns";
 
 export const GMAIL_LABEL_NAME = "Pendente";
 
@@ -59,6 +60,7 @@ export async function syncGmailForUser(userId: string) {
 
   const gmail = google.gmail({ version: "v1", auth: client });
   const labelId = await ensurePendingLabel(gmail);
+  const [defaultColumn] = await ensureDefaultColumns(userId, "emails");
 
   const { data } = await gmail.users.messages.list({
     userId: "me",
@@ -100,10 +102,10 @@ export async function syncGmailForUser(userId: string) {
         data: {
           ownerId: userId,
           category: "emails",
+          columnId: defaultColumn.id,
           title: subject,
           detail: `De: ${from}\n\n${snippet}`,
           priority: "media",
-          status: "pendente",
           source: "gmail",
           sourceRef: msg.id,
         },

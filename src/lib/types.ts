@@ -1,14 +1,23 @@
 export type Category = "processos" | "bff" | "emails" | "viagens";
 export type BffSub = "financeiro" | "fornecedor" | "produto" | "outro";
 export type Priority = "alta" | "media" | "baixa";
-export type Status = "pendente" | "andamento" | "concluido";
 export type Recurring = "none" | "daily" | "weekly" | "monthly";
 export type Source = "manual" | "gmail";
+
+export interface ColumnDTO {
+  id: string;
+  category: Category;
+  name: string;
+  order: number;
+  isDone: boolean;
+}
 
 export interface ItemDTO {
   id: string;
   category: Category;
   bffSub: BffSub | null;
+  columnId: string;
+  columnIsDone: boolean; // achatado do Column.isDone pra evitar um join no cliente
   title: string;
   detail: string | null;
   company: string | null;
@@ -17,7 +26,6 @@ export interface ItemDTO {
   lastMovement: string | null;
   due: string | null; // ISO
   priority: Priority;
-  status: Status;
   recurring: Recurring;
   source: Source;
   sourceRef: string | null;
@@ -43,12 +51,6 @@ export const PRIORITIES: { value: Priority; label: string }[] = [
   { value: "alta", label: "Alta" },
   { value: "media", label: "Média" },
   { value: "baixa", label: "Baixa" },
-];
-
-export const STATUSES: { value: Status; label: string }[] = [
-  { value: "pendente", label: "Pendente" },
-  { value: "andamento", label: "Em andamento" },
-  { value: "concluido", label: "Concluído" },
 ];
 
 export const RECURRING_OPTIONS: { value: Recurring; label: string }[] = [

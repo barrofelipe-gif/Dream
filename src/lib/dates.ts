@@ -4,20 +4,20 @@ function startOfDay(d: Date): Date {
   return x;
 }
 
-export function isOverdue(due: string | null, status: string): boolean {
-  if (!due || status === "concluido") return false;
+export function isOverdue(due: string | null, done: boolean): boolean {
+  if (!due || done) return false;
   return new Date(due) < startOfDay(new Date());
 }
 
-export function isDueToday(due: string | null, status: string): boolean {
-  if (!due || status === "concluido") return false;
+export function isDueToday(due: string | null, done: boolean): boolean {
+  if (!due || done) return false;
   const today = startOfDay(new Date());
   const dueDay = startOfDay(new Date(due));
   return today.getTime() === dueDay.getTime();
 }
 
-export function isWithinNextDays(due: string | null, status: string, days: number): boolean {
-  if (!due || status === "concluido") return false;
+export function isWithinNextDays(due: string | null, done: boolean, days: number): boolean {
+  if (!due || done) return false;
   const today = startOfDay(new Date());
   const dueDay = startOfDay(new Date(due));
   const limit = new Date(today);
