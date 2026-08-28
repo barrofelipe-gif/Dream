@@ -16,8 +16,19 @@ interface ItemCardProps {
 export default function ItemCard({ item, index, showCategoryChip, onClick }: ItemCardProps) {
   const overdue = isOverdue(item.due, item.status);
   const dueToday = isDueToday(item.due, item.status);
+  const done = item.status === "concluido";
   const catStyle = CATEGORY_STYLE[item.category];
   const prStyle = PRIORITY_STYLE[item.priority];
+
+  // Semáforo de prazo: a cor de fundo do card avisa de longe se está
+  // atrasado, vence hoje, concluído ou no prazo — sem precisar ler o card.
+  const urgencyStyle = done
+    ? "border-zinc-200 bg-zinc-50"
+    : overdue
+    ? "border-rose-200 bg-rose-50"
+    : dueToday
+    ? "border-amber-200 bg-amber-50"
+    : "border-[var(--border)] bg-[var(--surface)]";
 
   return (
     <Draggable draggableId={item.id} index={index}>
@@ -27,9 +38,9 @@ export default function ItemCard({ item, index, showCategoryChip, onClick }: Ite
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           onClick={onClick}
-          className={`group relative cursor-pointer overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] pl-3 pr-3 py-3 shadow-sm transition-shadow hover:shadow-md ${
-            snapshot.isDragging ? "shadow-lg ring-2 ring-indigo-300" : ""
-          }`}
+          className={`group relative cursor-pointer overflow-hidden rounded-xl border pl-3 pr-3 py-3 shadow-sm transition-shadow hover:shadow-md ${urgencyStyle} ${
+            done ? "opacity-70" : ""
+          } ${snapshot.isDragging ? "shadow-lg ring-2 ring-indigo-300" : ""}`}
         >
           <span className={`absolute left-0 top-0 h-full w-1 ${prStyle.bar}`} aria-hidden />
 
@@ -69,11 +80,13 @@ export default function ItemCard({ item, index, showCategoryChip, onClick }: Ite
             {item.due && (
               <span
                 className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                  overdue
-                    ? "bg-rose-100 text-rose-700"
+                  done
+                    ? "bg-zinc-200 text-zinc-500"
+                    : overdue
+                    ? "bg-rose-200 text-rose-800"
                     : dueToday
-                    ? "bg-amber-100 text-amber-700"
-                    : "bg-zinc-100 text-zinc-500"
+                    ? "bg-amber-200 text-amber-800"
+                    : "bg-emerald-100 text-emerald-700"
                 }`}
               >
                 {overdue ? "Atrasado" : dueToday ? "Vence hoje" : formatDue(item.due)}

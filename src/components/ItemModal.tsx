@@ -11,6 +11,7 @@ import {
   STATUSES,
 } from "@/lib/types";
 import { IconClose, IconTrash } from "@/components/icons";
+import MicButton from "@/components/MicButton";
 
 interface ItemModalProps {
   item: ItemDTO | null; // null = criando novo
@@ -104,13 +105,21 @@ export default function ItemModal({
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
             <div>
               <label className="mb-1 block text-xs font-medium text-zinc-600">Título</label>
-              <input
-                autoFocus
-                value={form.title}
-                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                placeholder="Ex: Responder cobrança do fornecedor X"
-              />
+              <div className="flex items-center gap-1.5">
+                <input
+                  autoFocus
+                  value={form.title}
+                  onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                  placeholder="Ex: Responder cobrança do fornecedor X"
+                />
+                <MicButton
+                  label="Ditar título"
+                  onResult={(text) =>
+                    setForm((f) => ({ ...f, title: [f.title, text].filter(Boolean).join(" ") }))
+                  }
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -190,7 +199,15 @@ export default function ItemModal({
             )}
 
             <div>
-              <label className="mb-1 block text-xs font-medium text-zinc-600">Detalhes</label>
+              <div className="mb-1 flex items-center justify-between">
+                <label className="block text-xs font-medium text-zinc-600">Detalhes</label>
+                <MicButton
+                  label="Ditar detalhes"
+                  onResult={(text) =>
+                    setForm((f) => ({ ...f, detail: [f.detail, text].filter(Boolean).join(" ") }))
+                  }
+                />
+              </div>
               <textarea
                 value={form.detail}
                 onChange={(e) => setForm((f) => ({ ...f, detail: e.target.value }))}
