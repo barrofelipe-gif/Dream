@@ -67,7 +67,7 @@ export default function Board({
           return (
             <div
               key={col.id}
-              className="flex min-h-0 w-72 shrink-0 flex-col rounded-xl bg-black/[.03]"
+              className="group flex min-h-0 w-72 shrink-0 flex-col rounded-xl bg-black/[.03]"
             >
               <div className="flex items-center justify-between gap-1 px-3 pb-2 pt-3">
                 {isRenaming ? (

@@ -9,6 +9,7 @@ import {
   ItemDTO,
   PRIORITIES,
   RECURRING_OPTIONS,
+  VoiceDraft,
 } from "@/lib/types";
 import { IconClose, IconTrash } from "@/components/icons";
 import MicButton from "@/components/MicButton";
@@ -18,6 +19,8 @@ interface ItemModalProps {
   defaultCategory: Category;
   defaultColumnId: string;
   columnsByCategory: Record<Category, ColumnDTO[]>;
+  // pré-preenche o formulário de um item novo (vindo do ditado por voz)
+  initialDraft?: VoiceDraft | null;
   onClose: () => void;
   onSave: (data: Partial<ItemDTO> & { id?: string }) => Promise<void>;
   onDelete?: (id: string) => Promise<void>;
@@ -33,22 +36,26 @@ export default function ItemModal({
   defaultCategory,
   defaultColumnId,
   columnsByCategory,
+  initialDraft,
   onClose,
   onSave,
   onDelete,
 }: ItemModalProps) {
   const [form, setForm] = useState({
-    category: item?.category ?? defaultCategory,
-    bffSub: item?.bffSub ?? null,
-    title: item?.title ?? "",
-    detail: item?.detail ?? "",
-    company: item?.company ?? "",
+    category: item?.category ?? initialDraft?.category ?? defaultCategory,
+    bffSub: item?.bffSub ?? initialDraft?.bffSub ?? null,
+    title: item?.title ?? initialDraft?.title ?? "",
+    detail: item?.detail ?? initialDraft?.detail ?? "",
+    company: item?.company ?? initialDraft?.company ?? "",
     lawyer: item?.lawyer ?? "",
-    processNumber: item?.processNumber ?? "",
+    processNumber: item?.processNumber ?? initialDraft?.processNumber ?? "",
     lastMovement: item?.lastMovement ?? "",
-    due: toDateInputValue(item?.due ?? null),
-    priority: item?.priority ?? "media",
-    columnId: item?.columnId ?? defaultColumnId,
+    due: toDateInputValue(item?.due ?? initialDraft?.due ?? null),
+    priority: item?.priority ?? initialDraft?.priority ?? "media",
+    columnId:
+      item?.columnId ??
+      (initialDraft ? columnsByCategory[initialDraft.category]?.[0]?.id : undefined) ??
+      defaultColumnId,
     recurring: item?.recurring ?? "none",
   });
 
@@ -117,6 +124,12 @@ export default function ItemModal({
           </div>
 
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+            {initialDraft && (
+              <p className="rounded-lg bg-indigo-50 px-3 py-2 text-xs text-indigo-700">
+                Preenchido a partir do que você ditou — confere se ficou certo antes de salvar.
+              </p>
+            )}
+
             <div>
               <label className="mb-1 block text-xs font-medium text-zinc-600">Título</label>
               <div className="flex items-center gap-1.5">

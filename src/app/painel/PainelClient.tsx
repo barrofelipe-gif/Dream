@@ -5,10 +5,11 @@ import Sidebar from "@/components/Sidebar";
 import TopStats, { StatFilter } from "@/components/TopStats";
 import Board from "@/components/Board";
 import ItemModal from "@/components/ItemModal";
-import { IconPlus, IconSearch } from "@/components/icons";
+import VoiceCaptureModal from "@/components/VoiceCaptureModal";
+import { IconMic, IconPlus, IconSearch } from "@/components/icons";
 import { ALL_CATEGORY_STYLE, CATEGORY_STYLE } from "@/lib/style";
 import { isOverdue, isDueToday, isWithinNextDays } from "@/lib/dates";
-import { CATEGORIES, Category, ColumnDTO, ItemDTO, PRIORITIES, Priority } from "@/lib/types";
+import { CATEGORIES, Category, ColumnDTO, ItemDTO, PRIORITIES, Priority, VoiceDraft } from "@/lib/types";
 
 interface PainelClientProps {
   initialItems: ItemDTO[];
@@ -34,6 +35,8 @@ export default function PainelClient({ initialItems, userName }: PainelClientPro
   const [editingItem, setEditingItem] = useState<ItemDTO | null>(null);
   const [newItemCategory, setNewItemCategory] = useState<Category>("processos");
   const [newItemColumnId, setNewItemColumnId] = useState<string>("");
+  const [voiceDraft, setVoiceDraft] = useState<VoiceDraft | null>(null);
+  const [voiceModalOpen, setVoiceModalOpen] = useState(false);
 
   // Carrega as colunas das 4 categorias uma vez (cria as padrão sob demanda
   // no servidor, se a categoria ainda não tiver nenhuma).
@@ -91,6 +94,7 @@ export default function PainelClient({ initialItems, userName }: PainelClientPro
 
   function openNewItem(columnId: string) {
     setEditingItem(null);
+    setVoiceDraft(null);
     setNewItemCategory(category === "todas" ? "processos" : category);
     setNewItemColumnId(columnId);
     setModalOpen(true);
@@ -103,6 +107,16 @@ export default function PainelClient({ initialItems, userName }: PainelClientPro
 
   function openExistingItem(item: ItemDTO) {
     setEditingItem(item);
+    setVoiceDraft(null);
+    setModalOpen(true);
+  }
+
+  function handleVoiceDraftReady(draft: VoiceDraft) {
+    setVoiceModalOpen(false);
+    setEditingItem(null);
+    setVoiceDraft(draft);
+    setNewItemCategory(draft.category);
+    setNewItemColumnId(columnsByCategory[draft.category]?.[0]?.id ?? "");
     setModalOpen(true);
   }
 
@@ -229,13 +243,22 @@ export default function PainelClient({ initialItems, userName }: PainelClientPro
             )}
           </div>
 
-          <button
-            onClick={openNewItemButton}
-            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-          >
-            <IconPlus className="h-4 w-4" />
-            Nova pendência
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setVoiceModalOpen(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+            >
+              <IconMic className="h-4 w-4" />
+              Ditar pendência
+            </button>
+            <button
+              onClick={openNewItemButton}
+              className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+            >
+              <IconPlus className="h-4 w-4" />
+              Nova pendência
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -288,10 +311,15 @@ export default function PainelClient({ initialItems, userName }: PainelClientPro
           defaultCategory={newItemCategory}
           defaultColumnId={newItemColumnId}
           columnsByCategory={columnsByCategory}
+          initialDraft={voiceDraft}
           onClose={() => setModalOpen(false)}
           onSave={handleSave}
           onDelete={handleDelete}
         />
+      )}
+
+      {voiceModalOpen && (
+        <VoiceCaptureModal onClose={() => setVoiceModalOpen(false)} onDraftReady={handleVoiceDraftReady} />
       )}
     </div>
   );

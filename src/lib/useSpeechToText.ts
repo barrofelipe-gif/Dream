@@ -33,16 +33,25 @@ function getRecognitionCtor(): SpeechRecognitionCtor | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
+interface UseSpeechToTextOptions {
+  // false (padrão): pára sozinho na primeira pausa — bom pra ditar um campo.
+  // true: fica ouvindo até o usuário mandar parar, com prévia do que ainda
+  // não foi confirmado — bom pra ditar a pendência inteira de uma vez.
+  continuous?: boolean;
+}
+
 /**
  * Ditado por voz usando a Web Speech API nativa do navegador (Chrome/Edge —
  * grátis, sem chamada de API externa). Em navegadores sem suporte
- * (Firefox, Safari), `supported` fica false e o botão de microfone some.
+ * (Firefox, Safari), `supported` fica false e quem usa o hook deve
+ * esconder o próprio botão de microfone.
  */
-export function useSpeechToText(onResult: (text: string) => void) {
+export function useSpeechToText(onResult: (text: string) => void, opts: UseSpeechToTextOptions = {}) {
   // Componente só monta no cliente (dentro do modal, após interação), então
   // não há divergência de hidratação em calcular isso direto no useState.
   const [supported] = useState(() => getRecognitionCtor() !== null);
   const [listening, setListening] = useState(false);
+  const [interimText, setInterimText] = useState("");
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   function start() {
@@ -51,17 +60,25 @@ export function useSpeechToText(onResult: (text: string) => void) {
 
     const recognition = new Ctor();
     recognition.lang = "pt-BR";
-    recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.continuous = opts.continuous ?? false;
+    recognition.interimResults = opts.continuous ?? false;
 
     recognition.onresult = (e) => {
-      const transcript = Array.from({ length: e.results.length }, (_, i) => e.results[i][0].transcript).join(
-        " "
-      );
-      onResult(transcript.trim());
+      let finalChunk = "";
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const result = e.results[i];
+        if (result.isFinal) finalChunk += result[0].transcript;
+        else interim += result[0].transcript;
+      }
+      if (finalChunk.trim()) onResult(finalChunk.trim());
+      setInterimText(interim);
     };
     recognition.onerror = () => setListening(false);
-    recognition.onend = () => setListening(false);
+    recognition.onend = () => {
+      setListening(false);
+      setInterimText("");
+    };
 
     recognitionRef.current = recognition;
     recognition.start();
@@ -73,5 +90,5 @@ export function useSpeechToText(onResult: (text: string) => void) {
     setListening(false);
   }
 
-  return { supported, listening, start, stop };
+  return { supported, listening, interimText, start, stop };
 }

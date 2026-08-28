@@ -1,9 +1,11 @@
 # Painel de Pendências
 
 Sistema web com login que centraliza pendências de trabalho por categoria
-(Processos, Empresa BFF, E-mails, Viagens), com quadro estilo Kanban
-(arrastar e soltar entre Pendente / Em andamento / Concluído), filtros e
-sincronização automática de e-mails pendentes do Gmail.
+(Processos, Empresa BFF, E-mails, Viagens), com quadro estilo Kanban de
+colunas totalmente customizáveis (criar, renomear, reordenar e excluir),
+filtros, ditado por voz (inclusive um "ditado inteligente" que organiza uma
+frase falada nos campos certos) e sincronização automática de e-mails
+pendentes do Gmail.
 
 **Fase 1** (atual): uso individual, um único login.
 **Fase 2** (futura): login por pessoa, cada uma vendo só a própria pendência,
@@ -17,6 +19,9 @@ painel de admin vendo tudo — o modelo de dados já foi desenhado pra isso
 - **NextAuth (Auth.js) v5** — login por e-mail/senha (credentials)
 - **googleapis** — integração com Gmail (OAuth 2.0, escopo somente leitura)
 - **@hello-pangea/dnd** — quadro Kanban com arrastar e soltar
+- **Web Speech API** (nativa do navegador) — ditado por voz, sem custo
+- **Claude API** (`@anthropic-ai/sdk`, modelo `claude-opus-5`) — organiza o
+  texto ditado nos campos certos da pendência ("ditado inteligente")
 - Pensado pra rodar 100% nos planos gratuitos: **Vercel** (hospedagem +
   cron), **Neon** ou **Supabase** (Postgres)
 
@@ -39,6 +44,7 @@ Preencha o `.env`:
 | `SEED_USER_EMAIL` / `SEED_USER_PASSWORD` | o e-mail e senha que você vai usar pra logar |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | veja seção 4 (Gmail) — pode deixar em branco por enquanto |
 | `CRON_SECRET` | `openssl rand -hex 32` |
+| `ANTHROPIC_API_KEY` | [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) — opcional; sem ela o app funciona normal, só o "Ditar pendência" fica desativado |
 
 Depois:
 
@@ -146,18 +152,53 @@ Passo a passo pra criar as credenciais OAuth:
 
 ---
 
-## 6. Estrutura do projeto
+## 6. Colunas do Kanban
+
+Cada categoria (Processos, Empresa BFF, E-mails, Viagens) tem seu próprio
+conjunto de colunas — nascem 3 padrão (Pendente / Em andamento / Concluído)
+na primeira vez que você abre a categoria, e dali pra frente:
+
+- **Renomear**: clique no título da coluna.
+- **Adicionar**: botão "+ Nova coluna" no fim do quadro.
+- **Reordenar**: setas ◀ ▶ que aparecem ao passar o mouse no título.
+- **Excluir**: "×" ao passar o mouse — só deixa excluir coluna vazia (sem
+  mover os cards pra outra coluna primeiro, o excluir é bloqueado).
+
+Como colunas são por categoria, a visão "Todas as categorias" não dá pra
+misturar quadros diferentes num só — ela vira um resumo somente-leitura em
+2 grupos (Em aberto / Concluído). Pra arrastar cards e editar colunas,
+escolhe uma categoria no menu lateral.
+
+## 7. Ditado por voz
+
+Dois níveis, os dois grátis de usar (só o segundo depende da chave da
+Anthropic):
+
+- **Por campo**: o ícone de microfone ao lado de Título e Detalhes no modal
+  dita só aquele campo (Web Speech API do navegador — Chrome/Edge).
+- **Ditado inteligente**: botão "Ditar pendência" no topo do painel — fala
+  a pendência inteira numa frase só ("responder o fornecedor tal sobre
+  pagamento, prioridade alta, prazo sexta-feira, categoria BFF financeiro")
+  e o Claude organiza automaticamente em título, categoria, prioridade,
+  prazo etc. A transcrição fica editável antes de enviar, pra corrigir erro
+  de reconhecimento de voz, e o formulário final ainda abre pra revisão —
+  nada salva sem você conferir e clicar em Salvar.
+
+## 8. Estrutura do projeto
 
 ```
-prisma/schema.prisma       modelo de dados (User, Item, GmailConnection)
+prisma/schema.prisma       modelo de dados (User, Item, Column, GmailConnection)
 prisma/seed.ts              cria o usuário inicial
 src/auth.ts                  configuração do NextAuth (credentials)
 src/proxy.ts                  protege as rotas (redireciona pra /login)
 src/lib/gmail.ts              OAuth + sincronização do Gmail
 src/lib/crypto.ts             criptografia do refresh_token (AES-256-GCM)
+src/lib/columns.ts            colunas padrão criadas sob demanda por categoria
+src/lib/anthropic.ts          ditado inteligente (Claude API)
 src/app/painel/                painel principal (Kanban)
 src/app/conectar-gmail/        tela de conexão com o Gmail
-src/app/api/items/             CRUD de pendências
+src/app/api/items/             CRUD de pendências + ditado inteligente
+src/app/api/columns/           CRUD de colunas do Kanban
 src/app/api/gmail/             conectar/sincronizar/desconectar Gmail
 src/app/api/cron/sync-gmail/   endpoint chamado pelo cron da Vercel
 vercel.json                    agenda do cron (a cada hora)
@@ -168,7 +209,12 @@ vercel.json                    agenda do cron (a cada hora)
 - **Domínio/subdomínio exato** a usar em produção.
 - **Notificação por e-mail/WhatsApp** quando algo fica atrasado — fora do
   escopo da Fase 1, mas o modelo de dados já suporta adicionar depois
-  (basta um novo cron olhando `Item.due` e `Item.status`).
+  (basta um novo cron olhando `Item.due` e `Column.isDone`).
+- **Integração financeira (Bling)** — puxar fluxo de caixa/contas a pagar
+  e receber do Bling pra uma aba Financeiro. A API do Bling dá contas a
+  pagar/receber, não DRE/Balanço formais (isso normalmente é fechamento
+  contábil feito por outro sistema/contador) — vamos alinhar o escopo exato
+  antes de implementar.
 
 ## Fase 2 (futura)
 

@@ -4,6 +4,20 @@ export type Priority = "alta" | "media" | "baixa";
 export type Recurring = "none" | "daily" | "weekly" | "monthly";
 export type Source = "manual" | "gmail";
 
+// Rascunho de pendência extraído de um ditado por voz (ver src/lib/anthropic.ts).
+// Fica em types.ts (sem dependências de runtime) pra poder ser importado em
+// componentes de cliente sem puxar o SDK da Anthropic pro bundle do navegador.
+export interface VoiceDraft {
+  title: string;
+  category: Category;
+  bffSub: BffSub | null;
+  detail: string | null;
+  company: string | null;
+  processNumber: string | null;
+  due: string | null;
+  priority: Priority;
+}
+
 export interface ColumnDTO {
   id: string;
   category: Category;
