@@ -39,7 +39,7 @@ export default function LoginForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="mb-1 block text-sm font-medium text-zinc-700" htmlFor="email">
+        <label className="mb-1.5 block text-sm font-medium text-zinc-300" htmlFor="email">
           E-mail
         </label>
         <input
@@ -49,13 +49,13 @@ export default function LoginForm() {
           autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none placeholder:text-zinc-600 focus:border-indigo-400 focus:bg-white/[0.07] focus:ring-2 focus:ring-indigo-400/20"
           placeholder="voce@exemplo.com"
         />
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium text-zinc-700" htmlFor="password">
+        <label className="mb-1.5 block text-sm font-medium text-zinc-300" htmlFor="password">
           Senha
         </label>
         <input
@@ -65,17 +65,17 @@ export default function LoginForm() {
           autoComplete="current-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm text-zinc-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+          className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none placeholder:text-zinc-600 focus:border-indigo-400 focus:bg-white/[0.07] focus:ring-2 focus:ring-indigo-400/20"
           placeholder="••••••••"
         />
       </div>
 
-      {error && <p className="text-sm text-rose-600">{error}</p>}
+      {error && <p className="text-sm text-rose-400">{error}</p>}
 
       <button
         type="submit"
         disabled={loading}
-        className="w-full rounded-lg bg-indigo-600 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-60"
+        className="w-full rounded-lg bg-indigo-500 py-2.5 text-sm font-medium text-white shadow-[0_0_20px_-4px_rgba(99,102,241,0.6)] transition-colors hover:bg-indigo-400 disabled:opacity-60"
       >
         {loading ? "Entrando..." : "Entrar"}
       </button>
