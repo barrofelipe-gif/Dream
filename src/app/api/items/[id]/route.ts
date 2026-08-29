@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { serializeItem } from "@/lib/serialize";
+import { itemInclude, serializeItem } from "@/lib/serialize";
 
 const itemPatch = z.object({
   category: z.enum(["processos", "bff", "emails", "viagens"]).optional(),
@@ -19,8 +19,6 @@ const itemPatch = z.object({
   recurring: z.enum(["none", "daily", "weekly", "monthly"]).optional(),
 });
 
-const itemWithColumn = { include: { column: { select: { isDone: true } } } } as const;
-
 async function findOwnedItem(id: string, ownerId: string) {
   const item = await prisma.item.findUnique({ where: { id } });
   if (!item || item.ownerId !== ownerId) return null;
@@ -32,7 +30,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!session?.user?.id) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
   const { id } = await params;
-  const item = await prisma.item.findUnique({ where: { id }, ...itemWithColumn });
+  const item = await prisma.item.findUnique({ where: { id }, include: itemInclude });
   if (!item || item.ownerId !== session.user.id) {
     return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
   }
@@ -56,10 +54,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const data = parsed.data;
   const nextCategory = data.category ?? existing.category;
 
+  // Marca/limpa completedAt sozinho quando o card entra/sai de uma coluna
+  // "concluído" — é isso que dá o histórico de "enviado em X, concluído em Y".
+  let completedAt: Date | null | undefined = undefined;
   if (data.columnId) {
     const column = await prisma.column.findUnique({ where: { id: data.columnId } });
     if (!column || column.ownerId !== session.user.id || column.category !== nextCategory) {
       return NextResponse.json({ error: "Coluna inválida pra essa categoria" }, { status: 400 });
+    }
+    if (data.columnId !== existing.columnId) {
+      completedAt = column.isDone ? new Date() : null;
     }
   }
 
@@ -69,8 +73,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ...data,
       bffSub: nextCategory === "bff" ? (data.bffSub ?? existing.bffSub) : null,
       due: data.due === undefined ? undefined : data.due ? new Date(data.due) : null,
+      completedAt,
     },
-    ...itemWithColumn,
+    include: itemInclude,
   });
 
   return NextResponse.json(serializeItem(item));

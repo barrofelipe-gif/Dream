@@ -52,7 +52,8 @@ enum Source {
 enum Sector {
   financeiro
   marketing_vendas
-  estoque_logistica
+  estoque
+  logistica
   clientes
   suporte
   juridico
@@ -67,7 +68,8 @@ model User {
   role           Role     @default(admin) // já nasce pronto pra Fase 2 (admin | membro)
   createdAt      DateTime @default(now())
 
-  items            Item[]
+  items            Item[]           @relation("OwnedItems")
+  assignedItems    Item[]           @relation("AssignedItems")
   columns          Column[]
   gmailConnection  GmailConnection?
   sectorAccess     SectorAccess[]
@@ -107,8 +109,14 @@ model Column {
 
 model Item {
   id            String     @id @default(cuid())
-  owner         User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner         User       @relation("OwnedItems", fields: [ownerId], references: [id], onDelete: Cascade)
   ownerId       String
+
+  // Quem atribuiu essa pendência a outra pessoa (null = a pessoa criou pra
+  // ela mesma). Junto com createdAt/completedAt dá o histórico de "enviei
+  // em X, ela concluiu em Y" pedido pelo usuário.
+  assignedBy    User?      @relation("AssignedItems", fields: [assignedById], references: [id], onDelete: SetNull)
+  assignedById  String?
 
   category      Category
   bffSub        BffSub?
@@ -132,6 +140,7 @@ model Item {
   source        Source     @default(manual)
   sourceRef     String?    // id da thread/e-mail no Gmail, quando source = gmail
 
+  completedAt   DateTime?  // marcado sozinho quando a coluna vira isDone
   updatedAt     DateTime   @updatedAt
   createdAt     DateTime   @default(now())
 
@@ -139,6 +148,7 @@ model Item {
   @@index([columnId])
   @@index([due])
   @@index([sourceRef])
+  @@index([assignedById])
 }
 
 model GmailConnection {

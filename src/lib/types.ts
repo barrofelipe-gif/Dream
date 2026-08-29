@@ -28,6 +28,7 @@ export interface ColumnDTO {
 
 export interface ItemDTO {
   id: string;
+  ownerId: string;
   category: Category;
   bffSub: BffSub | null;
   columnId: string;
@@ -43,8 +44,16 @@ export interface ItemDTO {
   recurring: Recurring;
   source: Source;
   sourceRef: string | null;
+  assignedById: string | null;
+  assignedByName: string | null; // achatado, pra mostrar "Enviado por X" sem join no cliente
+  completedAt: string | null;
   updatedAt: string;
   createdAt: string;
+}
+
+export interface UserOption {
+  id: string;
+  name: string;
 }
 
 export const CATEGORIES: { value: Category; label: string }[] = [

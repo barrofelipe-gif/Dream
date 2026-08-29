@@ -10,11 +10,21 @@ export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
-  const category = new URL(req.url).searchParams.get("category");
+  const { searchParams } = new URL(req.url);
+  const category = searchParams.get("category");
   const parsed = z.enum(CATEGORY_VALUES).safeParse(category);
   if (!parsed.success) return NextResponse.json({ error: "Categoria inválida" }, { status: 400 });
 
-  const columns = await ensureDefaultColumns(session.user.id, parsed.data);
+  // Pra montar o board de outra pessoa quando você atribui uma pendência a
+  // ela ("Atribuir para") — só leitura, mesma lógica de time pequeno/confiança
+  // já usada pra listar nomes de usuário.
+  const targetUserId = searchParams.get("userId") || session.user.id;
+  if (targetUserId !== session.user.id) {
+    const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
+    if (!targetUser) return NextResponse.json({ error: "Usuário inválido" }, { status: 400 });
+  }
+
+  const columns = await ensureDefaultColumns(targetUserId, parsed.data);
   return NextResponse.json(columns);
 }
 

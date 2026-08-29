@@ -9,6 +9,7 @@ import {
   ItemDTO,
   PRIORITIES,
   RECURRING_OPTIONS,
+  UserOption,
   VoiceDraft,
 } from "@/lib/types";
 import { IconClose, IconTrash } from "@/components/icons";
@@ -19,10 +20,12 @@ interface ItemModalProps {
   defaultCategory: Category;
   defaultColumnId: string;
   columnsByCategory: Record<Category, ColumnDTO[]>;
+  currentUserId: string;
+  otherUsers: UserOption[]; // pra "Atribuir para" — só aparece se tiver alguém além de você
   // pré-preenche o formulário de um item novo (vindo do ditado por voz)
   initialDraft?: VoiceDraft | null;
   onClose: () => void;
-  onSave: (data: Partial<ItemDTO> & { id?: string }) => Promise<void>;
+  onSave: (data: Partial<ItemDTO> & { id?: string; ownerId?: string }) => Promise<void>;
   onDelete?: (id: string) => Promise<void>;
 }
 
@@ -36,6 +39,8 @@ export default function ItemModal({
   defaultCategory,
   defaultColumnId,
   columnsByCategory,
+  currentUserId,
+  otherUsers,
   initialDraft,
   onClose,
   onSave,
@@ -44,6 +49,7 @@ export default function ItemModal({
   const [form, setForm] = useState({
     category: item?.category ?? initialDraft?.category ?? defaultCategory,
     bffSub: item?.bffSub ?? initialDraft?.bffSub ?? null,
+    ownerId: item?.ownerId ?? currentUserId,
     title: item?.title ?? initialDraft?.title ?? "",
     detail: item?.detail ?? initialDraft?.detail ?? "",
     company: item?.company ?? initialDraft?.company ?? "",
@@ -59,10 +65,34 @@ export default function ItemModal({
     recurring: item?.recurring ?? "none",
   });
 
-  const columnsForCategory = columnsByCategory[form.category] ?? [];
+  // Colunas de quem a pendência está sendo atribuída — busca sob demanda
+  // quando "Atribuir para" muda pra outra pessoa (o board dela é diferente
+  // do seu). null = ainda não buscou / é você mesmo (usa columnsByCategory).
+  const [assigneeColumns, setAssigneeColumns] = useState<ColumnDTO[] | null>(null);
+
+  useEffect(() => {
+    // assigneeColumns só é lido quando ownerId !== currentUserId (ver
+    // columnsForCategory abaixo) — nada pra buscar quando é você mesmo.
+    if (form.ownerId === currentUserId) return;
+
+    let cancelled = false;
+    fetch(`/api/columns?category=${form.category}&userId=${form.ownerId}`)
+      .then((r) => r.json())
+      .then((cols: ColumnDTO[]) => {
+        if (cancelled) return;
+        setAssigneeColumns(cols);
+        setForm((f) => (cols.some((c) => c.id === f.columnId) ? f : { ...f, columnId: cols[0]?.id ?? f.columnId }));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form.ownerId, form.category, currentUserId]);
+
+  const columnsForCategory =
+    form.ownerId === currentUserId ? columnsByCategory[form.category] ?? [] : assigneeColumns ?? [];
 
   function handleCategoryChange(newCategory: Category) {
-    const firstColumn = columnsByCategory[newCategory]?.[0];
+    const firstColumn = (form.ownerId === currentUserId ? columnsByCategory[newCategory] : assigneeColumns)?.[0];
     setForm((f) => ({
       ...f,
       category: newCategory,
@@ -127,6 +157,32 @@ export default function ItemModal({
             {initialDraft && (
               <p className="rounded-lg bg-indigo-50 px-3 py-2 text-xs text-indigo-700">
                 Preenchido a partir do que você ditou — confere se ficou certo antes de salvar.
+              </p>
+            )}
+
+            {!item && otherUsers.length > 0 && (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-zinc-600">Atribuir para</label>
+                <select
+                  value={form.ownerId}
+                  onChange={(e) => setForm((f) => ({ ...f, ownerId: e.target.value }))}
+                  className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-indigo-500"
+                >
+                  <option value={currentUserId}>Você</option>
+                  {otherUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {item && (item.assignedByName || item.completedAt) && (
+              <p className="rounded-lg bg-zinc-50 px-3 py-2 text-xs text-zinc-500">
+                {item.assignedByName && <>Enviado por {item.assignedByName} · </>}
+                {new Date(item.createdAt).toLocaleDateString("pt-BR")}
+                {item.completedAt && <> · Concluído em {new Date(item.completedAt).toLocaleDateString("pt-BR")}</>}
               </p>
             )}
 

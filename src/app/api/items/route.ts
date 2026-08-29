@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { serializeItem } from "@/lib/serialize";
+import { itemInclude, serializeItem } from "@/lib/serialize";
 
 const itemInput = z.object({
   category: z.enum(["processos", "bff", "emails", "viagens"]),
   bffSub: z.enum(["financeiro", "fornecedor", "produto", "outro"]).nullish(),
   columnId: z.string().min(1, "Escolha uma coluna"),
+  ownerId: z.string().optional(), // pra quem a pendência é atribuída; default = quem está criando
   title: z.string().trim().min(1, "Título é obrigatório"),
   detail: z.string().trim().nullish(),
   company: z.string().trim().nullish(),
@@ -44,7 +45,7 @@ export async function GET(req: NextRequest) {
           }
         : {}),
     },
-    include: { column: { select: { isDone: true } } },
+    include: itemInclude,
     orderBy: [{ due: "asc" }, { createdAt: "desc" }],
   });
 
@@ -62,15 +63,22 @@ export async function POST(req: NextRequest) {
   }
 
   const data = parsed.data;
+  const targetOwnerId = data.ownerId || session.user.id;
+
+  if (targetOwnerId !== session.user.id) {
+    const targetUser = await prisma.user.findUnique({ where: { id: targetOwnerId } });
+    if (!targetUser) return NextResponse.json({ error: "Usuário inválido" }, { status: 400 });
+  }
 
   const column = await prisma.column.findUnique({ where: { id: data.columnId } });
-  if (!column || column.ownerId !== session.user.id || column.category !== data.category) {
-    return NextResponse.json({ error: "Coluna inválida pra essa categoria" }, { status: 400 });
+  if (!column || column.ownerId !== targetOwnerId || column.category !== data.category) {
+    return NextResponse.json({ error: "Coluna inválida pra essa categoria/pessoa" }, { status: 400 });
   }
 
   const item = await prisma.item.create({
     data: {
-      ownerId: session.user.id,
+      ownerId: targetOwnerId,
+      assignedById: targetOwnerId !== session.user.id ? session.user.id : null,
       category: data.category,
       bffSub: data.category === "bff" ? (data.bffSub ?? null) : null,
       columnId: data.columnId,
@@ -85,7 +93,7 @@ export async function POST(req: NextRequest) {
       recurring: data.recurring,
       source: "manual",
     },
-    include: { column: { select: { isDone: true } } },
+    include: itemInclude,
   });
 
   return NextResponse.json(serializeItem(item), { status: 201 });

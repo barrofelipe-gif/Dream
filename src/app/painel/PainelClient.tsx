@@ -6,14 +6,16 @@ import TopStats, { StatFilter } from "@/components/TopStats";
 import Board from "@/components/Board";
 import ItemModal from "@/components/ItemModal";
 import VoiceCaptureModal from "@/components/VoiceCaptureModal";
-import { IconMic, IconPlus, IconSearch } from "@/components/icons";
+import { IconMic, IconPlus, IconSearch, IconClose } from "@/components/icons";
 import { ALL_CATEGORY_STYLE, CATEGORY_STYLE } from "@/lib/style";
 import { isOverdue, isDueToday, isWithinNextDays } from "@/lib/dates";
-import { CATEGORIES, Category, ColumnDTO, ItemDTO, PRIORITIES, Priority, VoiceDraft } from "@/lib/types";
+import { CATEGORIES, Category, ColumnDTO, ItemDTO, PRIORITIES, Priority, UserOption, VoiceDraft } from "@/lib/types";
 
 interface PainelClientProps {
   initialItems: ItemDTO[];
   userName: string;
+  currentUserId: string;
+  otherUsers: UserOption[];
 }
 
 const EMPTY_COLUMNS: Record<Category, ColumnDTO[]> = {
@@ -23,8 +25,11 @@ const EMPTY_COLUMNS: Record<Category, ColumnDTO[]> = {
   viagens: [],
 };
 
-export default function PainelClient({ initialItems, userName }: PainelClientProps) {
+export default function PainelClient({ initialItems, userName, currentUserId, otherUsers }: PainelClientProps) {
   const [items, setItems] = useState<ItemDTO[]>(initialItems);
+  // Aparece de novo a cada carregamento do painel (ou seja, toda vez que a
+  // pessoa entra) — não é um "lido pra sempre", é um lembrete recorrente.
+  const [alertDismissed, setAlertDismissed] = useState(false);
   const [columnsByCategory, setColumnsByCategory] = useState<Record<Category, ColumnDTO[]>>(EMPTY_COLUMNS);
   const [category, setCategory] = useState<Category | "todas">("todas");
   const [statFilter, setStatFilter] = useState<StatFilter>("todas");
@@ -76,6 +81,11 @@ export default function PainelClient({ initialItems, userName }: PainelClientPro
   }, [items, category, statFilter, priorityFilter, search]);
 
   const headerStyle = category === "todas" ? ALL_CATEGORY_STYLE : CATEGORY_STYLE[category];
+
+  // Pendências que outra pessoa te enviou e ainda não foram concluídas —
+  // vira o alerta que aparece toda vez que você entra no painel.
+  const assignedOpen = items.filter((i) => i.assignedById && !i.columnIsDone);
+  const assignedOverdue = assignedOpen.filter((i) => isOverdue(i.due, i.columnIsDone));
 
   // "Todas as categorias" mistura colunas de categorias diferentes, então
   // vira um resumo somente-leitura em 2 baldes (aberto/concluído) — pra
@@ -232,6 +242,27 @@ export default function PainelClient({ initialItems, userName }: PainelClientPro
       />
 
       <main className="flex min-w-0 flex-1 flex-col gap-4 overflow-hidden px-6 py-6">
+        {!alertDismissed && assignedOpen.length > 0 && (
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5">
+            <p className="text-sm text-amber-800">
+              Você tem <strong>{assignedOpen.length}</strong> pendência{assignedOpen.length > 1 ? "s" : ""} que
+              alguém te enviou{assignedOverdue.length > 0 && (
+                <>
+                  {" "}
+                  (<strong>{assignedOverdue.length}</strong> atrasada{assignedOverdue.length > 1 ? "s" : ""})
+                </>
+              )}
+              .
+            </p>
+            <button
+              onClick={() => setAlertDismissed(true)}
+              className="shrink-0 rounded-md p-1 text-amber-600 hover:bg-amber-100"
+            >
+              <IconClose className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <headerStyle.icon className="h-5 w-5 text-zinc-500" />
@@ -311,6 +342,8 @@ export default function PainelClient({ initialItems, userName }: PainelClientPro
           defaultCategory={newItemCategory}
           defaultColumnId={newItemColumnId}
           columnsByCategory={columnsByCategory}
+          currentUserId={currentUserId}
+          otherUsers={otherUsers}
           initialDraft={voiceDraft}
           onClose={() => setModalOpen(false)}
           onSave={handleSave}

@@ -23,14 +23,14 @@ const SECTOR_BLOCKS: Record<Sector, string[]> = {
     "Funil (sessões → pedido aprovado)",
     "Esteira de criativos",
   ],
-  estoque_logistica: [
+  estoque: [
     "Curva ABC e giro",
     "Quantidade a produzir por SKU",
     "Prioridade teste vs. reposição",
     "Produção (fábrica Vila Velha)",
     "Fornecedores/insumos",
-    "Mapa de frete por estado",
   ],
+  logistica: ["Mapa de frete por estado", "Prazo de entrega"],
   clientes: ["Recência/recorrência (RFM simplificado)", "Ticket médio", "Filtro clicável por status de recência"],
   suporte: ["Volume de reclamações por tipo", "Reputação externa (Reclame Aqui, Google Meu Negócio)"],
   juridico: [

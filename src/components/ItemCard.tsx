@@ -57,6 +57,11 @@ export default function ItemCard({ item, index, showCategoryChip, onClick }: Ite
                 <IconMail className="h-3 w-3" />
               </span>
             )}
+            {item.assignedByName && (
+              <span className="rounded-md bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-600">
+                de {item.assignedByName}
+              </span>
+            )}
           </div>
 
           <p className="text-sm font-medium leading-snug text-zinc-900">{item.title}</p>

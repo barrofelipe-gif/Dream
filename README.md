@@ -189,15 +189,21 @@ Anthropic):
 ## 8. BFF Fitness — Mapa da Empresa (Fase 2, em construção)
 
 Aba separada do painel pessoal, pra acompanhar a saúde da empresa por setor
-(Financeiro, Marketing/Vendas, Estoque/Logística, Clientes, Suporte,
-Jurídico, Desenvolvimento de Produto — RH ainda não entrou). Cada setor vai
-mostrar um semáforo (🟢🟡🔴) quando as fontes de dado estiverem conectadas;
-por enquanto os setores existem como estrutura, sem dado ao vivo.
+(Financeiro, Marketing/Vendas, Estoque, Logística, Clientes, Suporte e
+Pós-venda, Jurídico, Desenvolvimento de Produto — RH ainda não entrou).
+
+**Visão Central** (`/empresa`): visual de "central de comando" — os
+setores aparecem como nós conectados ao redor do núcleo BFF, cada um com
+semáforo (verde/amarelo/vermelho/cinza-sem-dado); um setor em vermelho
+pulsa, e o núcleo assume a pior cor entre os setores visíveis. Clica num
+nó pra abrir o detalhe daquele setor. Hoje todo setor nasce cinza (sem
+fonte de dado ligada ainda) — o componente (`src/components/EmpresaHub.tsx`)
+já aceita status real por setor assim que a Tray entrar.
 
 **Acesso por setor**: `/admin/usuarios` (só visível pra quem é `role=admin`)
 — cria login pra cada pessoa e marca quais setores ela vê. Admin sempre vê
-todos os setores; membro só vê o que foi liberado. A Visão Central
-(`/empresa`) mostra só os setores daquele usuário.
+todos os setores; membro só vê o que foi liberado. A Visão Central mostra
+só os setores daquele usuário.
 
 **Próxima etapa — fonte de dado**: integração direta com a API da Tray
 Commerce (REST, OAuth2 com Consumer Key/Secret — developers.tray.com.br)
@@ -205,7 +211,24 @@ pra puxar pedidos/produtos/clientes de verdade e alimentar os setores. Isso
 ainda não está implementado — falta gerar as credenciais na Central do
 Parceiro da Tray (Chaves de Acesso).
 
-## 9. Estrutura do projeto
+## 9. Atribuir pendência pra outra pessoa
+
+No painel pessoal, ao criar uma pendência aparece "Atribuir para" quando
+existe mais de um usuário no sistema. Escolhendo outra pessoa:
+
+- a pendência entra direto no quadro dela (categoria/coluna dela, não a sua);
+- toda vez que ela abrir o painel, aparece um aviso ("Você tem N pendências
+  que alguém te enviou", com quantas estão atrasadas) até ela concluir todas;
+- o card mostra "de {seu nome}", e o modal guarda o histórico: quando foi
+  enviada (`createdAt`) e quando foi concluída (`completedAt`, marcado
+  sozinho ao mover o card pra uma coluna "concluído").
+
+Serve pra não perder pendência delegada no meio do trabalho — o pedido
+original foi justamente esse: "toda vez que ele entrar, vai aparecer
+alerta [...] isso cria um histórico de trabalho e hora de envio e hora de
+execução".
+
+## 10. Estrutura do projeto
 
 ```
 prisma/schema.prisma       modelo de dados (User, Item, Column, SectorAccess, GmailConnection)
@@ -216,14 +239,16 @@ src/lib/gmail.ts              OAuth + sincronização do Gmail
 src/lib/crypto.ts             criptografia do refresh_token (AES-256-GCM)
 src/lib/columns.ts            colunas padrão criadas sob demanda por categoria
 src/lib/anthropic.ts          ditado inteligente (Claude API)
-src/lib/sectors.ts            setores da aba BFF Fitness (nomes/descrições)
+src/lib/sectors.ts            setores da aba BFF Fitness (nomes/descrições/ícones)
+src/lib/sectorStatus.ts       paleta do semáforo (verde/amarelo/vermelho/sem-dado)
 src/lib/permissions.ts        quem vê qual setor (admin = tudo, membro = SectorAccess)
+src/components/EmpresaHub.tsx  visual de rede/central de comando da Visão Central
 src/app/painel/                painel pessoal (Kanban)
 src/app/empresa/                Visão Central + detalhe de cada setor (BFF Fitness)
 src/app/admin/usuarios/        criar usuário e marcar acesso por setor
 src/app/conectar-gmail/        tela de conexão com o Gmail
-src/app/api/items/             CRUD de pendências + ditado inteligente
-src/app/api/columns/           CRUD de colunas do Kanban
+src/app/api/items/             CRUD de pendências + ditado inteligente + atribuição
+src/app/api/columns/           CRUD de colunas do Kanban (própria + de quem você atribui)
 src/app/api/admin/users/       CRUD de usuários e acesso por setor
 src/app/api/gmail/             conectar/sincronizar/desconectar Gmail
 src/app/api/cron/sync-gmail/   endpoint chamado pelo cron da Vercel
