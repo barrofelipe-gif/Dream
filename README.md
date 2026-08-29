@@ -7,10 +7,12 @@ filtros, ditado por voz (inclusive um "ditado inteligente" que organiza uma
 frase falada nos campos certos) e sincronização automática de e-mails
 pendentes do Gmail.
 
-**Fase 1** (atual): uso individual, um único login.
-**Fase 2** (futura): login por pessoa, cada uma vendo só a própria pendência,
-painel de admin vendo tudo — o modelo de dados já foi desenhado pra isso
-(`User.role`, `Item.ownerId`).
+**Fase 1**: uso individual, um único login (painel pessoal — Processos,
+Empresa BFF, E-mails, Viagens).
+**Fase 2** (em construção): aba **BFF Fitness** — mapa da empresa por setor
+(Financeiro, Marketing/Vendas, Estoque/Logística, Clientes, Suporte,
+Jurídico, Desenvolvimento de Produto), com login por pessoa e acesso
+configurável por setor (`/admin/usuarios`). Ver seção 9.
 
 ## Stack
 
@@ -184,10 +186,29 @@ Anthropic):
   de reconhecimento de voz, e o formulário final ainda abre pra revisão —
   nada salva sem você conferir e clicar em Salvar.
 
-## 8. Estrutura do projeto
+## 8. BFF Fitness — Mapa da Empresa (Fase 2, em construção)
+
+Aba separada do painel pessoal, pra acompanhar a saúde da empresa por setor
+(Financeiro, Marketing/Vendas, Estoque/Logística, Clientes, Suporte,
+Jurídico, Desenvolvimento de Produto — RH ainda não entrou). Cada setor vai
+mostrar um semáforo (🟢🟡🔴) quando as fontes de dado estiverem conectadas;
+por enquanto os setores existem como estrutura, sem dado ao vivo.
+
+**Acesso por setor**: `/admin/usuarios` (só visível pra quem é `role=admin`)
+— cria login pra cada pessoa e marca quais setores ela vê. Admin sempre vê
+todos os setores; membro só vê o que foi liberado. A Visão Central
+(`/empresa`) mostra só os setores daquele usuário.
+
+**Próxima etapa — fonte de dado**: integração direta com a API da Tray
+Commerce (REST, OAuth2 com Consumer Key/Secret — developers.tray.com.br)
+pra puxar pedidos/produtos/clientes de verdade e alimentar os setores. Isso
+ainda não está implementado — falta gerar as credenciais na Central do
+Parceiro da Tray (Chaves de Acesso).
+
+## 9. Estrutura do projeto
 
 ```
-prisma/schema.prisma       modelo de dados (User, Item, Column, GmailConnection)
+prisma/schema.prisma       modelo de dados (User, Item, Column, SectorAccess, GmailConnection)
 prisma/seed.ts              cria o usuário inicial
 src/auth.ts                  configuração do NextAuth (credentials)
 src/proxy.ts                  protege as rotas (redireciona pra /login)
@@ -195,10 +216,15 @@ src/lib/gmail.ts              OAuth + sincronização do Gmail
 src/lib/crypto.ts             criptografia do refresh_token (AES-256-GCM)
 src/lib/columns.ts            colunas padrão criadas sob demanda por categoria
 src/lib/anthropic.ts          ditado inteligente (Claude API)
-src/app/painel/                painel principal (Kanban)
+src/lib/sectors.ts            setores da aba BFF Fitness (nomes/descrições)
+src/lib/permissions.ts        quem vê qual setor (admin = tudo, membro = SectorAccess)
+src/app/painel/                painel pessoal (Kanban)
+src/app/empresa/                Visão Central + detalhe de cada setor (BFF Fitness)
+src/app/admin/usuarios/        criar usuário e marcar acesso por setor
 src/app/conectar-gmail/        tela de conexão com o Gmail
 src/app/api/items/             CRUD de pendências + ditado inteligente
 src/app/api/columns/           CRUD de colunas do Kanban
+src/app/api/admin/users/       CRUD de usuários e acesso por setor
 src/app/api/gmail/             conectar/sincronizar/desconectar Gmail
 src/app/api/cron/sync-gmail/   endpoint chamado pelo cron da Vercel
 vercel.json                    agenda do cron (a cada hora)
@@ -210,14 +236,16 @@ vercel.json                    agenda do cron (a cada hora)
 - **Notificação por e-mail/WhatsApp** quando algo fica atrasado — fora do
   escopo da Fase 1, mas o modelo de dados já suporta adicionar depois
   (basta um novo cron olhando `Item.due` e `Column.isDone`).
-- **Integração financeira (Bling)** — puxar fluxo de caixa/contas a pagar
-  e receber do Bling pra uma aba Financeiro. A API do Bling dá contas a
-  pagar/receber, não DRE/Balanço formais (isso normalmente é fechamento
-  contábil feito por outro sistema/contador) — vamos alinhar o escopo exato
-  antes de implementar.
-
-## Fase 2 (futura)
-
-- Tela de "convidar usuário" (admin cria login pra cada pessoa).
-- Cada pessoa só vê os próprios itens (`Item.ownerId` já isola isso).
-- Painel de admin vendo tudo (`User.role === "admin"`).
+- **Credenciais da Tray** — Consumer Key/Secret pra puxar pedidos/produtos/
+  clientes de verdade (ver seção 8).
+- **Números-alvo dos semáforos** de cada setor (margem mínima, teto de
+  taxa de cartão, dias de caixa seguros, dias sem comprar = cliente
+  "sumido", teto de frete por estado) — nascem como campos configuráveis,
+  não fixos no código; o usuário sobe os valores depois.
+- **Histórico pra tendência** (reclamação crescendo, recorrência caindo)
+  — precisa de snapshots periódicos; ainda não implementado.
+- **Fontes sem sistema hoje** — produção/fábrica, fornecedores, funil da
+  estilista (Desenvolvimento de Produto): entram por planilha ou
+  lançamento manual no próprio painel; a decidir qual.
+- **E-mail da BFF** (setor Suporte) — conexão separada do Gmail pessoal já
+  conectado; ainda não implementada.

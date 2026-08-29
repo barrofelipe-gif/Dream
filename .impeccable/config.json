@@ -11,6 +11,15 @@
         ],
         "createdAt": "2026-08-28T03:03:03.208Z",
         "reason": "false positive: text-zinc-400 is the resting state on a transparent background; hover swaps to text-rose-600 on bg-rose-50 together, never gray-on-color simultaneously"
+      },
+      {
+        "rule": "gray-on-color",
+        "value": "text-zinc-400 hover:bg-rose-50 hover:text-rose-600",
+        "files": [
+          "src/app/admin/usuarios/UsersClient.tsx"
+        ],
+        "createdAt": "2026-08-29T02:05:36.118Z",
+        "reason": "false positive: text-zinc-400 is the resting state on a transparent background; hover swaps to text-rose-600 on bg-rose-50 together, never gray-on-color simultaneously"
       }
     ]
   }

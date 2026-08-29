@@ -47,6 +47,18 @@ enum Source {
   gmail
 }
 
+// Setores da aba "BFF Fitness" (empresa) — ver spec do painel de setores.
+// RH fica de fora por enquanto (escopo ainda não definido).
+enum Sector {
+  financeiro
+  marketing_vendas
+  estoque_logistica
+  clientes
+  suporte
+  juridico
+  desenvolvimento_produto
+}
+
 model User {
   id             String   @id @default(cuid())
   name           String
@@ -58,6 +70,20 @@ model User {
   items            Item[]
   columns          Column[]
   gmailConnection  GmailConnection?
+  sectorAccess     SectorAccess[]
+}
+
+// Quais setores da aba BFF Fitness cada usuário enxerga. Admin (role=admin)
+// tem acesso total independente dessa tabela — ela só importa pra role=membro.
+model SectorAccess {
+  id       String @id @default(cuid())
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId   String
+  sector   Sector
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, sector])
 }
 
 // Coluna do quadro Kanban — escopada por categoria, editável pelo usuário

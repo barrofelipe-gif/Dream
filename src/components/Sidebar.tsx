@@ -5,7 +5,7 @@ import { signOut } from "next-auth/react";
 import { Category, ItemDTO } from "@/lib/types";
 import { CATEGORY_STYLE, ALL_CATEGORY_STYLE } from "@/lib/style";
 import { isOverdue } from "@/lib/dates";
-import { IconLogout, IconMail } from "@/components/icons";
+import { IconBuilding, IconLogout, IconMail } from "@/components/icons";
 
 interface SidebarProps {
   items: ItemDTO[];
@@ -65,6 +65,13 @@ export default function Sidebar({ items, activeCategory, onSelectCategory, userN
       </nav>
 
       <div className="space-y-1 border-t border-white/10 px-3 py-3">
+        <Link
+          href="/empresa"
+          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-zinc-300 transition-colors hover:bg-white/5 hover:text-white"
+        >
+          <IconBuilding className="h-4 w-4" />
+          BFF Fitness
+        </Link>
         <Link
           href="/conectar-gmail"
           className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-zinc-300 transition-colors hover:bg-white/5 hover:text-white"
