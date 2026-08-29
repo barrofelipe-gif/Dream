@@ -205,11 +205,19 @@ já aceita status real por setor assim que a Tray entrar.
 todos os setores; membro só vê o que foi liberado. A Visão Central mostra
 só os setores daquele usuário.
 
-**Próxima etapa — fonte de dado**: integração direta com a API da Tray
-Commerce (REST, OAuth2 com Consumer Key/Secret — developers.tray.com.br)
-pra puxar pedidos/produtos/clientes de verdade e alimentar os setores. Isso
-ainda não está implementado — falta gerar as credenciais na Central do
-Parceiro da Tray (Chaves de Acesso).
+**Fonte de dado — Tray Commerce** (`src/lib/tray.ts`): integração OAuth2
+direta com a API REST da Tray (confirmada contra developers.tray.com.br).
+Fluxo: `/conectar-tray` (admin-only) → `/api/tray/connect` redireciona pro
+`auth.php` da loja → depois de autorizar, `/api/tray/callback` troca o
+`code` por `access_token`/`refresh_token` (guardados criptografados em
+`TrayConnection`, uma única linha — é conexão da empresa, não por usuário).
+`getValidAccessToken()` renova sozinho quando o token expira. Falta:
+- **testar o handshake completo de verdade** (só dá pra fechar o login
+  numa aba de navegador de verdade, com HTTPS — não rola de dentro da
+  sandbox de dev);
+- ligar `trayGet()` nos setores (Estoque, Logística, Marketing/Vendas,
+  Clientes) — hoje o client existe mas nenhum setor ainda chama ele;
+- o CRM completo de Clientes pedido pelo usuário.
 
 ## 9. Atribuir pendência pra outra pessoa
 
@@ -231,12 +239,13 @@ execução".
 ## 10. Estrutura do projeto
 
 ```
-prisma/schema.prisma       modelo de dados (User, Item, Column, SectorAccess, GmailConnection)
+prisma/schema.prisma       modelo de dados (User, Item, Column, SectorAccess, GmailConnection, TrayConnection)
 prisma/seed.ts              cria o usuário inicial
 src/auth.ts                  configuração do NextAuth (credentials)
 src/proxy.ts                  protege as rotas (redireciona pra /login)
 src/lib/gmail.ts              OAuth + sincronização do Gmail
-src/lib/crypto.ts             criptografia do refresh_token (AES-256-GCM)
+src/lib/tray.ts               OAuth + client REST da Tray Commerce
+src/lib/crypto.ts             criptografia de tokens (AES-256-GCM) — Gmail e Tray
 src/lib/columns.ts            colunas padrão criadas sob demanda por categoria
 src/lib/anthropic.ts          ditado inteligente (Claude API)
 src/lib/sectors.ts            setores da aba BFF Fitness (nomes/descrições/ícones)
@@ -247,10 +256,12 @@ src/app/painel/                painel pessoal (Kanban)
 src/app/empresa/                Visão Central + detalhe de cada setor (BFF Fitness)
 src/app/admin/usuarios/        criar usuário e marcar acesso por setor
 src/app/conectar-gmail/        tela de conexão com o Gmail
+src/app/conectar-tray/         tela de conexão com a Tray (admin-only)
 src/app/api/items/             CRUD de pendências + ditado inteligente + atribuição
 src/app/api/columns/           CRUD de colunas do Kanban (própria + de quem você atribui)
 src/app/api/admin/users/       CRUD de usuários e acesso por setor
 src/app/api/gmail/             conectar/sincronizar/desconectar Gmail
+src/app/api/tray/              conectar/status/desconectar Tray
 src/app/api/cron/sync-gmail/   endpoint chamado pelo cron da Vercel
 vercel.json                    agenda do cron (a cada hora)
 ```
@@ -261,8 +272,9 @@ vercel.json                    agenda do cron (a cada hora)
 - **Notificação por e-mail/WhatsApp** quando algo fica atrasado — fora do
   escopo da Fase 1, mas o modelo de dados já suporta adicionar depois
   (basta um novo cron olhando `Item.due` e `Column.isDone`).
-- **Credenciais da Tray** — Consumer Key/Secret pra puxar pedidos/produtos/
-  clientes de verdade (ver seção 8).
+- **Testar o login da Tray de ponta a ponta** — código pronto (ver seção 8),
+  mas o clique de autorização precisa de um navegador de verdade com HTTPS;
+  fica pra quando o app for publicado (ou testado por túnel).
 - **Números-alvo dos semáforos** de cada setor (margem mínima, teto de
   taxa de cartão, dias de caixa seguros, dias sem comprar = cliente
   "sumido", teto de frete por estado) — nascem como campos configuráveis,

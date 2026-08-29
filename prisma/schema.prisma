@@ -161,3 +161,24 @@ model GmailConnection {
   lastSyncAt    DateTime?
   createdAt     DateTime @default(now())
 }
+
+// Conexão com a API da Tray Commerce — é da EMPRESA, não de um usuário
+// (por isso não tem @@unique([userId]) tipo GmailConnection: existe no
+// máximo uma linha aqui, mantida por quem clicou em "Conectar" por último).
+model TrayConnection {
+  id                       String   @id @default(cuid())
+
+  apiAddress               String   // ex: https://loja-s.tray.com.br/web_api — vem do callback/token, varia por loja
+  storeId                  String?
+
+  accessToken              String   // criptografado (AES-256-GCM) — ver src/lib/crypto.ts
+  refreshToken             String   // criptografado (AES-256-GCM)
+  accessTokenExpiresAt     DateTime
+  refreshTokenExpiresAt    DateTime
+
+  connectedByUserId        String?  // quem autorizou (auditoria só; sem relation pra não travar a Tray a 1 usuário)
+  lastSyncAt               DateTime?
+
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+}

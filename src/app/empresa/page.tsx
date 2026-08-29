@@ -25,12 +25,20 @@ export default async function EmpresaPage() {
             </p>
           </div>
           {session.user.role === "admin" && (
-            <Link
-              href="/admin/usuarios"
-              className="shrink-0 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-zinc-200 hover:bg-white/10"
-            >
-              Usuários e acesso
-            </Link>
+            <div className="flex shrink-0 gap-2">
+              <Link
+                href="/conectar-tray"
+                className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-zinc-200 hover:bg-white/10"
+              >
+                Conectar Tray
+              </Link>
+              <Link
+                href="/admin/usuarios"
+                className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-zinc-200 hover:bg-white/10"
+              >
+                Usuários e acesso
+              </Link>
+            </div>
           )}
         </div>
 
