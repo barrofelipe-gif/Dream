@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "datajud": {
+      "type": "http",
+      "url": "https://api.mcp.ai/p_datajud"
+    },
+    "djen": {
+      "type": "http",
+      "url": "https://api.mcp.ai/legal"
+    },
+    "pje-tjes": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${CLAUDE_PROJECT_DIR}/integrations/pje-tjes-mcp/build/index.js"],
+      "env": {
+        "PJE_BASE_URL": "${PJE_BASE_URL:-https://pje.tjes.jus.br}",
+        "PJE_APP_NAME": "${PJE_APP_NAME:-pje-tjes-1g}",
+        "PJE_CERTIFICATE_PFX_PATH": "${PJE_CERTIFICATE_PFX_PATH}",
+        "PJE_CERTIFICATE_PFX_PASSWORD": "${PJE_CERTIFICATE_PFX_PASSWORD}",
+        "PJE_CERTIFICATE_THUMBPRINT": "${PJE_CERTIFICATE_THUMBPRINT}"
+      }
+    }
+  }
+}
