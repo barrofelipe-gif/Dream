@@ -35,8 +35,9 @@ export function getSubscriberByPhone(phone) {
 }
 
 // POST /subscriber/{subscriber_id}/send_message/ — Send message to subscriber
+// Corpo confirmado no Swagger: { "type": "text" | "file", "value": "..." }
 export function sendMessage(subscriberId, text) {
-  return request('POST', `/subscriber/${subscriberId}/send_message/`, { message: text });
+  return request('POST', `/subscriber/${subscriberId}/send_message/`, { type: 'text', value: text });
 }
 
 // POST /subscriber/{subscriber_id}/tags/{tag_id}/ — Add tag to subscriber

@@ -2,29 +2,26 @@
 
 Serviço pequeno que roda 24h e cuida sozinho do reengajamento de clientes
 que pararam de responder no WhatsApp: manda 3 mensagens (30min / 1h / 6h) e
-gerencia a tag `sem-resposta`, sem depender do construtor de fluxo nativo
+gerencia a tag `SemResposta`, sem depender do construtor de fluxo nativo
 (que estava travando pedindo autorização toda hora).
 
-## Antes de rodar — 3 coisas pra confirmar
+## Antes de rodar — já confirmado direto no Swagger
 
-Eu não tenho acesso à sua conta do BotConversa nem à documentação completa
-da API (bloqueada neste ambiente). O código abaixo foi escrito em cima do
-que apareceu no seu Swagger (`https://backend.botconversa.com.br/swagger/`),
-mas tem 2 pontos que só dá pra confirmar clicando lá:
+- **Header de autenticação:** `API-KEY` (sem prefixo, só a chave crua).
+- **Corpo do `send_message`:** `{ "type": "text", "value": "sua mensagem" }`.
+- **Tag `SemResposta` já existe** na conta (apareceu na lista de 16 tags).
+  Só falta você pegar o **ID numérico** dela — rode isto no console do
+  navegador, na mesma aba do Swagger (troca `SUA_CHAVE` pela chave real):
 
-1. **Nome do header de autenticação.** Clique em **"Authorize"** no Swagger
-   e veja o nome do campo pedido (ex: `Api-Key`). Ajuste
-   `BOTCONVERSA_AUTH_HEADER_NAME` no `.env` se for diferente do padrão que
-   deixei configurado.
-2. **Formato exato do corpo de `send_message`.** No Swagger, clique no
-   endpoint `POST /subscriber/{subscriber_id}/send_message/` e expanda o
-   "Request body" — confirme se o campo se chama `message` (o que assumi em
-   `src/botconversaClient.js`) ou outra coisa (`text`, `value`, etc.). Ajuste
-   o arquivo se for diferente.
-3. **ID da tag `sem-resposta`.** Essa tag precisa já existir no BotConversa
-   (crie manualmente em Configurações → Etiquetas, se ainda não existir).
-   Depois, chame `GET /tags/` (dá pra testar direto no Swagger, botão "Try
-   it out") pra achar o ID numérico dela e colocar em `TAG_SEM_RESPOSTA_ID`.
+  ```js
+  fetch('https://backend.botconversa.com.br/api/v1/webhook/tags/', {
+    headers: { 'API-KEY': 'SUA_CHAVE' },
+  })
+    .then((r) => r.json())
+    .then((tags) => console.log(tags.map((t) => `${t.id} -> ${t.name}`).join('\n')));
+  ```
+
+  Acha a linha `... -> SemResposta` e usa esse número em `TAG_SEM_RESPOSTA_ID`.
 
 ## Configuração
 
