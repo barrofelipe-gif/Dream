@@ -7,7 +7,7 @@ import { getRecord, registerInboundMessage } from './store.js';
 import { addTag, removeTag } from './botconversaClient.js';
 
 export async function handleInboundMessage(subscriberId) {
-  const current = getRecord(subscriberId);
+  const current = await getRecord(subscriberId);
 
   // Já estava num ciclo de espera (tag "sem-resposta" aplicada) e agora
   // respondeu: isso é exatamente o que a cutucada queria conseguir.
@@ -17,6 +17,6 @@ export async function handleInboundMessage(subscriberId) {
 
   // Reinicia o ciclo do zero a partir desta mensagem — se o cliente ficar
   // quieto de novo, as janelas de 30min/1h/6h recomeçam a contar daqui.
-  registerInboundMessage(subscriberId);
+  await registerInboundMessage(subscriberId);
   await addTag(subscriberId, config.tagSemRespostaId);
 }

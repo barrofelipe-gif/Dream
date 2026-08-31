@@ -15,7 +15,7 @@ const WINDOWS = [
 
 async function tick() {
   const now = Date.now();
-  const waiting = getWaitingSubscribers();
+  const waiting = await getWaitingSubscribers();
 
   for (const record of waiting) {
     const elapsedMinutes = (now - record.lastInboundAt) / 60000;
@@ -26,7 +26,7 @@ async function tick() {
 
       try {
         await sendMessage(record.subscriberId, window.text);
-        markSent(record.subscriberId, window.key);
+        await markSent(record.subscriberId, window.key);
         console.log(`[reengajamento] mensagem "${window.key}" enviada pro subscriber ${record.subscriberId}`);
       } catch (err) {
         console.error(`[reengajamento] falhou ao enviar "${window.key}" pro subscriber ${record.subscriberId}:`, err.message);
@@ -41,7 +41,7 @@ async function tick() {
         } catch (err) {
           console.error(`[reengajamento] falhou ao remover tag do subscriber ${record.subscriberId}:`, err.message);
         }
-        closeNoResponse(record.subscriberId);
+        await closeNoResponse(record.subscriberId);
         console.log(`[reengajamento] subscriber ${record.subscriberId} encerrado sem resposta`);
       }
     }

@@ -25,12 +25,15 @@ gerencia a tag `SemResposta`, sem depender do construtor de fluxo nativo
 
 ## Configuração
 
-```
-cp .env.example .env
-# edite o .env com sua chave de API, o ID da tag, e invente um WEBHOOK_SHARED_SECRET
-npm install
-npm start
-```
+1. Crie um banco grátis em **console.upstash.com** → "Create Database" →
+   copie a **REST URL** e o **REST Token** (aba "REST API" do banco criado).
+2. ```
+   cp .env.example .env
+   # edite o .env com sua chave de API, o ID da tag, o WEBHOOK_SHARED_SECRET
+   # inventado, e as credenciais do Upstash
+   npm install
+   npm start
+   ```
 
 ## Como conectar ao fluxo do BotConversa
 
@@ -56,10 +59,17 @@ lado dele.
 
 Isso precisa ficar rodando 24h — **não dá pra rodar no seu computador
 pessoal** (webhook exige um endereço sempre acessível pela internet).
-Opções gratuitas simples pra esse tamanho de serviço: Railway, Render ou
-Fly.io — qualquer uma delas sobe um Node.js a partir deste repositório em
-poucos cliques (conectando ao GitHub) e te dá uma URL pública (é essa URL
-que vai no bloco de webhook do fluxo, acima).
+
+Recomendado: **Render** (Web Service, plano grátis) + **UptimeRobot**
+(grátis, batendo em `/health` a cada 5min pra manter acordado) +
+**Upstash Redis** (grátis, guarda o estado — veja "Configuração" acima).
+Com essa combinação, mesmo que a Render reinicie o serviço às vezes (o
+próprio plano grátis deles diz que isso pode acontecer, sem aviso), o
+estado de quem está em ciclo de espera não se perde, porque não mora mais
+num arquivo local — mora no Upstash.
+
+(Fly.io não é mais opção grátis permanente desde 2024, só dá créditos de
+teste por alguns dias — por isso não está na lista.)
 
 ## Como funciona por dentro
 
@@ -69,6 +79,6 @@ que vai no bloco de webhook do fluxo, acima).
 - `src/scheduler.js` — a cada 1 minuto, confere se alguma janela venceu pra
   algum contato e manda a mensagem certa; ao final das 6h sem resposta,
   remove a tag e encerra o ciclo (não fica reciclando)
-- `src/store.js` — guarda o estado de cada contato em `data/state.json`
-  (sobrevive a um restart do serviço)
+- `src/store.js` — guarda o estado de cada contato no Upstash Redis
+  (sobrevive a um restart do serviço, diferente de um arquivo local)
 - `src/botconversaClient.js` — chamadas aos endpoints reais do BotConversa

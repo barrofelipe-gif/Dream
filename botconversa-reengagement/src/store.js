@@ -1,74 +1,74 @@
-// Persistência simples em arquivo JSON. Não precisa de banco de dados pra
-// esse volume — só precisa sobreviver a um restart do serviço, já que os
-// prazos (30min/1h/6h) são checados por um loop, não por setTimeout (que se
-// perderia se a hospedagem reiniciar o processo).
+// Persistência no Upstash Redis (tier grátis) via API REST — assim o estado
+// de cada contato sobrevive a um restart do serviço na Render, em vez de
+// morar num arquivo local que se perde quando o processo reinicia.
+//
+// Guarda dois tipos de coisa:
+//   - subscriber:{id}  -> JSON com { subscriberId, lastInboundAt, status, sent }
+//   - waiting_subscribers -> um "set" com os IDs de quem está em ciclo de espera
+//     (é essa lista que o scheduler.js confere a cada 1 minuto)
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { config } from './config.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = join(__dirname, '..', 'data');
-const DATA_FILE = join(DATA_DIR, 'state.json');
-
-function load() {
-  if (!existsSync(DATA_FILE)) return {};
-  try {
-    return JSON.parse(readFileSync(DATA_FILE, 'utf-8'));
-  } catch {
-    return {};
+async function redis(...command) {
+  const url = `${config.redisUrl}/${command.map(encodeURIComponent).join('/')}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${config.redisToken}` },
+  });
+  if (!res.ok) {
+    throw new Error(`Upstash Redis ${command[0]} -> ${res.status}: ${await res.text()}`);
   }
+  const { result } = await res.json();
+  return result;
 }
 
-function save(state) {
-  if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
-  writeFileSync(DATA_FILE, JSON.stringify(state, null, 2));
+function key(subscriberId) {
+  return `subscriber:${subscriberId}`;
 }
 
-let state = load();
-
-// Chamado toda vez que uma mensagem do cliente chega (via webhook do fluxo).
-// Reinicia o ciclo de reengajamento do zero pra esse subscriber.
-export function registerInboundMessage(subscriberId) {
+export async function registerInboundMessage(subscriberId) {
   const now = Date.now();
-  state[subscriberId] = {
+  const record = {
     subscriberId,
     lastInboundAt: now,
-    status: 'waiting', // waiting | responded | closed_no_response
+    status: 'waiting',
     sent: { min30: false, h1: false, h6: false },
   };
-  save(state);
-  return state[subscriberId];
+  await redis('SET', key(subscriberId), JSON.stringify(record));
+  await redis('SADD', 'waiting_subscribers', subscriberId);
+  return record;
 }
 
-// Chamado quando detectamos que o cliente respondeu de novo DEPOIS de já
-// estar em ciclo de espera — encerra o ciclo sem esperar os prazos.
-export function markResponded(subscriberId) {
-  const record = state[subscriberId];
+export async function markResponded(subscriberId) {
+  const record = await getRecord(subscriberId);
   if (record && record.status === 'waiting') {
     record.status = 'responded';
-    save(state);
+    await redis('SET', key(subscriberId), JSON.stringify(record));
+    await redis('SREM', 'waiting_subscribers', subscriberId);
   }
 }
 
-export function markSent(subscriberId, windowKey) {
-  const record = state[subscriberId];
+export async function markSent(subscriberId, windowKey) {
+  const record = await getRecord(subscriberId);
   if (!record) return;
   record.sent[windowKey] = true;
-  save(state);
+  await redis('SET', key(subscriberId), JSON.stringify(record));
 }
 
-export function closeNoResponse(subscriberId) {
-  const record = state[subscriberId];
+export async function closeNoResponse(subscriberId) {
+  const record = await getRecord(subscriberId);
   if (!record) return;
   record.status = 'closed_no_response';
-  save(state);
+  await redis('SET', key(subscriberId), JSON.stringify(record));
+  await redis('SREM', 'waiting_subscribers', subscriberId);
 }
 
-export function getWaitingSubscribers() {
-  return Object.values(state).filter((r) => r.status === 'waiting');
+export async function getWaitingSubscribers() {
+  const ids = (await redis('SMEMBERS', 'waiting_subscribers')) || [];
+  const records = await Promise.all(ids.map((id) => getRecord(id)));
+  return records.filter(Boolean);
 }
 
-export function getRecord(subscriberId) {
-  return state[subscriberId] || null;
+export async function getRecord(subscriberId) {
+  const raw = await redis('GET', key(subscriberId));
+  return raw ? JSON.parse(raw) : null;
 }

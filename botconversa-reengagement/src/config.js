@@ -18,6 +18,8 @@ export const config = {
   authHeaderPrefix: process.env.BOTCONVERSA_AUTH_HEADER_PREFIX || '',
   tagSemRespostaId: required('TAG_SEM_RESPOSTA_ID'),
   webhookSharedSecret: required('WEBHOOK_SHARED_SECRET'),
+  redisUrl: required('UPSTASH_REDIS_REST_URL'),
+  redisToken: required('UPSTASH_REDIS_REST_TOKEN'),
   port: Number(process.env.PORT || 3000),
   messages: {
     min30: process.env.MSG_30MIN || 'Ei, ficou alguma dúvida?',
