@@ -47,6 +47,14 @@ enum Source {
   gmail
 }
 
+// Semáforo dos blocos de cada setor — mesma paleta de src/lib/sectorStatus.ts.
+enum MetricStatus {
+  good
+  warning
+  critical
+  unknown
+}
+
 // Setores da aba "BFF Fitness" (empresa) — ver spec do painel de setores.
 // RH fica de fora por enquanto (escopo ainda não definido).
 enum Sector {
@@ -86,6 +94,27 @@ model SectorAccess {
   createdAt DateTime @default(now())
 
   @@unique([userId, sector])
+}
+
+// Um "bloco" dentro de um setor (ex: "Fluxo de caixa" dentro de Financeiro).
+// Enquanto não tem fonte de dado automática (Tray etc.) ligada, quem tem
+// acesso ao setor preenche na mão — mesmo semáforo, trocado por dado real
+// depois sem mudar a tela. blockKey = a mesma string do SECTOR_BLOCKS no
+// código (não é enum pra não travar deploy toda vez que a lista mudar).
+model SectorMetric {
+  id            String       @id @default(cuid())
+  sector        Sector
+  blockKey      String
+  label         String
+  status        MetricStatus @default(unknown)
+  value         String?      // texto livre — "R$ 42.000", "18 dias", etc.
+  note          String?
+  updatedById   String?
+  updatedAt     DateTime     @updatedAt
+  createdAt     DateTime     @default(now())
+
+  @@unique([sector, blockKey])
+  @@index([sector])
 }
 
 // Coluna do quadro Kanban — escopada por categoria, editável pelo usuário

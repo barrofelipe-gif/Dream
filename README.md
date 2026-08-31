@@ -196,9 +196,19 @@ Pós-venda, Jurídico, Desenvolvimento de Produto — RH ainda não entrou).
 setores aparecem como nós conectados ao redor do núcleo BFF, cada um com
 semáforo (verde/amarelo/vermelho/cinza-sem-dado); um setor em vermelho
 pulsa, e o núcleo assume a pior cor entre os setores visíveis. Clica num
-nó pra abrir o detalhe daquele setor. Hoje todo setor nasce cinza (sem
-fonte de dado ligada ainda) — o componente (`src/components/EmpresaHub.tsx`)
-já aceita status real por setor assim que a Tray entrar.
+nó pra abrir o detalhe daquele setor.
+
+**Detalhe de setor e preenchimento manual** (`/empresa/[sector]`,
+`src/lib/sectorMetrics.ts`): cada setor tem uma lista de blocos esperados
+(ex: Financeiro → fluxo de caixa, DRE, chargebacks...). Clica num bloco
+pra abrir um formulário — status (dentro do esperado/na borda/precisa de
+atenção), valor livre (`"R$ -3.200"`, `"18 dias"`) e observação. Isso
+funciona *sem depender de nenhuma API externa* — é como o app fica
+utilizável hoje, antes da Tray (ou qualquer outra fonte) estar ligada de
+verdade. `getStatusBySector()` calcula o pior status por setor a partir
+desses blocos e alimenta a Visão Central — quando a Tray (ou outra fonte)
+começar a escrever nessa mesma tabela (`SectorMetric`) automaticamente, a
+tela não muda nada, só passa a atualizar sozinha em vez de manual.
 
 **Acesso por setor**: `/admin/usuarios` (só visível pra quem é `role=admin`)
 — cria login pra cada pessoa e marca quais setores ela vê. Admin sempre vê
@@ -239,7 +249,7 @@ execução".
 ## 10. Estrutura do projeto
 
 ```
-prisma/schema.prisma       modelo de dados (User, Item, Column, SectorAccess, GmailConnection, TrayConnection)
+prisma/schema.prisma       modelo de dados (User, Item, Column, SectorAccess, SectorMetric, GmailConnection, TrayConnection)
 prisma/seed.ts              cria o usuário inicial
 src/auth.ts                  configuração do NextAuth (credentials)
 src/proxy.ts                  protege as rotas (redireciona pra /login)
@@ -250,6 +260,7 @@ src/lib/columns.ts            colunas padrão criadas sob demanda por categoria
 src/lib/anthropic.ts          ditado inteligente (Claude API)
 src/lib/sectors.ts            setores da aba BFF Fitness (nomes/descrições/ícones)
 src/lib/sectorStatus.ts       paleta do semáforo (verde/amarelo/vermelho/sem-dado)
+src/lib/sectorMetrics.ts      blocos de cada setor: ler/gravar status manual, status consolidado por setor
 src/lib/permissions.ts        quem vê qual setor (admin = tudo, membro = SectorAccess)
 src/components/EmpresaHub.tsx  visual de rede/central de comando da Visão Central
 src/app/painel/                painel pessoal (Kanban)

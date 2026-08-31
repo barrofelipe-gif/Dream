@@ -2,11 +2,14 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { hasSectorAccess } from "@/lib/permissions";
+import { getSectorMetrics } from "@/lib/sectorMetrics";
 import { SECTORS, Sector } from "@/lib/sectors";
+import SectorBlocksClient from "./SectorBlocksClient";
 
-// Blocos previstos por setor (spec) — placeholders até cada fonte de dado
-// (Solomon/Tray, e-mail da BFF, planilha etc.) ser conectada.
-const SECTOR_BLOCKS: Record<Sector, string[]> = {
+// Blocos previstos por setor (spec). Enquanto não tem fonte automática
+// (Tray etc.) ligada, cada bloco é preenchido na mão em SectorMetric —
+// ver SectorBlocksClient.
+export const SECTOR_BLOCKS: Record<Sector, string[]> = {
   financeiro: [
     "Fluxo de caixa (saldo + projeção 7/30/60 dias)",
     "DRE resumida",
@@ -58,6 +61,8 @@ export default async function SectorPage({ params }: { params: Promise<{ sector:
   const allowed = await hasSectorAccess(session.user.id, session.user.role, meta.value);
   if (!allowed) redirect("/empresa");
 
+  const metrics = await getSectorMetrics(meta.value);
+
   return (
     <div className="mx-auto max-w-3xl px-6 py-10">
       <Link href="/empresa" className="text-sm text-zinc-500 hover:text-zinc-700">
@@ -66,19 +71,7 @@ export default async function SectorPage({ params }: { params: Promise<{ sector:
       <h1 className="mt-1 text-xl font-semibold text-zinc-900">{meta.label}</h1>
       <p className="mt-1 text-sm text-zinc-500">{meta.description}</p>
 
-      <div className="mt-6 space-y-2">
-        {SECTOR_BLOCKS[meta.value].map((block) => (
-          <div
-            key={block}
-            className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3"
-          >
-            <span className="text-sm text-zinc-700">{block}</span>
-            <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-500">
-              Sem dados ainda
-            </span>
-          </div>
-        ))}
-      </div>
+      <SectorBlocksClient sector={meta.value} blocks={SECTOR_BLOCKS[meta.value]} initialMetrics={metrics} />
     </div>
   );
 }

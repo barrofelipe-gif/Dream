@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { getAccessibleSectors } from "@/lib/permissions";
+import { getStatusBySector } from "@/lib/sectorMetrics";
 import EmpresaHub from "@/components/EmpresaHub";
 
 export default async function EmpresaPage() {
@@ -10,6 +11,8 @@ export default async function EmpresaPage() {
 
   const accessible = await getAccessibleSectors(session.user.id, session.user.role);
   if (accessible.length === 0) redirect("/painel");
+
+  const statusBySector = await getStatusBySector(accessible);
 
   return (
     <div className="min-h-screen bg-[#0c0d10] px-6 py-10">
@@ -42,7 +45,7 @@ export default async function EmpresaPage() {
           )}
         </div>
 
-        <EmpresaHub sectors={accessible} />
+        <EmpresaHub sectors={accessible} statusBySector={statusBySector} />
       </div>
     </div>
   );
