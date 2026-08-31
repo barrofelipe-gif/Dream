@@ -1,0 +1,16 @@
+{
+  "name": "botconversa-reengagement",
+  "version": "1.0.0",
+  "description": "Serviço que roda 24h e cuida do reengajamento automático (30min/1h/6h) de clientes que pararam de responder no WhatsApp via BotConversa, sem depender do construtor de fluxo nativo.",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
