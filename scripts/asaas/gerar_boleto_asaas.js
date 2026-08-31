@@ -32,6 +32,25 @@
 
 'use strict';
 
+// Alguns ambientes de execução (ex.: sessões Claude Code na nuvem) só liberam saída de rede
+// através de um proxy HTTP indicado por HTTPS_PROXY/HTTP_PROXY. O `fetch` nativo do Node não lê
+// essas variáveis sozinho (diferente de curl, por exemplo) — sem isso, a chamada à API do Asaas
+// tenta sair direto e é bloqueada pela política de rede do ambiente. Em vez de exigir que quem
+// rodar o script lembre de passar `--use-env-proxy` toda vez, o próprio script se re-executa com
+// essa flag quando detecta um proxy configurado e ainda não está rodando com ela.
+if (
+  (process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy) &&
+  !process.env.__ASAAS_REEXEC_WITH_PROXY__
+) {
+  const { spawnSync } = require('child_process');
+  const result = spawnSync(
+    process.execPath,
+    ['--use-env-proxy', __filename, ...process.argv.slice(2)],
+    { stdio: 'inherit', env: { ...process.env, __ASAAS_REEXEC_WITH_PROXY__: '1' } }
+  );
+  process.exit(result.status === null ? 1 : result.status);
+}
+
 const fs = require('fs');
 const path = require('path');
 
