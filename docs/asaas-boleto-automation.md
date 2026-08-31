@@ -8,13 +8,29 @@ precisa entrar no Asaas manualmente e criar a cobrança à mão. É esse passo m
 eliminar: gerar a notificação e o boleto real (com link) no mesmo fluxo, para poder mandar tudo
 junto e rápido.
 
-**Status:** validado em produção em 25/08/2026. O caminho pela extensão do Claude no
-Chrome (seção 4-B) foi testado de ponta a ponta com uma cobrança real de configuração
-(`TESTE-CONFIG-001`) e confirmado: valor, vencimento, descrição e cliente corretos,
-boleto + Pix disponíveis juntos, juros/multa zerados, status "Aguardando Pagamento". O
-prompt validado está salvo em `assets/prompt_extensao_chrome_asaas.md` dentro da skill
-`bff-chargeback`. O caminho por API (`gerar_boleto_asaas.js`, seção 4-A) ainda depende de
-`ASAAS_API_KEY` ser configurada — não testado neste ciclo.
+**Status:** validado em produção em 25/08/2026 pelo caminho pela extensão do Claude no
+Chrome (seção 4-B), com uma cobrança real de configuração (`TESTE-CONFIG-001`) e confirmado:
+valor, vencimento, descrição e cliente corretos, boleto + Pix disponíveis juntos, juros/multa
+zerados, status "Aguardando Pagamento". O prompt validado está salvo em
+`assets/prompt_extensao_chrome_asaas.md` dentro da skill `bff-chargeback`.
+
+**Atualização de 31/08/2026:** o caminho por API (`gerar_boleto_asaas.js`, seção 4-A) também
+está validado em produção agora — criou uma cobrança real (`pay_sln3r3ayllzg16gc`, pedido
+`TESTE-API-001`, R$ 1.000,00) reaproveitando o cliente existente por CPF. Também foi
+implementada a **Opção A** descrita na seção 3: a skill `bff-chargeback` foi atualizada (fora
+deste repositório — ela é gerenciada pelo usuário no claude.ai) para, ao rodar
+`assets/gerar_notificacao.js`, já chamar `gerar_boleto_asaas.js` automaticamente com os dados
+do caso e o total extrajudicial, sem precisar do passo manual de `gerar_prompt_cobranca.js`.
+Duas coisas ficaram de fora do escopo deste repositório porque dependem de configuração da
+conta/ambiente do usuário, não de código:
+- **Node não lê `HTTPS_PROXY`/`HTTP_PROXY` sozinho.** Em ambientes de rede restrita (como
+  sessões Claude Code na nuvem), o `fetch` nativo do Node ignora essas variáveis — diferente de
+  `curl`. O script agora se re-executa com a flag `--use-env-proxy` quando detecta um proxy
+  configurado, então isso já é automático a partir desta versão.
+- **A `ASAAS_API_KEY` não é persistida entre sessões** a menos que seja salva como variável de
+  ambiente do ambiente de nuvem usado (Claude Code on the web → seletor de ambiente → ⚙️ →
+  Network access / Variáveis de ambiente). É uma decisão do usuário, pois esse campo fica em
+  texto plano, visível a qualquer pessoa que use o mesmo ambiente.
 
 Este documento cobre (1) como a API do Asaas funciona para emitir boleto, (2) como configurar o
 acesso com segurança, (3) a arquitetura recomendada para automatizar isso e (4) um script pronto
