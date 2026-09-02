@@ -76,10 +76,10 @@ model User {
   role           Role     @default(admin) // já nasce pronto pra Fase 2 (admin | membro)
   createdAt      DateTime @default(now())
 
-  items            Item[]           @relation("OwnedItems")
-  assignedItems    Item[]           @relation("AssignedItems")
+  items            Item[]            @relation("OwnedItems")
+  assignedItems    Item[]            @relation("AssignedItems")
   columns          Column[]
-  gmailConnection  GmailConnection?
+  gmailConnections GmailConnection[]
   sectorAccess     SectorAccess[]
 }
 
@@ -169,6 +169,12 @@ model Item {
   source        Source     @default(manual)
   sourceRef     String?    // id da thread/e-mail no Gmail, quando source = gmail
 
+  // Arquivo do Google Drive vinculado à pendência (escolhido pelo Picker).
+  // Guardamos só a referência — o arquivo continua vivendo no Drive.
+  attachmentFileId String?
+  attachmentName   String?
+  attachmentUrl    String?
+
   completedAt   DateTime?  // marcado sozinho quando a coluna vira isDone
   updatedAt     DateTime   @updatedAt
   createdAt     DateTime   @default(now())
@@ -180,15 +186,21 @@ model Item {
   @@index([assignedById])
 }
 
+// Uma linha por conta Google conectada. O usuário pode conectar várias
+// (pessoal, empresa, fornecedor) — cada uma com seu próprio refresh_token,
+// cobrindo Gmail + Drive da mesma autorização.
 model GmailConnection {
   id            String   @id @default(cuid())
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId        String   @unique
+  userId        String
 
   refreshToken  String   // criptografado (AES-256-GCM) antes de salvar — ver src/lib/crypto.ts
-  email         String?  // conta Gmail conectada, pra exibir na UI
+  email         String   // conta Google conectada, descoberta no callback via userinfo
   lastSyncAt    DateTime?
   createdAt     DateTime @default(now())
+
+  @@unique([userId, email])
+  @@index([userId])
 }
 
 // Conexão com a API da Tray Commerce — é da EMPRESA, não de um usuário

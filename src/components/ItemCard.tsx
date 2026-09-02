@@ -4,7 +4,7 @@ import { Draggable } from "@hello-pangea/dnd";
 import { ItemDTO } from "@/lib/types";
 import { CATEGORY_STYLE, PRIORITY_STYLE } from "@/lib/style";
 import { isOverdue, isDueToday, formatDue } from "@/lib/dates";
-import { IconMail } from "@/components/icons";
+import { IconMail, IconPaperclip } from "@/components/icons";
 
 interface ItemCardProps {
   item: ItemDTO;
@@ -55,6 +55,11 @@ export default function ItemCard({ item, index, showCategoryChip, onClick }: Ite
             {item.source === "gmail" && (
               <span title="Importado do Gmail" className="text-zinc-400">
                 <IconMail className="h-3 w-3" />
+              </span>
+            )}
+            {item.attachmentUrl && (
+              <span title={item.attachmentName ?? "Anexo do Drive"} className="text-zinc-400">
+                <IconPaperclip className="h-3 w-3" />
               </span>
             )}
             {item.assignedByName && (

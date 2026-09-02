@@ -11,7 +11,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
-  const connections = await prisma.gmailConnection.findMany({ select: { userId: true } });
+  // distinct por usuário: syncGmailForUser já percorre TODAS as contas
+  // conectadas daquela pessoa, então um usuário com 3 contas entra uma vez só.
+  const connections = await prisma.gmailConnection.findMany({
+    select: { userId: true },
+    distinct: ["userId"],
+  });
 
   const results = await Promise.allSettled(
     connections.map((c) => syncGmailForUser(c.userId))

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useSpeechToText } from "@/lib/useSpeechToText";
+import { useAudioTranscription } from "@/lib/useAudioTranscription";
 import { VoiceDraft } from "@/lib/types";
 import { IconClose, IconMic } from "@/components/icons";
 
@@ -15,10 +16,20 @@ export default function VoiceCaptureModal({ onClose, onDraftReady }: VoiceCaptur
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { supported, listening, interimText, start, stop } = useSpeechToText(
-    (chunk) => setTranscript((prev) => [prev, chunk].filter(Boolean).join(" ")),
-    { continuous: true }
-  );
+  const appendChunk = (chunk: string) =>
+    setTranscript((prev) => [prev, chunk].filter(Boolean).join(" "));
+
+  // Ditado nativo do navegador (Chrome/Edge): grátis e com prévia ao vivo.
+  const speech = useSpeechToText(appendChunk, { continuous: true });
+  // Fallback pros demais navegadores/celular: grava e transcreve com Whisper.
+  const audio = useAudioTranscription(appendChunk);
+
+  const useWhisper = !speech.supported;
+  const supported = speech.supported || audio.supported;
+  const listening = useWhisper ? audio.recording : speech.listening;
+  const interimText = useWhisper ? "" : speech.interimText;
+  const start = useWhisper ? audio.start : speech.start;
+  const stop = useWhisper ? audio.stop : speech.stop;
 
   async function handleUseText() {
     if (!transcript.trim()) return;
@@ -58,7 +69,8 @@ export default function VoiceCaptureModal({ onClose, onDraftReady }: VoiceCaptur
         <div className="space-y-4 px-5 py-5">
           {!supported ? (
             <p className="text-sm text-zinc-500">
-              Seu navegador não suporta ditado por voz. Tenta no Chrome ou Edge.
+              Seu navegador não tem microfone disponível pra ditado. Tenta no Chrome, Edge ou
+              Safari.
             </p>
           ) : (
             <>
@@ -78,7 +90,13 @@ export default function VoiceCaptureModal({ onClose, onDraftReady }: VoiceCaptur
                   <IconMic className="h-7 w-7" />
                 </button>
                 <span className="text-xs text-zinc-400">
-                  {listening ? "Ouvindo... toca de novo pra parar" : "Toca pra falar"}
+                  {audio.transcribing
+                    ? "Transcrevendo o áudio..."
+                    : listening
+                    ? useWhisper
+                      ? "Gravando... toca de novo pra transcrever"
+                      : "Ouvindo... toca de novo pra parar"
+                    : "Toca pra falar"}
                 </span>
               </div>
 
@@ -93,7 +111,9 @@ export default function VoiceCaptureModal({ onClose, onDraftReady }: VoiceCaptur
                 {interimText && <p className="mt-1 text-xs text-zinc-400">Ouvindo: {interimText}</p>}
               </div>
 
-              {error && <p className="text-sm text-rose-600">{error}</p>}
+              {(error || audio.error) && (
+                <p className="text-sm text-rose-600">{error ?? audio.error}</p>
+              )}
             </>
           )}
         </div>
@@ -109,7 +129,7 @@ export default function VoiceCaptureModal({ onClose, onDraftReady }: VoiceCaptur
           <button
             type="button"
             onClick={handleUseText}
-            disabled={!transcript.trim() || parsing}
+            disabled={!transcript.trim() || parsing || audio.transcribing}
             className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-60"
           >
             {parsing ? "Organizando..." : "Usar esse texto"}

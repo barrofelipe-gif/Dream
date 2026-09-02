@@ -17,6 +17,9 @@ const itemPatch = z.object({
   due: z.string().datetime().nullish().or(z.literal("").transform(() => null)),
   priority: z.enum(["alta", "media", "baixa"]).optional(),
   recurring: z.enum(["none", "daily", "weekly", "monthly"]).optional(),
+  attachmentFileId: z.string().trim().nullish(),
+  attachmentName: z.string().trim().nullish(),
+  attachmentUrl: z.string().trim().url().nullish().or(z.literal("").transform(() => null)),
 });
 
 async function findOwnedItem(id: string, ownerId: string) {

@@ -18,6 +18,9 @@ const itemInput = z.object({
   due: z.string().datetime().nullish().or(z.literal("").transform(() => null)),
   priority: z.enum(["alta", "media", "baixa"]).default("media"),
   recurring: z.enum(["none", "daily", "weekly", "monthly"]).default("none"),
+  attachmentFileId: z.string().trim().nullish(),
+  attachmentName: z.string().trim().nullish(),
+  attachmentUrl: z.string().trim().url().nullish().or(z.literal("").transform(() => null)),
 });
 
 export async function GET(req: NextRequest) {
@@ -91,6 +94,9 @@ export async function POST(req: NextRequest) {
       due: data.due ? new Date(data.due) : null,
       priority: data.priority,
       recurring: data.recurring,
+      attachmentFileId: data.attachmentFileId || null,
+      attachmentName: data.attachmentName || null,
+      attachmentUrl: data.attachmentUrl || null,
       source: "manual",
     },
     include: itemInclude,

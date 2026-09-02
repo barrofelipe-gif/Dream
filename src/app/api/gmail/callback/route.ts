@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { google } from "googleapis";
 import { auth } from "@/auth";
 import { getOAuthClient } from "@/lib/gmail";
 import { encrypt } from "@/lib/crypto";
@@ -45,10 +46,19 @@ export async function GET(req: NextRequest) {
       return redirectBack("erro", "sem_refresh_token");
     }
 
+    // Descobre QUAL conta foi conectada — é o que permite ter várias
+    // (pessoal, empresa, fornecedor) lado a lado sem uma sobrescrever a outra.
+    client.setCredentials(tokens);
+    const oauth2 = google.oauth2({ version: "v2", auth: client });
+    const { data: userInfo } = await oauth2.userinfo.get();
+    const email = userInfo.email;
+    if (!email) return redirectBack("erro", "sem_email_da_conta");
+
     await prisma.gmailConnection.upsert({
-      where: { userId: session.user.id },
+      where: { userId_email: { userId: session.user.id, email } },
       create: {
         userId: session.user.id,
+        email,
         refreshToken: encrypt(tokens.refresh_token),
       },
       update: {
@@ -56,7 +66,7 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    return redirectBack("ok");
+    return redirectBack("ok", email);
   } catch (e) {
     console.error("Erro no callback do Gmail:", e);
     return redirectBack("erro", "falha_troca_token");

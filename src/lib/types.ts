@@ -44,6 +44,9 @@ export interface ItemDTO {
   recurring: Recurring;
   source: Source;
   sourceRef: string | null;
+  attachmentFileId: string | null;
+  attachmentName: string | null;
+  attachmentUrl: string | null;
   assignedById: string | null;
   assignedByName: string | null; // achatado, pra mostrar "Enviado por X" sem join no cliente
   completedAt: string | null;

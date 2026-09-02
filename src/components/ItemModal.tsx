@@ -14,6 +14,7 @@ import {
 } from "@/lib/types";
 import { IconClose, IconTrash } from "@/components/icons";
 import MicButton from "@/components/MicButton";
+import DriveAttachButton from "@/components/DriveAttachButton";
 
 interface ItemModalProps {
   item: ItemDTO | null; // null = criando novo
@@ -63,6 +64,9 @@ export default function ItemModal({
       (initialDraft ? columnsByCategory[initialDraft.category]?.[0]?.id : undefined) ??
       defaultColumnId,
     recurring: item?.recurring ?? "none",
+    attachmentFileId: item?.attachmentFileId ?? "",
+    attachmentName: item?.attachmentName ?? "",
+    attachmentUrl: item?.attachmentUrl ?? "",
   });
 
   // Colunas de quem a pendência está sendo atribuída — busca sob demanda
@@ -124,6 +128,10 @@ export default function ItemModal({
         id: item?.id,
         ...form,
         due: form.due ? new Date(form.due + "T12:00:00").toISOString() : null,
+        // campos vazios viram null pra não gravar "" no banco
+        attachmentFileId: form.attachmentFileId || null,
+        attachmentName: form.attachmentName || null,
+        attachmentUrl: form.attachmentUrl || null,
       });
       onClose();
     } catch {
@@ -297,6 +305,47 @@ export default function ItemModal({
                 rows={3}
                 className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
               />
+            </div>
+
+            <div>
+              <label className="mb-1 block text-xs font-medium text-zinc-600">Anexo do Drive</label>
+              {form.attachmentName ? (
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+                  <a
+                    href={form.attachmentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="truncate text-sm text-indigo-600 hover:underline"
+                  >
+                    {form.attachmentName}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setForm((f) => ({
+                        ...f,
+                        attachmentFileId: "",
+                        attachmentName: "",
+                        attachmentUrl: "",
+                      }))
+                    }
+                    className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50"
+                  >
+                    Remover
+                  </button>
+                </div>
+              ) : (
+                <DriveAttachButton
+                  onAttach={(a) =>
+                    setForm((f) => ({
+                      ...f,
+                      attachmentFileId: a.fileId,
+                      attachmentName: a.name,
+                      attachmentUrl: a.url,
+                    }))
+                  }
+                />
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">

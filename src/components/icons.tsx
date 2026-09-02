@@ -236,3 +236,17 @@ export function IconClose({ className = base }: IconProps) {
     </svg>
   );
 }
+
+export function IconPaperclip({ className = base }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className}>
+      <path
+        d="M20 11.5 12.3 19a5 5 0 0 1-7-7l7.4-7.4a3.3 3.3 0 1 1 4.7 4.7l-7.4 7.4a1.7 1.7 0 0 1-2.4-2.4l6.8-6.8"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
