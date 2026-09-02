@@ -4,6 +4,7 @@ import { listCustomers, getCustomer, listOrdersByCustomer, summarizeCustomer } f
 import { fetchOrdersSince, summarizeSales, dataDiasAtras, isCancelado } from "@/lib/traySales";
 import { fetchProducts, analisarProdutos, resumirAbc } from "@/lib/trayProducts";
 import { buscarPedidosCaixa, montarFluxoCaixa } from "@/lib/trayCaixa";
+import { produtoGradeVendas } from "@/lib/trayVariants";
 
 /**
  * Ferramentas expostas via MCP (Model Context Protocol) para clientes externos
@@ -172,6 +173,19 @@ export const MCP_TOOLS: McpTool[] = [
           description: "Se true, lista a entrada de cada dia. Padrão: false.",
         },
       },
+    },
+  },
+  {
+    name: "produto_grade_vendas",
+    description:
+      "Grade de tamanhos (P/M/G etc.) de um produto específico: pra cada variante, mostra quanto vendeu no período e o estoque atual. Use para planejar produção — cruza vendas reais por tamanho com o que já tem em estoque, pra saber quanto pedir de cada tamanho pra fábrica/produção.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        product_id: { type: "string", description: "ID do produto na Tray." },
+        dias: { type: "number", description: "Período em dias a considerar nas vendas. Padrão: 30." },
+      },
+      required: ["product_id"],
     },
   },
 ];
@@ -518,6 +532,36 @@ export async function runMcpTool(name: string, args: Record<string, unknown>): P
         linhas.push("", "Peça detalhar_dias: true para ver a entrada de cada dia.");
       }
 
+      return linhas.join("\n");
+    }
+
+    case "produto_grade_vendas": {
+      const productId = String(args.product_id ?? "").trim();
+      if (!productId) return "Informe o product_id.";
+      const diasPedido = Number(args.dias ?? 30);
+      const dias = Number.isFinite(diasPedido) && diasPedido > 0 ? Math.min(diasPedido, 365) : 30;
+
+      const grade = await produtoGradeVendas(productId, dias);
+      if (grade.tamanhos.length === 0) {
+        return `Produto ${productId} não tem variantes (grade de tamanho) cadastradas na Tray.`;
+      }
+
+      const linhas = [
+        `Grade de tamanhos do produto ${productId} — vendas dos últimos ${grade.periodoDias} dias ` +
+          `(desde ${dataBR(grade.desde)}):`,
+        "",
+        "Tamanho | Variant ID | Vendeu no período | Estoque atual",
+        ...grade.tamanhos.map(
+          (t) => `${t.tamanho} | ${t.variantId} | ${t.vendidoNoPeriodo} | ${t.estoqueAtual}`
+        ),
+      ];
+      if (grade.possívelSubestimativa) {
+        linhas.push(
+          "",
+          "⚠ Este produto tem mais vendas no histórico do que a API permite consultar de uma vez; " +
+            "o número do período pode estar subestimado (mais provável em best-sellers com período longo)."
+        );
+      }
       return linhas.join("\n");
     }
 
