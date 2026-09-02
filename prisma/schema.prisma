@@ -203,6 +203,21 @@ model GmailConnection {
   @@index([userId])
 }
 
+// Registro de cada chamada ao servidor MCP (assistentes externos conectados).
+// Serve pra duas coisas: auditoria — dá pra ver o que foi consultado e quando —
+// e o limite de requisições, que conta as chamadas recentes desta tabela.
+// Não guarda o token nem o conteúdo devolvido, só o que foi pedido.
+model McpAccessLog {
+  id        String   @id @default(cuid())
+  tool      String   // nome da ferramenta chamada, ou o método MCP
+  ok        Boolean  @default(true)
+  blocked   Boolean  @default(false) // true = barrado pelo limite de requisições
+  ip        String?  // origem, pra investigar uso indevido
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 // Conexão com a API da Tray Commerce — é da EMPRESA, não de um usuário
 // (por isso não tem @@unique([userId]) tipo GmailConnection: existe no
 // máximo uma linha aqui, mantida por quem clicou em "Conectar" por último).

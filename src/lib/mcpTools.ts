@@ -164,6 +164,20 @@ const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", curren
 const dataBR = (iso: string | null) =>
   iso ? iso.slice(0, 10).split("-").reverse().join("/") : "—";
 
+/**
+ * Mascara o e-mail antes de mandar pra um assistente externo.
+ * O MCP entrega dados a serviços de terceiros (Claude, ChatGPT), então sai o
+ * mínimo necessário: dá pra reconhecer o cliente e buscar por e-mail exato,
+ * mas a base não vira uma lista de contatos pronta pra copiar.
+ * CPF, CNPJ, telefone e data de nascimento não são expostos em nenhuma ferramenta.
+ */
+function mascararEmail(email: string | null | undefined): string {
+  if (!email || !email.includes("@")) return "sem e-mail";
+  const [usuario, dominio] = email.split("@");
+  const visivel = usuario.slice(0, 2);
+  return `${visivel}${"*".repeat(Math.max(3, usuario.length - 2))}@${dominio}`;
+}
+
 /** Executa uma ferramenta e devolve texto pronto pro assistente ler. */
 export async function runMcpTool(name: string, args: Record<string, unknown>): Promise<string> {
   switch (name) {
@@ -205,7 +219,7 @@ export async function runMcpTool(name: string, args: Record<string, unknown>): P
         "",
         ...customers.map(
           (c) =>
-            `- [${c.id}] ${c.name} · ${c.email ?? "sem e-mail"}` +
+            `- [${c.id}] ${c.name} · ${mascararEmail(c.email)}` +
             (c.city ? ` · ${c.city}/${c.state}` : "") +
             (c.last_visit ? ` · última visita ${dataBR(c.last_visit)}` : "")
         ),
@@ -221,7 +235,7 @@ export async function runMcpTool(name: string, args: Record<string, unknown>): P
       const s = summarizeCustomer(cliente, pedidos);
       return [
         `Cliente ${s.customer.name} (ID ${s.customer.id})`,
-        `- E-mail: ${s.customer.email ?? "—"}`,
+        `- E-mail: ${mascararEmail(s.customer.email)}`,
         `- Cidade: ${s.customer.city ?? "—"}/${s.customer.state ?? "—"}`,
         `- Pedidos (não cancelados): ${s.totalOrders}`,
         `- Total gasto: ${brl(s.totalSpent)}`,
