@@ -221,13 +221,21 @@ Fluxo: `/conectar-tray` (admin-only) → `/api/tray/connect` redireciona pro
 `auth.php` da loja → depois de autorizar, `/api/tray/callback` troca o
 `code` por `access_token`/`refresh_token` (guardados criptografados em
 `TrayConnection`, uma única linha — é conexão da empresa, não por usuário).
-`getValidAccessToken()` renova sozinho quando o token expira. Falta:
-- **testar o handshake completo de verdade** (só dá pra fechar o login
-  numa aba de navegador de verdade, com HTTPS — não rola de dentro da
-  sandbox de dev);
-- ligar `trayGet()` nos setores (Estoque, Logística, Marketing/Vendas,
-  Clientes) — hoje o client existe mas nenhum setor ainda chama ele;
-- o CRM completo de Clientes pedido pelo usuário.
+`getValidAccessToken()` renova sozinho quando o token expira. Falta
+**testar o handshake completo de verdade** — só dá pra fechar o login
+clicando num navegador de verdade, com HTTPS (o app precisa estar
+publicado; não rola de dentro da sandbox de dev). Assim que estiver
+conectado, tudo que consome a API (CRM de Clientes abaixo, e depois os
+outros setores) passa a puxar dado real sem precisar mudar nada de código.
+
+**CRM de Clientes** (`/empresa/clientes`, `src/lib/trayCustomers.ts`):
+lista de clientes com busca, e ao clicar abre o histórico de pedidos,
+ticket médio, total gasto e recência (Ativo ≤30d / Esfriando 31–90d /
+Sumido 90+d), tudo calculado a partir de `/customers` e `/orders` da
+Tray (campos confirmados contra a doc oficial). Sem a Tray conectada,
+mostra um aviso claro com CTA pra `/conectar-tray` em vez de tela de erro.
+Ainda não ligado: os outros setores (Estoque, Logística, Marketing/Vendas)
+que também vão consumir `trayGet()` depois.
 
 ## 9. Atribuir pendência pra outra pessoa
 
@@ -255,6 +263,7 @@ src/auth.ts                  configuração do NextAuth (credentials)
 src/proxy.ts                  protege as rotas (redireciona pra /login)
 src/lib/gmail.ts              OAuth + sincronização do Gmail
 src/lib/tray.ts               OAuth + client REST da Tray Commerce
+src/lib/trayCustomers.ts      CRM: lista/detalhe de clientes e pedidos, cálculo de recência/ticket médio
 src/lib/crypto.ts             criptografia de tokens (AES-256-GCM) — Gmail e Tray
 src/lib/columns.ts            colunas padrão criadas sob demanda por categoria
 src/lib/anthropic.ts          ditado inteligente (Claude API)
@@ -268,11 +277,12 @@ src/app/empresa/                Visão Central + detalhe de cada setor (BFF Fitn
 src/app/admin/usuarios/        criar usuário e marcar acesso por setor
 src/app/conectar-gmail/        tela de conexão com o Gmail
 src/app/conectar-tray/         tela de conexão com a Tray (admin-only)
+src/app/empresa/clientes/      CRM de clientes (lista + histórico de pedidos, puxado da Tray)
 src/app/api/items/             CRUD de pendências + ditado inteligente + atribuição
 src/app/api/columns/           CRUD de colunas do Kanban (própria + de quem você atribui)
 src/app/api/admin/users/       CRUD de usuários e acesso por setor
 src/app/api/gmail/             conectar/sincronizar/desconectar Gmail
-src/app/api/tray/              conectar/status/desconectar Tray
+src/app/api/tray/              conectar/status/desconectar Tray + CRM (customers)
 src/app/api/cron/sync-gmail/   endpoint chamado pelo cron da Vercel
 vercel.json                    agenda do cron (a cada hora)
 ```
