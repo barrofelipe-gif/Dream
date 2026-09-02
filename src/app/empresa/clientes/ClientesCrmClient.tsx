@@ -96,7 +96,12 @@ export default function ClientesCrmClient() {
                     {c.email ?? "sem e-mail"} {c.city ? `· ${c.city}/${c.state}` : ""}
                   </p>
                 </div>
-                <span className="shrink-0 text-xs text-zinc-400">{c.total_orders ?? 0} pedido(s)</span>
+                {/* Contador de pedidos da Tray vem zerado na listagem, então
+                    mostramos a última visita — o histórico real de pedidos
+                    aparece ao abrir o cliente (busca em /orders). */}
+                <span className="shrink-0 text-xs text-zinc-400">
+                  {c.last_visit ? `visitou ${c.last_visit.slice(0, 10).split("-").reverse().join("/")}` : "—"}
+                </span>
               </button>
             ))}
             {state.customers.length === 0 && (

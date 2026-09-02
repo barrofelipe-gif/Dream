@@ -16,7 +16,11 @@ export interface TrayCustomer {
   cellphone: string | null;
   city: string | null;
   state: string | null;
+  // A lista de clientes devolve `count_orders`; o detalhe devolve `total_orders`.
+  // Os dois vêm zerados mesmo para quem tem pedido (comportamento da Tray na loja
+  // real), então não dá pra confiar neles — o número real sai de /orders.
   total_orders: string | null;
+  count_orders: string | null;
   last_purchase: string | null;
   last_visit: string | null;
   created: string | null;
