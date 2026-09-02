@@ -86,7 +86,9 @@ Depois de configurar, rode `npx prisma db push` para criar as tabelas.
    repositório.
 3. Em **Environment Variables**, adicione todas as variáveis do `.env`
    (menos as que são só de seed, se preferir rodar o seed uma vez local
-   apontando pro banco de produção).
+   apontando pro banco de produção) — inclusive `TRAY_STORE_URL`,
+   `TRAY_CONSUMER_KEY`, `TRAY_CONSUMER_SECRET` e `TRAY_CALLBACK_URL` (essa
+   última só depois do passo 4, quando você já souber a URL final).
 4. Deploy. Você recebe uma URL tipo `painel-pendencias.vercel.app`.
 5. Rode o seed apontando pro banco de produção (uma vez só, do seu
    computador ou daqui):
@@ -96,6 +98,30 @@ Depois de configurar, rode `npx prisma db push` para criar as tabelas.
 
 O `vercel.json` já configura o cron job de sincronização do Gmail (roda de
 hora em hora) — a Vercel ativa automaticamente ao detectar o arquivo.
+
+### Segurança das variáveis de ambiente
+
+- **Gere segredos novos pra produção** (`AUTH_SECRET`, `TOKEN_ENCRYPTION_KEY`,
+  `CRON_SECRET`) — nunca reaproveite os valores do `.env` local/dev.
+- Na Vercel, marque cada variável sensível como **"Sensitive"** (ícone de
+  cadeado ao criar/editar a variável) — depois de salva, o valor não aparece
+  mais em texto puro pra ninguém com acesso ao projeto, nem pra você.
+- Restrinja `TRAY_CONSUMER_SECRET`, `TOKEN_ENCRYPTION_KEY`, `AUTH_SECRET` e
+  `DATABASE_URL` ao ambiente **Production** apenas (desmarque Preview/
+  Development na hora de criar) — assim nenhuma preview branch de PR expõe
+  segredo de produção.
+- **Rotacione o Consumer Secret da Tray** depois do primeiro teste de conexão
+  bem-sucedido — ele passou por uma conversa de chat em algum momento, e o
+  princípio de "segurança máxima" é não confiar em segredo que já circulou
+  fora de um cofre. Gerar um novo na Central do Parceiro não quebra nada:
+  troca o valor na Vercel e reconecta.
+- Banco de dados: use sempre `?sslmode=require` na `DATABASE_URL` (Neon já
+  vem assim por padrão) — nunca conexão sem TLS em produção.
+- Mantenha o repositório **privado** no GitHub (Settings → Danger Zone →
+  Change visibility) — mesmo sem segredo commitado, reduz a superfície de
+  quem pode ver a estrutura do sistema.
+- `TRAY_CALLBACK_URL` e `GOOGLE_REDIRECT_URI` de produção têm que ser
+  `https://` — ambas as plataformas recusam callback sem TLS.
 
 ---
 
