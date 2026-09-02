@@ -19,6 +19,14 @@ import { MCP_TOOLS, runMcpTool } from "@/lib/mcpTools";
  * - Toda chamada fica registrada em McpAccessLog (sem o token e sem o conteúdo
  *   devolvido), pra dar rastro de auditoria.
  *
+ * IMPORTANTE: o 401 aqui NÃO leva o cabeçalho `WWW-Authenticate: Bearer`.
+ * Esse cabeçalho é o sinal padrão (RFC 6750 / spec de auth do MCP) de "este
+ * servidor exige OAuth" — e clientes como o conector da Claude.ai o detectam
+ * automaticamente e passam a exigir um fluxo de login, mesmo com a
+ * autenticação configurada como "Nenhum" no cliente. Como aqui a auth é só
+ * uma chave fixa por cabeçalho (não OAuth), emitir esse cabeçalho quebra a
+ * conexão do conector com um 401 mal interpretado como "quer login".
+ *
  * Para revogar o acesso: troque a variável de ambiente MCP_TOKEN e reimplante.
  */
 
@@ -91,10 +99,8 @@ export async function POST(req: NextRequest) {
 
   if (!autorizado(req)) {
     await registrar("nao_autorizado", false, false, ip);
-    return NextResponse.json(
-      { error: "Não autorizado" },
-      { status: 401, headers: { "WWW-Authenticate": "Bearer" } }
-    );
+    // Sem WWW-Authenticate: ver nota de segurança no topo do arquivo.
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
   let body: JsonRpcRequest;
@@ -174,10 +180,8 @@ export async function POST(req: NextRequest) {
 // canal de eventos, o que faz o cliente cair no modo POST simples.
 export async function GET(req: NextRequest) {
   if (!autorizado(req)) {
-    return NextResponse.json(
-      { error: "Não autorizado" },
-      { status: 401, headers: { "WWW-Authenticate": "Bearer" } }
-    );
+    // Sem WWW-Authenticate: ver nota de segurança no topo do arquivo.
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
   return new NextResponse("Method Not Allowed", { status: 405, headers: { Allow: "POST" } });
 }
