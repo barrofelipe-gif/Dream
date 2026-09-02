@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { listCustomers, getCustomer, listOrdersByCustomer, summarizeCustomer } from "@/lib/trayCustomers";
 import { fetchOrdersSince, summarizeSales, dataDiasAtras, isCancelado } from "@/lib/traySales";
 import { fetchProducts, analisarProdutos, resumirAbc } from "@/lib/trayProducts";
+import { buscarPedidosCaixa, montarFluxoCaixa } from "@/lib/trayCaixa";
 
 /**
  * Ferramentas expostas via MCP (Model Context Protocol) para clientes externos
@@ -155,6 +156,21 @@ export const MCP_TOOLS: McpTool[] = [
             "Filtra por status exato, ex: CANCELADO, FINALIZADO, ENVIADO, 'A ENVIAR VINDI', 'AGUARDANDO VINDI', 'A RETIRAR'.",
         },
         limite: { type: "number", description: "Quantos listar. Padrão: 30." },
+      },
+    },
+  },
+  {
+    name: "fluxo_caixa",
+    description:
+      "Fluxo de caixa real da loja: quanto DINHEIRO ENTROU no período (pela data do pagamento, não a do pedido), separando bruto, taxa da adquirente e líquido que caiu na conta. Mostra também o que está a receber (pedido feito e pagamento ainda não confirmado), o que foi perdido em cancelamento, a entrada dia a dia e a quebra por forma de pagamento com a taxa média de cada uma. Use para qualquer pergunta sobre caixa, entrada de dinheiro, taxa de cartão ou quanto sobra de verdade.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        dias: { type: "number", description: "Período em dias. Aceita 7, 30 ou 90. Padrão: 30." },
+        detalhar_dias: {
+          type: "boolean",
+          description: "Se true, lista a entrada de cada dia. Padrão: false.",
+        },
       },
     },
   },
@@ -452,6 +468,57 @@ export async function runMcpTool(name: string, args: Record<string, unknown>): P
             ` · cliente ${o.customer_id}`
         ),
       ].join("\n");
+    }
+
+    case "fluxo_caixa": {
+      const pedido = Number(args.dias ?? 30);
+      const dias = [7, 30, 90].includes(pedido) ? pedido : 30;
+      const desde = dataDiasAtras(dias);
+      const c = montarFluxoCaixa(await buscarPedidosCaixa(desde), dias, desde);
+
+      const pct = (v: number) => `${(v * 100).toFixed(2)}%`;
+      const linhas = [
+        `Fluxo de caixa dos últimos ${dias} dias (desde ${dataBR(c.desde)}).`,
+        "Considera a DATA DO PAGAMENTO, não a data do pedido.",
+        "",
+        "DINHEIRO QUE ENTROU:",
+        `- Bruto: ${brl(c.bruto)} em ${c.pedidosPagos} pagamento(s)`,
+        `- Taxa da adquirente: -${brl(c.taxas)} (${pct(c.taxaMediaPct)} do bruto)`,
+        `- Líquido na conta: ${brl(c.liquido)}`,
+        "",
+        "Composição do bruto:",
+        `- Frete cobrado: ${brl(c.frete)}`,
+        `- Descontos concedidos: ${brl(c.descontos)}`,
+        `- Juros de parcelamento: ${brl(c.juros)}`,
+        "",
+        "A RECEBER (pedido feito, pagamento ainda não confirmado):",
+        `- ${c.pedidosAguardando} pedido(s) · ${brl(c.valorAguardando)}`,
+        "",
+        "PERDIDO EM CANCELAMENTO:",
+        `- ${c.pedidosCancelados} pedido(s) · ${brl(c.valorCancelado)}`,
+        "",
+        "POR FORMA DE PAGAMENTO:",
+        ...c.porForma.map(
+          (f) =>
+            `- ${f.forma}: ${f.pedidos} pagamento(s) · bruto ${brl(f.bruto)} · ` +
+            `taxa ${brl(f.taxas)} (${pct(f.taxaMediaPct)}) · líquido ${brl(f.liquido)}`
+        ),
+      ];
+
+      if (args.detalhar_dias === true) {
+        linhas.push("", "ENTRADA POR DIA:");
+        linhas.push(
+          ...c.porDia.map(
+            (d) =>
+              `- ${dataBR(d.dia)}: líquido ${brl(d.liquido)} ` +
+              `(bruto ${brl(d.bruto)} − taxa ${brl(d.taxas)}) em ${d.pedidos} pagamento(s)`
+          )
+        );
+      } else {
+        linhas.push("", "Peça detalhar_dias: true para ver a entrada de cada dia.");
+      }
+
+      return linhas.join("\n");
     }
 
     default:
