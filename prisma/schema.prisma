@@ -218,6 +218,28 @@ model McpAccessLog {
   @@index([createdAt])
 }
 
+// Code de autorização do mini fluxo OAuth do MCP (ver src/app/api/mcp/oauth).
+// O Claude.ai, no conector personalizado, só manda o cabeçalho Authorization
+// de forma confiável quando o servidor fala OAuth de verdade — cabeçalho
+// custom configurado na tela não estava chegando. Esse fluxo existe só pra
+// satisfazer esse protocolo: a "senha" continua sendo o login normal do
+// painel (NextAuth) — /api/mcp/oauth/authorize fica atrás do middleware de
+// sessão — e o token final devolvido é sempre o mesmo MCP_TOKEN estático, o
+// código aqui é só a ponte de curta duração (5min, uso único) do handshake.
+model McpAuthCode {
+  id                  String   @id @default(cuid())
+  code                String   @unique // valor aleatório devolvido na URL de callback
+  clientId             String
+  redirectUri          String
+  codeChallenge         String
+  codeChallengeMethod   String  @default("S256")
+  used                 Boolean @default(false)
+  expiresAt            DateTime
+  createdAt            DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
 // Conexão com a API da Tray Commerce — é da EMPRESA, não de um usuário
 // (por isso não tem @@unique([userId]) tipo GmailConnection: existe no
 // máximo uma linha aqui, mantida por quem clicou em "Conectar" por último).
