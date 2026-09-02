@@ -157,5 +157,8 @@ export async function POST(req: NextRequest) {
   const destino = new URL(p.redirectUri);
   destino.searchParams.set("code", code);
   if (p.state) destino.searchParams.set("state", p.state);
-  return NextResponse.redirect(destino);
+  // 303 (não o 307 padrão do Next): callback de OAuth é sempre GET, e 307
+  // preserva o método original (POST, do form de "Autorizar") — o cliente
+  // batia no callback com POST e tomava "Method Not Allowed".
+  return NextResponse.redirect(destino, 303);
 }
