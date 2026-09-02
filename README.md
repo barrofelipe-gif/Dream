@@ -96,8 +96,11 @@ Depois de configurar, rode `npx prisma db push` para criar as tabelas.
    DATABASE_URL="<url de produção>" npm run seed
    ```
 
-O `vercel.json` já configura o cron job de sincronização do Gmail (roda de
-hora em hora) — a Vercel ativa automaticamente ao detectar o arquivo.
+O `vercel.json` já configura o cron job de sincronização do Gmail (roda 1x
+por dia, às 11h UTC / 8h em Brasília — plano Hobby da Vercel só permite cron
+diário; pra sincronizar de hora em hora precisa do plano Pro) — a Vercel
+ativa automaticamente ao detectar o arquivo. Enquanto isso, o botão
+"Sincronizar agora" em `/conectar-gmail` sempre funciona na hora.
 
 ### Segurança das variáveis de ambiente
 
