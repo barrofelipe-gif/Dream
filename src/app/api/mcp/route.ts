@@ -27,6 +27,13 @@ import { MCP_TOOLS, runMcpTool } from "@/lib/mcpTools";
  * uma chave fixa por cabeçalho (não OAuth), emitir esse cabeçalho quebra a
  * conexão do conector com um 401 mal interpretado como "quer login".
  *
+ * Também aceita o token pelo cabeçalho `X-Api-Key` (além de `Authorization:
+ * Bearer`): o conector personalizado da Claude.ai reserva o nome
+ * `Authorization` para o slot de OAuth (que aqui não usamos) e parece
+ * descartar um cabeçalho custom com esse nome — `X-Api-Key` não tem esse
+ * conflito e é o nome que o próprio formulário de "cabeçalho de API key"
+ * sugere.
+ *
  * Para revogar o acesso: troque a variável de ambiente MCP_TOKEN e reimplante.
  */
 
@@ -36,10 +43,10 @@ function autorizado(req: NextRequest): boolean {
   const esperado = process.env.MCP_TOKEN;
   if (!esperado) return false;
 
-  const header = req.headers.get("authorization") ?? "";
-  const recebido = header.toLowerCase().startsWith("bearer ")
-    ? header.slice(7).trim()
-    : header.trim();
+  const bearer = req.headers.get("authorization") ?? "";
+  const recebido = bearer.toLowerCase().startsWith("bearer ")
+    ? bearer.slice(7).trim()
+    : bearer.trim() || (req.headers.get("x-api-key") ?? "").trim();
   if (!recebido) return false;
 
   const a = Buffer.from(recebido);
