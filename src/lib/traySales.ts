@@ -53,7 +53,10 @@ export async function fetchOrdersSince(
       limit: String(limit),
       page: String(page),
       sort: "date_desc",
-      date_start: sinceISO,
+      // Na API da Tray o filtro de período é `date` e funciona como "a partir de"
+      // (>=), não como data exata. `date_start` existe na doc mas é ignorado —
+      // verificado contra a loja real: date_start devolvia o histórico inteiro.
+      date: sinceISO,
     });
 
     total = data.paging?.total ?? 0;
