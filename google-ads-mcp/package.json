@@ -1,0 +1,33 @@
+{
+  "name": "google-ads-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for the Google Ads API — read (GAQL) and write (campaigns, budgets, ad groups, ads, keywords, targeting, and a generic mutate passthrough).",
+  "type": "module",
+  "private": true,
+  "main": "dist/index.js",
+  "bin": {
+    "google-ads-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "auth": "tsx scripts/get-refresh-token.ts",
+    "inspector": "npx @modelcontextprotocol/inspector node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.13.0",
+    "dotenv": "^16.4.5",
+    "google-ads-api": "^24.1.0",
+    "open": "^10.1.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
