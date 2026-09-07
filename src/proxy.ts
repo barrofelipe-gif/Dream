@@ -6,6 +6,7 @@ export default auth((req) => {
   const { pathname } = req.nextUrl;
 
   const isPublic =
+    pathname === "/" || // home com o cérebro — porta de entrada pública
     pathname.startsWith("/login") ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/.well-known/oauth-");

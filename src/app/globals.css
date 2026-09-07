@@ -1,7 +1,12 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f4f5f7;
+  /* Cor base do <body> — a maioria das telas (home, login, hub, empresa) já
+     é escura e define seu próprio fundo opaco; esse token só evita que o
+     fundo claro padrão do navegador apareça num flash/bounce de overscroll
+     nessas telas. As páginas claras (dashboard de área, painel) também
+     definem o próprio fundo, então não são afetadas. */
+  --background: #070907;
   --foreground: #1b1f2b;
   --surface: #ffffff;
   --border: #e3e5ea;

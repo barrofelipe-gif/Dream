@@ -1,50 +1,44 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import BrainScene from "@/components/hub/BrainScene";
 import LoginForm from "./LoginForm";
 
+/**
+ * Login — continuação da cena do cérebro (ver Home em src/app/page.tsx), não
+ * uma tela branca à parte. Acesso concluído leva ao hub, não direto num
+ * dashboard.
+ */
 export default async function LoginPage() {
   const session = await auth();
-  if (session?.user) redirect("/painel");
+  if (session?.user) redirect("/hub");
 
   return (
-    <div className="relative flex min-h-screen flex-1 items-center justify-center overflow-hidden bg-[#0a0b0e] px-4 py-16">
-      {/* fundo — glows + rede de pontos, mesma linguagem visual da Visão Central */}
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(circle at 20% 20%, rgba(99,102,241,0.22), transparent 45%), radial-gradient(circle at 82% 75%, rgba(20,184,166,0.16), transparent 45%), radial-gradient(circle at 50% 100%, rgba(99,102,241,0.12), transparent 55%)",
-        }}
-      />
-      <svg
-        className="pointer-events-none absolute inset-0 h-full w-full opacity-[0.35]"
-        aria-hidden
-      >
-        <defs>
-          <pattern id="dot-grid" width="28" height="28" patternUnits="userSpaceOnUse">
-            <circle cx="1.5" cy="1.5" r="1.5" fill="rgba(255,255,255,0.08)" />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#dot-grid)" />
-      </svg>
+    <div className="relative flex min-h-screen flex-1 items-center justify-center overflow-hidden bg-[#070907] px-4 py-16">
+      <BrainScene variant="login" className="absolute inset-0" />
 
-      <div className="relative w-full max-w-sm">
+      <div className="relative z-10 w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-500 text-lg font-bold text-white shadow-[0_0_30px_-4px_rgba(99,102,241,0.7)]">
-            P
-          </div>
-          <h1 className="text-xl font-semibold text-white">Painel de Pendências</h1>
-          <p className="mt-1.5 text-sm text-zinc-400">Entre para ver suas pendências</p>
+          <Link
+            href="/"
+            className="mb-4 inline-flex font-mono text-[11px] uppercase tracking-[0.3em] text-[#8b9389] hover:text-[#3ad0a8]"
+          >
+            ← BFF
+          </Link>
+          <h1 className="text-xl font-semibold text-[#e9ede8]">Entrar</h1>
+          <p className="mt-1.5 text-sm text-[#8b9389]">Acesse o hub das sete áreas</p>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl backdrop-blur-xl sm:p-7">
+        <div className="rounded-2xl border border-[#2a322c] bg-[#0d110e]/90 p-6 shadow-2xl backdrop-blur-xl sm:p-7">
           <Suspense>
             <LoginForm />
           </Suspense>
         </div>
 
-        <p className="mt-6 text-center text-xs text-zinc-600">BFF Fitness · uso interno</p>
+        <p className="mt-6 text-center font-mono text-[10px] uppercase tracking-[0.2em] text-[#4f574f]">
+          BFF · uso interno
+        </p>
       </div>
     </div>
   );
