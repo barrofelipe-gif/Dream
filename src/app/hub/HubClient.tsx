@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { Icon } from "@/components/hub/Icon";
+import OrgMap from "@/components/hub/OrgMap";
 import { AREAS, CATALOGO_BUSCA, TOTAL_PAPEIS, TOTAL_MANAGERS } from "@/lib/orgCatalog";
 
 function normalizar(s: string): string {
@@ -17,7 +18,7 @@ function normalizar(s: string): string {
 export default function HubClient({ nomeUsuario }: { nomeUsuario: string }) {
   const router = useRouter();
   const [busca, setBusca] = useState("");
-  const [visao, setVisao] = useState<"mapa" | "lista">("mapa");
+  const [visao, setVisao] = useState<"mapa" | "cards" | "lista">("mapa");
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -101,6 +102,13 @@ export default function HubClient({ nomeUsuario }: { nomeUsuario: string }) {
             </button>
             <button
               type="button"
+              onClick={() => setVisao("cards")}
+              className={`rounded-full px-3 py-1.5 transition ${visao === "cards" ? "bg-[#3ad0a8] text-[#04120c]" : "text-[#8b9389] hover:text-[#e9ede8]"}`}
+            >
+              Cards
+            </button>
+            <button
+              type="button"
               onClick={() => setVisao("lista")}
               className={`rounded-full px-3 py-1.5 transition ${visao === "lista" ? "bg-[#3ad0a8] text-[#04120c]" : "text-[#8b9389] hover:text-[#e9ede8]"}`}
             >
@@ -126,7 +134,16 @@ export default function HubClient({ nomeUsuario }: { nomeUsuario: string }) {
           <span>{TOTAL_MANAGERS} managers</span>
         </div>
 
-        {visao === "mapa" ? (
+        {visao === "mapa" && (
+          <div className="mb-4">
+            <OrgMap onOpenRole={irPara} onOpenArea={(areaId) => irPara(areaId)} />
+            <p className="mt-3 text-center font-mono text-[10px] uppercase tracking-wide text-[#4f574f]">
+              clica numa área pra abrir os papéis · clica de novo (ou Esc) pra voltar
+            </p>
+          </div>
+        )}
+
+        {visao === "cards" && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {AREAS.map((area) => (
               <Link
@@ -159,7 +176,9 @@ export default function HubClient({ nomeUsuario }: { nomeUsuario: string }) {
               </Link>
             ))}
           </div>
-        ) : (
+        )}
+
+        {visao === "lista" && (
           <div className="overflow-x-auto rounded-2xl border border-[#1c221d]">
             <table className="w-full min-w-[560px] text-left text-sm">
               <thead className="bg-[#0d110e] font-mono text-[10px] uppercase tracking-wide text-[#8b9389]">

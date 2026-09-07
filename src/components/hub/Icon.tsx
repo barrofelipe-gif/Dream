@@ -5,7 +5,7 @@
  * o que faz o hub/áreas parecerem continuação do cérebro, não uma tela nova.
  */
 
-const PATHS: Record<string, string> = {
+export const ICON_PATHS: Record<string, string> = {
   hand: '<path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-5.9-2.4L3 14.4a2 2 0 0 1 2.9-2.8L8 14"/>',
   brain: '<path d="M9.5 3a3 3 0 0 0-3 3v1a3 3 0 0 0-2 5.5A3 3 0 0 0 6 18a3 3 0 0 0 3.5 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3z"/><path d="M14.5 3a3 3 0 0 1 3 3v1a3 3 0 0 1 2 5.5A3 3 0 0 1 18 18a3 3 0 0 1-3.5 3 3 3 0 0 1-3-3V6a3 3 0 0 1 3-3z"/>',
   coins: '<circle cx="8" cy="8" r="6"/><path d="M18.1 10a6 6 0 1 1-8 8M7 6h1v4M16.7 13.7l.7.7-2.8 2.8"/>',
@@ -50,7 +50,7 @@ const PATHS: Record<string, string> = {
   compass: '<circle cx="12" cy="12" r="10"/><path d="m16.2 7.8-2.1 6.3-6.3 2.1 2.1-6.3z"/>',
 };
 
-export type IconName = keyof typeof PATHS;
+export type IconName = keyof typeof ICON_PATHS;
 
 export function Icon({
   name,
@@ -61,7 +61,7 @@ export function Icon({
   size?: number;
   className?: string;
 }) {
-  const d = PATHS[name] ?? PATHS.sparkle;
+  const d = ICON_PATHS[name] ?? ICON_PATHS.sparkle;
   return (
     <svg
       viewBox="0 0 24 24"
