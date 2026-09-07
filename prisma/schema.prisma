@@ -240,6 +240,25 @@ model McpAuthCode {
   @@index([expiresAt])
 }
 
+// Conexão com o bling-mcp-server já existente (projeto separado na Vercel,
+// https://bling-mcp-server.vercel.app) — não duplica a autorização com a
+// Bling: o painel entra como mais um "cliente" OAuth desse servidor (do
+// mesmo jeito que o Claude.ai já entra), pegando seu próprio par de token,
+// independente do grant que o Claude.ai usa. Reaproveita 100% o trabalho
+// existente (nenhum projeto novo na Vercel, nenhum redirect URI novo
+// cadastrado na Bling).
+model BlingConnection {
+  id                     String   @id @default(cuid())
+
+  accessToken            String   // criptografado (AES-256-GCM) — ver src/lib/crypto.ts
+  refreshToken           String   // criptografado — a Bling roda token rotativo, o antigo vira inválido a cada refresh
+  accessTokenExpiresAt   DateTime
+
+  connectedByUserId      String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
 // Conexão com a API da Tray Commerce — é da EMPRESA, não de um usuário
 // (por isso não tem @@unique([userId]) tipo GmailConnection: existe no
 // máximo uma linha aqui, mantida por quem clicou em "Conectar" por último).

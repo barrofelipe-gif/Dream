@@ -17,15 +17,18 @@ import FinancasDashboard from "@/components/hub/FinancasDashboard";
  */
 export default async function AreaDashboardPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ areaId: string }>;
+  searchParams: Promise<{ bling?: string }>;
 }) {
   const { areaId } = await params;
   const area = getArea(areaId);
   if (!area) notFound();
 
   if (areaId === "financas") {
-    return <FinancasDashboard />;
+    const { bling } = await searchParams;
+    return <FinancasDashboard blingStatus={bling === "ok" || bling === "erro" ? bling : undefined} />;
   }
 
   const demo = gerarDashboardDemo(area);

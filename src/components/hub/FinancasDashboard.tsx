@@ -1,6 +1,7 @@
 import { buscarPedidosCaixa, montarFluxoCaixa } from "@/lib/trayCaixa";
 import { dataDiasAtras } from "@/lib/traySales";
 import { fetchProducts, analisarProdutos } from "@/lib/trayProducts";
+import BlingSection from "@/components/hub/BlingSection";
 
 /**
  * Dashboard REAL de Finanças — a primeira área do hub conectada a dado de
@@ -20,7 +21,7 @@ import { fetchProducts, analisarProdutos } from "@/lib/trayProducts";
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const dataBR = (iso: string) => iso.slice(0, 10).split("-").reverse().join("/");
 
-export default async function FinancasDashboard() {
+export default async function FinancasDashboard({ blingStatus }: { blingStatus?: "ok" | "erro" }) {
   const dias = 30;
   const desde = dataDiasAtras(dias);
 
@@ -139,6 +140,8 @@ export default async function FinancasDashboard() {
           </table>
         </div>
       </div>
+
+      <BlingSection status={blingStatus} />
     </div>
   );
 }
