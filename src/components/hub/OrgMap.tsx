@@ -4,6 +4,31 @@ import { useEffect, useRef } from "react";
 import { AREAS, type Area, type Papel } from "@/lib/orgCatalog";
 import { ICON_PATHS } from "@/components/hub/Icon";
 import { buildingSvg, officeSvg } from "@/lib/isoBuildings";
+import { papelTemPendencia } from "@/lib/orgMockData";
+
+/** Nuvem de partículas do "cérebro" — mesma técnica de `drawBrain()` do
+ * protótipo original: pontos distribuídos numa esfera, com sinapses
+ * (linhas que piscam entre pontos próximos) — esse último efeito é um
+ * acréscimo, o original só rotacionava os pontos sem conexões entre eles. */
+interface Particula { x: number; y: number; z: number; cor: "teal" | "lime" | "white"; s: number }
+function gerarParticulas(n: number): Particula[] {
+  const arr: Particula[] = [];
+  for (let i = 0; i < n; i++) {
+    const u = Math.random(), v = Math.random();
+    const th = 2 * Math.PI * u, ph = Math.acos(2 * v - 1);
+    const r = Math.pow(Math.random(), 0.35);
+    const k = Math.random();
+    arr.push({
+      x: r * Math.sin(ph) * Math.cos(th),
+      y: r * Math.sin(ph) * Math.sin(th),
+      z: r * Math.cos(ph),
+      cor: k < 0.45 ? "teal" : k < 0.75 ? "lime" : "white",
+      s: Math.random() * 1.4 + 0.5,
+    });
+  }
+  return arr;
+}
+const CORP = { teal: "90,225,190", lime: "201,255,61", white: "235,245,240" };
 
 /**
  * Mapa mental — o núcleo do protótipo original (Infuser Skilltree):
@@ -62,6 +87,8 @@ interface ChildNode {
   lab: SVGTextElement;
   x: number; y: number; tx: number; ty: number; r: number; tr: number;
   areaId: string;
+  pendente: boolean;
+  hover: boolean;
 }
 interface EdgeNode {
   line: SVGLineElement;
@@ -76,6 +103,7 @@ export default function OrgMap({
   onOpenArea: (areaId: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const brainCanvasRef = useRef<HTMLCanvasElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const graphRef = useRef<SVGGElement>(null);
   const buildingRef = useRef<SVGSVGElement>(null);
@@ -89,20 +117,27 @@ export default function OrgMap({
 
   useEffect(() => {
     const container = containerRef.current;
+    const brainCanvas = brainCanvasRef.current;
     const svg = svgRef.current;
     const graph = graphRef.current;
     const buildingEl = buildingRef.current;
     const officeEl = officeRef.current;
     const watermark = watermarkRef.current;
     const backHint = backHintRef.current;
-    if (!container || !svg || !graph || !buildingEl || !officeEl || !watermark || !backHint) return;
-
-    if (buildingEl.childElementCount === 0) buildingEl.innerHTML = buildingSvg();
-    if (officeEl.childElementCount === 0) officeEl.innerHTML = officeSvg();
+    if (!container || !brainCanvas || !svg || !graph || !buildingEl || !officeEl || !watermark || !backHint) return;
+    const bctx = brainCanvas.getContext("2d");
 
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (buildingEl.childElementCount === 0) buildingEl.innerHTML = buildingSvg(reduced);
+    if (officeEl.childElementCount === 0) officeEl.innerHTML = officeSvg(reduced);
+
     let W = container.clientWidth || 800;
     let H = container.clientHeight || 560;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    const particulas = gerarParticulas(360);
+    let brainOpacity = 1, brainOpacityT = 1;
+    const sinapses: { a: number; b: number; vida: number }[] = [];
 
     let mode: "overview" | "drill" = "overview";
     let activeArea: Area | null = null;
@@ -132,21 +167,28 @@ export default function OrgMap({
         });
 
         area.children.forEach((papel) => {
+          const pendente = papelTemPendencia(papel.id);
+          const corBase = pendente ? "#ef4444" : color;
           const g = el("g", { style: "opacity:1;cursor:pointer" }, hubsG);
-          const ring = el("circle", { r: 5, fill: "#0b100d", stroke: color, "stroke-width": 0.9 }, g);
+          const ring = el("circle", { r: 5, fill: "#0b100d", stroke: corBase, "stroke-width": 0.9 }, g);
           const ig = el("g", { opacity: 0 }, g);
           iconG(ig, papel.icon, 15, color);
           const lab = el("text", { y: -40, opacity: 0, "font-family": "inherit", "font-weight": 600, "font-size": 9.5, "letter-spacing": "0.32em", fill: "#dfe4dd", "text-anchor": "middle" }, g);
           lab.textContent = papel.label;
           g.addEventListener("mouseenter", () => {
+            children[papel.id].hover = true;
             if (mode === "drill") ring.setAttribute("stroke", COR.lime);
           });
-          g.addEventListener("mouseleave", () => ring.setAttribute("stroke", color));
+          g.addEventListener("mouseleave", () => {
+            children[papel.id].hover = false;
+            if (!pendente) ring.setAttribute("stroke", color);
+          });
           g.addEventListener("click", (e) => {
             e.stopPropagation();
             if (mode === "drill" && activeArea?.id === area.id) onOpenRoleRef.current(area.id, papel.id);
           });
-          children[papel.id] = { g, ring, ig, lab, x: W / 2, y: H / 2, tx: W / 2, ty: H / 2, r: 5, tr: 5, areaId: area.id };
+          if (pendente) g.setAttribute("aria-label", `${papel.title} — tem pendência`);
+          children[papel.id] = { g, ring, ig, lab, x: W / 2, y: H / 2, tx: W / 2, ty: H / 2, r: 5, tr: 5, areaId: area.id, pendente, hover: false };
         });
 
         const g = el("g", { style: "cursor:pointer" }, hubsG);
@@ -264,6 +306,63 @@ export default function OrgMap({
       }
     }
 
+    function drawBrainParticles(t: number) {
+      if (!bctx) return;
+      bctx.clearRect(0, 0, W, H);
+      brainOpacity = reduced ? brainOpacityT : lerp(brainOpacity, brainOpacityT, 0.08);
+      if (brainOpacity < 0.01) return;
+      const cx = W / 2 + (W > 900 ? W * 0.06 : W * 0.03);
+      const cy = H / 2 + (W > 900 ? H * 0.02 : -H * 0.055);
+      const R = Math.min(W, H) * (W <= 900 ? 0.1 : 0.115);
+      const a = t * 0.00022, b = t * 0.00011;
+      const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b);
+
+      const glow = bctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.9);
+      glow.addColorStop(0, `rgba(58,208,168,${0.14 * brainOpacity})`);
+      glow.addColorStop(1, "rgba(58,208,168,0)");
+      bctx.fillStyle = glow;
+      bctx.fillRect(cx - R * 2, cy - R * 2, R * 4, R * 4);
+
+      const tela: { sx: number; sy: number; al: number }[] = [];
+      for (const p of particulas) {
+        const x = p.x * ca - p.z * sa, z0 = p.x * sa + p.z * ca;
+        const y = p.y * cb - z0 * sb, z = p.y * sb + z0 * cb;
+        const pr = (z + 1.6) / 2.6;
+        const sx = cx + x * R, sy = cy + y * R;
+        const al = (0.25 + 0.7 * pr) * brainOpacity;
+        tela.push({ sx, sy, al });
+        bctx.beginPath();
+        bctx.arc(sx, sy, p.s * (0.5 + pr), 0, Math.PI * 2);
+        bctx.fillStyle = `rgba(${CORP[p.cor]},${al})`;
+        bctx.fill();
+      }
+
+      // sinapses: linhas que piscam entre pares de partículas próximas
+      if (!reduced && mode === "overview" && Math.random() < 0.12 && sinapses.length < 5) {
+        const a1 = Math.floor(Math.random() * tela.length);
+        let melhor = -1, menorDist = 26 * 26;
+        for (let i = 0; i < 24; i++) {
+          const b1 = Math.floor(Math.random() * tela.length);
+          const dx = tela[a1].sx - tela[b1].sx, dy = tela[a1].sy - tela[b1].sy;
+          const d = dx * dx + dy * dy;
+          if (d < menorDist && d > 4) { menorDist = d; melhor = b1; }
+        }
+        if (melhor >= 0) sinapses.push({ a: a1, b: melhor, vida: 1 });
+      }
+      for (let i = sinapses.length - 1; i >= 0; i--) {
+        const s = sinapses[i];
+        s.vida -= 0.03;
+        if (s.vida <= 0 || !tela[s.a] || !tela[s.b]) { sinapses.splice(i, 1); continue; }
+        const pa = tela[s.a], pb = tela[s.b];
+        bctx.beginPath();
+        bctx.moveTo(pa.sx, pa.sy);
+        bctx.lineTo(pb.sx, pb.sy);
+        bctx.strokeStyle = `rgba(201,255,61,${Math.sin(s.vida * Math.PI) * 0.8 * brainOpacity})`;
+        bctx.lineWidth = 0.8;
+        bctx.stroke();
+      }
+    }
+
     function tick(t: number) {
       if (disposed) return;
       const dt = t - T0;
@@ -274,6 +373,7 @@ export default function OrgMap({
       }
       if (mode === "overview" && !reduced) rot += dt * 0.000045;
       layout(false);
+      drawBrainParticles(t);
       const k = 1 - Math.pow(0.0009, dt / 1000);
       const pulse = 0.5 + 0.5 * Math.sin(t * 0.0025);
       const drill = mode === "drill";
@@ -310,6 +410,14 @@ export default function OrgMap({
           c.lab.setAttribute("opacity", String(big));
           c.ring.setAttribute("fill", big > 0 ? `rgba(22,58,50,${0.25 + 0.45 * big})` : "#0b100d");
           c.lab.setAttribute("y", String(-c.r - 14));
+          // pendência: pisca vermelho tipo alerta, sempre visível (mesmo
+          // colapsado na visão geral) — pedido do usuário, tipo "dor de
+          // cabeça" apontando o que precisa de atenção.
+          if (c.pendente && !c.hover) {
+            const pulso = reduced ? 0.85 : 0.55 + 0.45 * Math.sin(t * 0.006);
+            c.ring.setAttribute("stroke", `rgba(239,68,68,${0.55 + pulso * 0.45})`);
+            c.ring.setAttribute("stroke-width", String(0.9 + pulso * 1.4));
+          }
           c.g.style.opacity = vis ? "1" : "0";
           c.g.style.pointerEvents = vis && drill ? "auto" : "none";
 
@@ -353,6 +461,7 @@ export default function OrgMap({
     function enterDept(area: Area) {
       mode = "drill";
       activeArea = area;
+      brainOpacityT = 0;
       watermark!.textContent = area.name;
       watermark!.style.opacity = "1";
       buildingEl!.style.opacity = "0";
@@ -365,6 +474,7 @@ export default function OrgMap({
     function exitDept() {
       mode = "overview";
       activeArea = null;
+      brainOpacityT = 1;
       watermark!.style.opacity = "0";
       buildingEl!.style.opacity = "1";
       buildingEl!.style.transform = "translateY(-50%)";
@@ -383,16 +493,24 @@ export default function OrgMap({
     svg.addEventListener("click", onBgClick);
     window.addEventListener("keydown", onKeyDown);
 
+    function resizeCanvas() {
+      brainCanvas!.width = W * dpr;
+      brainCanvas!.height = H * dpr;
+      bctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
     const ro = new ResizeObserver(() => {
       W = container.clientWidth || W;
       H = container.clientHeight || H;
       svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      resizeCanvas();
       layout(false);
     });
     ro.observe(container);
 
     build();
     svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    resizeCanvas();
     raf = requestAnimationFrame((t) => {
       T0 = t;
       tick(t);
@@ -409,6 +527,7 @@ export default function OrgMap({
 
   return (
     <div ref={containerRef} className="relative h-[min(72vh,720px)] min-h-[420px] w-full overflow-hidden rounded-2xl border border-[#1c221d] bg-[#050705]">
+      <canvas ref={brainCanvasRef} className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden />
       <svg
         ref={buildingRef}
         viewBox="0 0 360 620"

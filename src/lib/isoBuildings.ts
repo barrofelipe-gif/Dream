@@ -25,6 +25,26 @@ interface FloorOpts {
   screens?: number;
 }
 
+/** Uma "pessoa" (pontinho) andando de um lado a outro de um corredor, ou
+ * subindo/descendo um elevador — acréscimo nosso (não existia no protótipo
+ * original, só um comentário "como no render do vídeo" que nunca foi
+ * detalhado). Usa SMIL <animateMotion> — funciona em SVG injetado via
+ * innerHTML sem precisar de JS rodando a cada frame. Com `reduced` (prefers-
+ * reduced-motion), vira um pontinho parado, sem a tag de animação. */
+function pessoaAndando(
+  p0: [number, number],
+  p1: [number, number],
+  cor: string,
+  duracaoS: number,
+  atrasoS: number,
+  reduced: boolean
+): string {
+  const anim = reduced
+    ? ""
+    : `<animateMotion path="M ${p0[0]},${p0[1]} L ${p1[0]},${p1[1]} L ${p0[0]},${p0[1]}" dur="${duracaoS}s" begin="${atrasoS}s" repeatCount="indefinite" calcMode="linear"/>`;
+  return `<circle cx="${p0[0]}" cy="${p0[1]}" r="1.7" fill="${cor}" opacity=".85">${anim}</circle>`;
+}
+
 function floor(P: P3, X: number, Y: number, z0: number, hF: number, opts: FloorOpts = {}): string {
   const ov = 3;
   let s = "";
@@ -132,7 +152,7 @@ function brainGlyph(P: P3, x: number, y: number, z: number, axis: "x" | "y"): st
 }
 
 /** SVG (viewBox "0 0 360 620") do prédio — visão geral do mapa. */
-export function buildingSvg(): string {
+export function buildingSvg(reduced = false): string {
   const X = 104,
     Y = 70,
     hF = 38,
@@ -147,9 +167,17 @@ export function buildingSvg(): string {
   };
   s += base(13, 4, 6, "#161b17");
   s += base(7, 11, 7, "#131814");
-  for (let k = 0; k < N; k++) s += floor(P, X, Y, 14 + k * (hF + 4), hF, { cols: 3, rows: 2, screens: 3 });
+  for (let k = 0; k < N; k++) {
+    const z0 = 14 + k * (hF + 4);
+    s += floor(P, X, Y, z0, hF, { cols: 3, rows: 2, screens: 3 });
+    // uma pessoa andando no corredor de cada andar
+    const yy = Y * (0.35 + 0.3 * (k % 2));
+    s += pessoaAndando(P(14, yy, z0 + 1), P(X - 14, yy, z0 + 1), k % 2 ? "#8fe6cf" : "#d9ff6a", 5 + (k % 3), k * 0.6, reduced);
+  }
+  // elevador: uma pessoa subindo e descendo o prédio inteiro, na lateral
   const zt = 14 + N * (hF + 4),
     ov = 3;
+  s += pessoaAndando(P(X + ov - 2, Y * 0.5, 16), P(X + ov - 2, Y * 0.5, zt - 8), "#dfe4dd", 9, 1.2, reduced);
   s += `<polygon points="${pts([P(-ov, Y + ov, zt), P(X + ov, Y + ov, zt), P(X + ov, Y + ov, zt - 4), P(-ov, Y + ov, zt - 4)])}" fill="#151a16"/><polygon points="${pts([P(X + ov, -ov, zt), P(X + ov, Y + ov, zt), P(X + ov, Y + ov, zt - 4), P(X + ov, -ov, zt - 4)])}" fill="#0d110e"/><polygon points="${pts([P(-ov, -ov, zt), P(X + ov, -ov, zt), P(X + ov, Y + ov, zt), P(-ov, Y + ov, zt)])}" fill="#1c221d" stroke="#2b332c" stroke-width=".5"/>`;
   const bx = X * 0.5 - 16,
     by = Y * 0.5 - 16,
@@ -164,7 +192,7 @@ export function buildingSvg(): string {
 }
 
 /** SVG (viewBox "0 0 400 340") do escritório — visão de uma área expandida. */
-export function officeSvg(): string {
+export function officeSvg(reduced = false): string {
   const X = 170,
     Y = 130,
     hF = 62;
@@ -181,6 +209,11 @@ export function officeSvg(): string {
   s += floor(P, X, Y, 6, hF, { cols: 3, rows: 3, screens: 4 })
     .replace(/url\(#(?!o)/g, "url(#o")
     .replace(/filter="url\(#glow\)"/g, 'filter="url(#oglow)"');
+  // pessoas circulando entre as filas de mesa (3 corredores)
+  for (let row = 0; row < 3; row++) {
+    const yy = 12 + row * ((Y - 16) / 3) + (Y - 16) / 6;
+    s += pessoaAndando(P(6, yy, 7), P(X - 6, yy, 7), row % 2 ? "#8fe6cf" : "#d9ff6a", 6 + row, row * 0.8, reduced);
+  }
   s += `<polygon points="${pts([P(-3, -3, 6 + hF), P(X + 3, -3, 6 + hF), P(X + 3, Y + 3, 6 + hF), P(-3, Y + 3, 6 + hF)])}" fill="rgba(140,210,200,.05)" stroke="rgba(180,230,215,.25)" stroke-width=".7"/>`;
   ([
     [0, 0],

@@ -104,3 +104,15 @@ export function gerarDashboardDemo(area: Area): AreaDashboardDemo {
 }
 
 export const MESES_GRAFICO = MESES;
+
+/**
+ * Sinal de "tem pendência" por papel — pedido do usuário: o nó do papel
+ * pisca vermelho no mapa mental quando tem algo pendente ali, tipo um alerta
+ * ("dor de cabeça"). Por enquanto é demonstração (~1 em cada 5 papéis,
+ * determinístico pelo id — não muda a cada reload), até decidirmos de qual
+ * fonte real puxar pendência por papel (o painel de pendências atual não
+ * tem esse vínculo por área/papel ainda).
+ */
+export function papelTemPendencia(papelId: string): boolean {
+  return hashSeed(papelId) % 5 === 0;
+}
