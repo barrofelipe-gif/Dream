@@ -136,7 +136,14 @@ export async function chamarFerramentaBling<T = unknown>(
   const token = await getValidBlingAccessToken();
   const res = await fetch(`${BLING_MCP_BASE}/mcp`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      // O SDK oficial de MCP (StreamableHTTPServerTransport, usado pelo
+      // bling-mcp-server) exige esse Accept — sem ele responde 406 (achado
+      // testando contra o servidor real).
+      Accept: "application/json, text/event-stream",
+    },
     body: JSON.stringify({
       jsonrpc: "2.0",
       id: 1,
