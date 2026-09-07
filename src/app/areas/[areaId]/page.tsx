@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getArea } from "@/lib/orgCatalog";
 import { gerarDashboardDemo, MESES_GRAFICO } from "@/lib/orgMockData";
 import { Icon } from "@/components/hub/Icon";
+import FinancasDashboard from "@/components/hub/FinancasDashboard";
 
 /**
  * Dashboard interno da área — linguagem visual da imagem de referência do
@@ -10,7 +11,9 @@ import { Icon } from "@/components/hub/Icon";
  *
  * Todo número aqui é demonstração (ver src/lib/orgMockData.ts) e a tela diz
  * isso explicitamente — o problema encontrado no protótipo original foi
- * métrica fixa parecendo real sem aviso nenhum.
+ * métrica fixa parecendo real sem aviso nenhum. ÚNICA EXCEÇÃO: Finanças, que
+ * já usa dado real da Tray (ver FinancasDashboard.tsx) — primeira área
+ * conectada, as outras 6 seguem mock até serem priorizadas.
  */
 export default async function AreaDashboardPage({
   params,
@@ -20,6 +23,10 @@ export default async function AreaDashboardPage({
   const { areaId } = await params;
   const area = getArea(areaId);
   if (!area) notFound();
+
+  if (areaId === "financas") {
+    return <FinancasDashboard />;
+  }
 
   const demo = gerarDashboardDemo(area);
   const maxProgresso = Math.max(...demo.progresso, 1);
