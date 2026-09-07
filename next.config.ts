@@ -23,20 +23,16 @@ const securityHeaders = [
   { key: "Permissions-Policy", value: "camera=(), geolocation=(), microphone=(self)" },
 ];
 
+// Nenhuma página deste painel deve ficar em cache no navegador — é tudo
+// dado real (financeiro, cliente, pendência) por trás de login, nunca
+// conteúdo estático que valha guardar. Sem isso, o navegador (sobretudo no
+// celular) pode mostrar uma versão antiga da tela mesmo depois de um deploy
+// novo — foi exatamente isso que aconteceu com a seção do Bling em Finanças.
+const semCache = { key: "Cache-Control", value: "no-store, max-age=0" };
+
 const nextConfig: NextConfig = {
   async headers() {
-    return [
-      { source: "/:path*", headers: securityHeaders },
-      // Respostas de API nunca devem ser guardadas em cache de navegador ou CDN:
-      // carregam dado de cliente e faturamento.
-      {
-        source: "/api/:path*",
-        headers: [
-          ...securityHeaders,
-          { key: "Cache-Control", value: "no-store, max-age=0" },
-        ],
-      },
-    ];
+    return [{ source: "/:path*", headers: [...securityHeaders, semCache] }];
   },
 };
 
