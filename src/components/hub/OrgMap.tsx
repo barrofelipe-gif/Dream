@@ -112,8 +112,14 @@ export default function OrgMap({
   const backHintRef = useRef<HTMLDivElement>(null);
   const onOpenRoleRef = useRef(onOpenRole);
   const onOpenAreaRef = useRef(onOpenArea);
-  onOpenRoleRef.current = onOpenRole;
-  onOpenAreaRef.current = onOpenArea;
+  // Atualiza os refs num efeito, não no corpo do render — mexer em ref.current
+  // durante o render é anti-padrão (o hook engine principal roda só uma vez,
+  // no mount, então precisa desse jeito pra sempre chamar a versão mais nova
+  // das callbacks sem precisar reconstruir o SVG inteiro a cada re-render).
+  useEffect(() => {
+    onOpenRoleRef.current = onOpenRole;
+    onOpenAreaRef.current = onOpenArea;
+  }, [onOpenRole, onOpenArea]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -170,6 +176,11 @@ export default function OrgMap({
           const pendente = papelTemPendencia(papel.id);
           const corBase = pendente ? "#ef4444" : color;
           const g = el("g", { style: "opacity:1;cursor:pointer" }, hubsG);
+          // círculo invisível maior só pra capturar toque/clique — o visual
+          // (ring, embaixo) fica pequeno de propósito, mas a área de toque
+          // precisa ter uns 36-44px pra dar pra tocar com o dedo no
+          // celular (medido no teste: o ring visível tinha só ~6px).
+          el("circle", { r: 18, fill: "transparent", "pointer-events": "all" }, g);
           const ring = el("circle", { r: 5, fill: "#0b100d", stroke: corBase, "stroke-width": 0.9 }, g);
           const ig = el("g", { opacity: 0 }, g);
           iconG(ig, papel.icon, 15, color);
@@ -192,6 +203,7 @@ export default function OrgMap({
         });
 
         const g = el("g", { style: "cursor:pointer" }, hubsG);
+        el("circle", { r: 22, fill: "transparent", "pointer-events": "all" }, g);
         const halo = el("circle", { r: 18, fill: color, opacity: 0 }, g);
         const ring = el("circle", { r: 13, fill: "url(#hubFillMap)", stroke: color, "stroke-width": 1.1 }, g);
         const ig = el("g", {}, g);

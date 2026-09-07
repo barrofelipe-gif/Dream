@@ -43,11 +43,11 @@ export default async function AreaDashboardPage({
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {demo.kpis.map((kpi) => (
-          <div key={kpi.label} className="rounded-2xl border border-[#e3e5ea] bg-white p-4 shadow-sm">
+          <div key={kpi.label} className="min-w-0 rounded-2xl border border-[#e3e5ea] bg-white p-4 shadow-sm">
             <p className="text-xs text-[#8a8f9c]">{kpi.label}</p>
-            <p className="mt-1.5 text-2xl font-semibold text-[#1b1f2b]">{kpi.valor}</p>
+            <p className="mt-1.5 truncate text-xl font-semibold text-[#1b1f2b] sm:text-2xl">{kpi.valor}</p>
             {kpi.variacao && (
               <p
                 className={`mt-1 text-xs font-medium ${kpi.variacao.startsWith("-") ? "text-rose-600" : "text-emerald-600"}`}

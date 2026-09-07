@@ -50,27 +50,29 @@ export default async function FinancasDashboard() {
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <div className="rounded-2xl border border-[#e3e5ea] bg-white p-4 shadow-sm">
+      {/* grid-cols-1 no celular: em 2 colunas o valor em R$ estourava a
+          largura do card e cortava o texto (achado testando no mobile) */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="min-w-0 rounded-2xl border border-[#e3e5ea] bg-white p-4 shadow-sm">
           <p className="text-xs text-[#8a8f9c]">Bruto ({dias}d)</p>
-          <p className="mt-1.5 text-2xl font-semibold text-[#1b1f2b]">{brl(caixa.bruto)}</p>
+          <p className="mt-1.5 truncate text-xl font-semibold text-[#1b1f2b] sm:text-2xl">{brl(caixa.bruto)}</p>
           <p className="mt-1 text-xs text-[#5a5f6d]">{caixa.pedidosPagos} pagamento(s)</p>
         </div>
-        <div className="rounded-2xl border border-[#e3e5ea] bg-white p-4 shadow-sm">
+        <div className="min-w-0 rounded-2xl border border-[#e3e5ea] bg-white p-4 shadow-sm">
           <p className="text-xs text-[#8a8f9c]">Líquido na conta</p>
-          <p className="mt-1.5 text-2xl font-semibold text-emerald-700">{brl(caixa.liquido)}</p>
+          <p className="mt-1.5 truncate text-xl font-semibold text-emerald-700 sm:text-2xl">{brl(caixa.liquido)}</p>
           <p className="mt-1 text-xs text-[#5a5f6d]">
             −{brl(caixa.taxas)} de taxa ({(caixa.taxaMediaPct * 100).toFixed(1)}%)
           </p>
         </div>
-        <div className="rounded-2xl border border-[#e3e5ea] bg-white p-4 shadow-sm">
+        <div className="min-w-0 rounded-2xl border border-[#e3e5ea] bg-white p-4 shadow-sm">
           <p className="text-xs text-[#8a8f9c]">A receber</p>
-          <p className="mt-1.5 text-2xl font-semibold text-indigo-700">{brl(caixa.valorAguardando)}</p>
+          <p className="mt-1.5 truncate text-xl font-semibold text-indigo-700 sm:text-2xl">{brl(caixa.valorAguardando)}</p>
           <p className="mt-1 text-xs text-[#5a5f6d]">{caixa.pedidosAguardando} pedido(s) aguardando</p>
         </div>
-        <div className="rounded-2xl border border-[#e3e5ea] bg-white p-4 shadow-sm">
+        <div className="min-w-0 rounded-2xl border border-[#e3e5ea] bg-white p-4 shadow-sm">
           <p className="text-xs text-[#8a8f9c]">Perdido em cancelamento</p>
-          <p className="mt-1.5 text-2xl font-semibold text-rose-700">{brl(caixa.valorCancelado)}</p>
+          <p className="mt-1.5 truncate text-xl font-semibold text-rose-700 sm:text-2xl">{brl(caixa.valorCancelado)}</p>
           <p className="mt-1 text-xs text-[#5a5f6d]">{caixa.pedidosCancelados} pedido(s)</p>
         </div>
       </div>
@@ -97,7 +99,7 @@ export default async function FinancasDashboard() {
         <div className="rounded-2xl border border-[#e3e5ea] bg-white p-5 shadow-sm">
           <p className="text-sm font-medium text-[#1b1f2b]">Margem bruta do catálogo</p>
           <p className="mt-1 text-[11px] text-[#a1a5b0]">Histórico da loja (não é só {dias}d — a Tray não separa venda por período aqui)</p>
-          <p className="mt-3 text-2xl font-semibold text-[#1b1f2b]">{brl(margemBrutaCatalogo)}</p>
+          <p className="mt-3 truncate text-xl font-semibold text-[#1b1f2b] sm:text-2xl">{brl(margemBrutaCatalogo)}</p>
           <p className="mt-1 text-xs text-[#5a5f6d]">{(margemPctCatalogo * 100).toFixed(1)}% sobre {brl(receitaCatalogo)} de receita</p>
           <p className="mt-3 text-xs text-[#a1a5b0]">Aproximação: receita − custo de produto. Não é DRE (falta despesa geral).</p>
         </div>
