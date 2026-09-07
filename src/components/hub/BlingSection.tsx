@@ -36,8 +36,8 @@ export default async function BlingSection({
 
   if (!conectado) {
     return (
-      <div className="rounded-2xl border border-dashed border-[#e3e5ea] bg-white p-5 text-center shadow-sm">
-        <p className="text-sm font-medium text-[#1b1f2b]">Contas a pagar / receber (Bling)</p>
+      <div className="rounded-2xl border-2 border-indigo-200 bg-indigo-50/60 p-5 text-center shadow-sm">
+        <p className="text-base font-semibold text-[#1b1f2b]">📋 Contas a pagar / receber (Bling)</p>
         <p className="mt-1 text-sm text-[#5a5f6d]">
           Conecta o Bling (atacado/B2B) pra ver a projeção de caixa junto com o resto de Finanças.
         </p>

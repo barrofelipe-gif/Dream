@@ -78,6 +78,10 @@ export default async function FinancasDashboard({ blingStatus }: { blingStatus?:
         </div>
       </div>
 
+      {/* Bling logo depois dos KPIs — o usuário teve dificuldade real de
+          achar essa seção quando ela ficava só no fim da página. */}
+      <BlingSection status={blingStatus} />
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="rounded-2xl border border-[#e3e5ea] bg-white p-5 shadow-sm lg:col-span-2">
           <p className="text-sm font-medium text-[#1b1f2b]">Entrada líquida por dia (últimos {dias} dias)</p>
@@ -140,8 +144,6 @@ export default async function FinancasDashboard({ blingStatus }: { blingStatus?:
           </table>
         </div>
       </div>
-
-      <BlingSection status={blingStatus} />
     </div>
   );
 }
