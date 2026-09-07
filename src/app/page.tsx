@@ -25,6 +25,9 @@ export default async function Home() {
         <h1 className="max-w-lg text-4xl font-semibold tracking-tight text-[#e9ede8] sm:text-5xl">
           BFF
         </h1>
+        <p className="mt-3 max-w-xl text-xl font-semibold leading-snug text-[#e9ede8] sm:text-2xl">
+          Toda a empresa, numa única mente.
+        </p>
         <p className="mt-4 max-w-md text-sm leading-relaxed text-[#8b9389] sm:text-base">
           Sete áreas, trinta e seis papéis, um único lugar pra decidir, acompanhar e agir.
         </p>
