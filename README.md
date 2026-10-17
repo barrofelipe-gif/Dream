@@ -257,6 +257,16 @@ publicado; não rola de dentro da sandbox de dev). Assim que estiver
 conectado, tudo que consome a API (CRM de Clientes abaixo, e depois os
 outros setores) passa a puxar dado real sem precisar mudar nada de código.
 
+**Manter a conexão viva** (`/api/cron/sync-tray`, agendado em
+`vercel.json`): o `access_token` da Tray dura só algumas horas e o
+`refresh_token` só é renovado quando algo de fato chama a API — sem uso,
+ele fica parado até vencer e a conexão morre sem avisar ninguém. Esse
+cron roda 1x/dia só pra manter o uso constante (chama `getValidAccessToken()`
+e atualiza `lastSyncAt`), independente de alguém abrir as telas que
+dependem da Tray. A tela `/conectar-tray` mostra um aviso quando o
+`refresh_token` está perto de vencer; se vencer de vez, a correção é
+sempre desconectar e reautorizar por ali — nunca colar token manualmente.
+
 **CRM de Clientes** (`/empresa/clientes`, `src/lib/trayCustomers.ts`):
 lista de clientes com busca, e ao clicar abre o histórico de pedidos,
 ticket médio, total gasto e recência (Ativo ≤30d / Esfriando 31–90d /

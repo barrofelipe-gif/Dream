@@ -126,3 +126,23 @@ export async function trayGet<T = unknown>(resource: string, params: Record<stri
   }
   return res.json() as Promise<T>;
 }
+
+/**
+ * Keep-alive da conexão Tray: usa a API pelo menos 1x/dia mesmo que
+ * nenhum usuário abra as telas que dependem dela. Sem isso, o
+ * refresh_token (que só é renovado quando algo chama a API) pode ficar
+ * tempo demais sem uso e expirar sem ninguém notar — aí a conexão morre
+ * de vez e só volta reautorizando em `/conectar-tray`. Chamado pelo cron
+ * em `/api/cron/sync-tray`.
+ */
+export async function pingTrayConnection(): Promise<{ connected: boolean; storeId?: string | null }> {
+  const connection = await prisma.trayConnection.findFirst({ orderBy: { createdAt: "desc" } });
+  if (!connection) return { connected: false };
+
+  await getValidAccessToken();
+  await prisma.trayConnection.update({
+    where: { id: connection.id },
+    data: { lastSyncAt: new Date() },
+  });
+  return { connected: true, storeId: connection.storeId };
+}
