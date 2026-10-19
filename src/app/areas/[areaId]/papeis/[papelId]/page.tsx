@@ -1,7 +1,12 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
 import { getPapel } from "@/lib/orgCatalog";
 import { Icon } from "@/components/hub/Icon";
+import PlanejamentoPapel from "@/components/hub/financas/PlanejamentoPapel";
+import ControladoriaPapel from "@/components/hub/financas/ControladoriaPapel";
+import CobrancaPapel from "@/components/hub/financas/CobrancaPapel";
+import FaturamentoPapel from "@/components/hub/financas/FaturamentoPapel";
 import AvaliacoesPapel, { type PapelAvaliacoes } from "@/components/hub/avaliacoes/AvaliacoesPapel";
 
 /**
@@ -10,10 +15,22 @@ import AvaliacoesPapel, { type PapelAvaliacoes } from "@/components/hub/avaliaco
  * própria, volta funciona, compartilhável por link) em vez de um overlay
  * temporário.
  *
- * Papéis ligados ao sistema de avaliações (BFF e Moranga) têm conteúdo REAL
- * logo abaixo da ficha: números de cada loja e atalhos que abrem o painel de
- * avaliações aqui dentro do app (/avaliacoes/...), com o mesmo login.
+ * Os 4 papéis de Finanças têm conteúdo REAL embutido logo abaixo da ficha
+ * (ver src/components/hub/financas/) — antes disso, clicar em qualquer um
+ * (ex.: Planejamento) abria só a ficha estática, sem nada de fato conectado,
+ * o que parecia "não abrir nada" na prática.
+ *
+ * Papéis ligados ao sistema de avaliações (BFF e Moranga) também têm conteúdo
+ * REAL: números de cada loja e atalhos que abrem o painel de avaliações aqui
+ * dentro do app (/avaliacoes/...), com o mesmo login.
  */
+const CONTEUDO_FINANCAS: Record<string, () => ReactNode> = {
+  planejamento: () => <PlanejamentoPapel />,
+  controladoria: () => <ControladoriaPapel />,
+  cobranca: () => <CobrancaPapel />,
+  faturamento: () => <FaturamentoPapel />,
+};
+
 const PAPEIS_AVALIACOES: Record<string, PapelAvaliacoes> = {
   "cliente/avaliacoes": "avaliacoes",
   "cliente/conhecimento": "conhecimento",
@@ -31,9 +48,10 @@ export default async function PapelPage({
   if (!encontrado) notFound();
   const { area, papel } = encontrado;
   const avaliacoes = PAPEIS_AVALIACOES[`${areaId}/${papelId}`];
+  const conteudoReal = areaId === "financas" ? CONTEUDO_FINANCAS[papelId] : undefined;
 
   return (
-    <div className={`${avaliacoes ? "max-w-4xl" : "max-w-2xl"} space-y-6 pb-10`}>
+    <div className={`${avaliacoes || conteudoReal ? "max-w-4xl" : "max-w-2xl"} space-y-6 pb-10`}>
       <Link
         href={`/areas/${area.id}`}
         className="inline-flex items-center gap-1.5 text-xs font-medium text-[#8a8f9c] hover:text-[#1b1f2b]"
@@ -70,7 +88,9 @@ export default async function PapelPage({
           </div>
         </div>
 
-        {avaliacoes ? (
+        {conteudoReal ? (
+          conteudoReal()
+        ) : avaliacoes ? (
           <AvaliacoesPapel papel={avaliacoes} />
         ) : (
           <div className="mt-5 rounded-xl border border-dashed border-[#e3e5ea] bg-[#f9fafb] p-3 text-xs text-[#8a8f9c]">
