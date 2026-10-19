@@ -123,6 +123,192 @@ export async function isBlingConectado(): Promise<boolean> {
   return !!conn;
 }
 
+/**
+ * Códigos numéricos de "situacao" que a Bling devolve nos registros de
+ * contas a pagar/receber (não documentado publicamente — confirmado
+ * testando contra a API real): 1 = em aberto, 2 = pago/recebido,
+ * 4 = cancelado. Qualquer outro código é tratado como "ainda conta".
+ */
+const SITUACAO_QUITADA = new Set([2, 4]);
+function estaQuitada(situacao: unknown): boolean {
+  return typeof situacao === "number" && SITUACAO_QUITADA.has(situacao);
+}
+
+// A ferramenta bling_contas_pagar/receber trunca a resposta em 25.000
+// caracteres (bling-mcp-server) — com nome de contato resolvido, 100
+// registros por página estoura isso e devolve um JSON cortado no meio
+// (quebra o JSON.parse). 40 por página fica com folga segura.
+const PAGE_SIZE = 40;
+
+interface ContaBling {
+  id: number;
+  situacao: number;
+  vencimento: string;
+  valor: number;
+  contato?: { id: number; nome?: string };
+}
+
+export interface FornecedorDespesa {
+  nome: string;
+  total: number;
+  ocorrencias: number;
+  recorrente: boolean;
+  proximoVencimento: string;
+}
+
+export interface DespesasAbertas {
+  periodo: { dataInicial: string; dataFinal: string };
+  total: number;
+  porFornecedor: FornecedorDespesa[];
+  truncado: boolean;
+}
+
+/**
+ * Contas a pagar em aberto na janela pedida, agrupadas por fornecedor.
+ *
+ * IMPORTANTE: a Bling tem categorização própria de despesa (ex.: "despesa
+ * fixa" vs "despesa variável"), mas o app cadastrado ("Fluxo de Caixa MCP")
+ * ainda não tem o escopo "Categorias de Receitas e Despesas" liberado — a
+ * API responde 403 insufficient_scope pra esse endpoint. Até isso ser
+ * liberado (no cadastro do app, no painel de apps da Bling) e reconectado,
+ * uso uma aproximação: fornecedor que aparece 2+ vezes na janela é marcado
+ * como "recorrente" (proxy razoável pra despesa fixa/parcelada), mas não é
+ * a categoria oficial.
+ */
+export async function buscarDespesasAbertas(diasJanela = 60): Promise<DespesasAbertas> {
+  const { hoje, fim } = janelaDeDias(diasJanela);
+  const porFornecedor = new Map<string, { total: number; ocorrencias: number; proximoVencimento: string }>();
+  let truncado = false;
+
+  for (let pagina = 1; pagina <= 5; pagina++) {
+    const resp = await chamarFerramentaBling<{ count: number; data: ContaBling[] }>("bling_contas_pagar", {
+      dataInicialVencimento: hoje,
+      dataFinalVencimento: fim,
+      pagina,
+      limite: PAGE_SIZE,
+    });
+    const abertas = resp.data.filter((c) => !estaQuitada(c.situacao));
+    for (const c of abertas) {
+      const nome = c.contato?.nome ?? `Fornecedor #${c.contato?.id ?? "desconhecido"}`;
+      const cur = porFornecedor.get(nome) ?? { total: 0, ocorrencias: 0, proximoVencimento: c.vencimento };
+      cur.total += c.valor;
+      cur.ocorrencias += 1;
+      if (c.vencimento < cur.proximoVencimento) cur.proximoVencimento = c.vencimento;
+      porFornecedor.set(nome, cur);
+    }
+    if (resp.data.length < PAGE_SIZE) break;
+    if (pagina === 5) truncado = true;
+    await sleep(400);
+  }
+
+  const lista: FornecedorDespesa[] = [...porFornecedor.entries()]
+    .map(([nome, v]) => ({
+      nome,
+      total: Math.round(v.total * 100) / 100,
+      ocorrencias: v.ocorrencias,
+      recorrente: v.ocorrencias >= 2,
+      proximoVencimento: v.proximoVencimento,
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  return {
+    periodo: { dataInicial: hoje, dataFinal: fim },
+    total: Math.round(lista.reduce((s, f) => s + f.total, 0) * 100) / 100,
+    porFornecedor: lista,
+    truncado,
+  };
+}
+
+export interface ContaReceberAberta {
+  nome: string;
+  valor: number;
+  vencimento: string;
+  atrasada: boolean;
+}
+
+export interface ContasReceberAbertas {
+  periodo: { dataInicial: string; dataFinal: string };
+  totalAtrasado: number;
+  totalAVencer: number;
+  itens: ContaReceberAberta[];
+  truncado: boolean;
+}
+
+/** Contas a receber em aberto — separadas em atrasadas (vencimento < hoje) e a vencer, pra régua de cobrança. */
+export async function buscarContasReceberAbertas(diasJanela = 30): Promise<ContasReceberAbertas> {
+  const { hoje } = janelaDeDias(0);
+  const { fim } = janelaDeDias(diasJanela);
+  // também busca o que já venceu nos últimos 90 dias e continua em aberto (inadimplência)
+  const { fim: inicioAtraso } = janelaDeDias(-90);
+
+  const itens: ContaReceberAberta[] = [];
+  let truncado = false;
+  for (let pagina = 1; pagina <= 5; pagina++) {
+    const resp = await chamarFerramentaBling<{ count: number; data: ContaBling[] }>("bling_contas_receber", {
+      dataInicialVencimento: inicioAtraso,
+      dataFinalVencimento: fim,
+      pagina,
+      limite: PAGE_SIZE,
+    });
+    for (const c of resp.data.filter((c) => !estaQuitada(c.situacao))) {
+      itens.push({
+        nome: c.contato?.nome ?? `Cliente #${c.contato?.id ?? "desconhecido"}`,
+        valor: c.valor,
+        vencimento: c.vencimento,
+        atrasada: c.vencimento < hoje,
+      });
+    }
+    if (resp.data.length < PAGE_SIZE) break;
+    if (pagina === 5) truncado = true;
+    await sleep(400);
+  }
+
+  itens.sort((a, b) => a.vencimento.localeCompare(b.vencimento));
+
+  return {
+    periodo: { dataInicial: inicioAtraso, dataFinal: fim },
+    totalAtrasado: Math.round(itens.filter((i) => i.atrasada).reduce((s, i) => s + i.valor, 0) * 100) / 100,
+    totalAVencer: Math.round(itens.filter((i) => !i.atrasada).reduce((s, i) => s + i.valor, 0) * 100) / 100,
+    itens,
+    truncado,
+  };
+}
+
+export interface ProjecaoJanela {
+  dias: number;
+  totalEntradas: number;
+  totalSaidas: number;
+  saldoFinalProjetado: number;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Projeta o fluxo de caixa Bling (contas a pagar/receber) em 3 janelas —
+ * 30/60/90 dias — pra visão de curto/médio prazo.
+ *
+ * Sequencial, não em paralelo: cada chamada de bling_fluxo_caixa já dispara
+ * 2 requisições simultâneas pro lado da Bling (contas a pagar + a receber),
+ * e a Bling limita a 3 req/s por app — 3 janelas em paralelo estourava isso
+ * e voltava 429.
+ */
+export async function buscarProjecaoMultiJanela(): Promise<ProjecaoJanela[]> {
+  const janelas = [30, 60, 90];
+  const resultados: ProjecaoJanela[] = [];
+  for (const dias of janelas) {
+    const { hoje, fim } = janelaDeDias(dias);
+    const r = await chamarFerramentaBling<{ totalEntradas: number; totalSaidas: number; saldoFinalProjetado: number }>(
+      "bling_fluxo_caixa",
+      { dataInicial: hoje, dataFinal: fim, granularidade: "mes" }
+    );
+    resultados.push({ dias, totalEntradas: r.totalEntradas, totalSaidas: r.totalSaidas, saldoFinalProjetado: r.saldoFinalProjetado });
+    if (dias !== janelas[janelas.length - 1]) await sleep(400);
+  }
+  return resultados;
+}
+
 interface McpToolResult {
   content?: { type: string; text: string }[];
   isError?: boolean;
@@ -158,5 +344,13 @@ export async function chamarFerramentaBling<T = unknown>(
   if (json.error) throw new Error(`bling-mcp-server: ${json.error.message}`);
   const texto = json.result?.content?.[0]?.text ?? "{}";
   if (json.result?.isError) throw new Error(`Ferramenta ${nome} retornou erro: ${texto}`);
-  return JSON.parse(texto) as T;
+  try {
+    return JSON.parse(texto) as T;
+  } catch {
+    // A ferramenta trunca a resposta em 25.000 caracteres — se ainda assim
+    // vier truncada, JSON.parse quebra no meio. Erro claro em vez de um
+    // SyntaxError opaco: quem chamou sabe que precisa pedir menos por vez
+    // (página menor / janela de data mais curta).
+    throw new Error(`bling-mcp-server: resposta de ${nome} truncada ou inválida — peça menos itens por página.`);
+  }
 }
