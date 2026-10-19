@@ -1,9 +1,9 @@
 /**
- * Catálogo único das 7 áreas e 36 papéis do hub — fonte da verdade portada
- * do protótipo original (Infuser Skilltree, `DEPTS` em app.js). Nomes,
- * hierarquia e contagens preservados: 6 managers (dentro de CEO) + 30
- * agentes = 36 papéis, distribuídos em Cliente, Engenharia, Finanças,
- * Jurídico, Receita e Growth.
+ * Catálogo único das 7 áreas e dos papéis do hub — fonte da verdade portada
+ * do protótipo original (Infuser Skilltree, `DEPTS` em app.js): 6 managers
+ * (dentro de CEO) + agentes, distribuídos em Cliente, Engenharia, Finanças,
+ * Jurídico, Receita e Growth. Em 19/10/2026 entraram Cliente › Avaliações e
+ * Growth › Conversão (sistema de avaliações, ver src/lib/avaliacoes.ts).
  *
  * `tools` (ferramentas do dashboard de cada área) e `kpis` (indicadores
  * demonstrativos) são PROPOSTA nova — não existiam no protótipo original —
@@ -69,6 +69,7 @@ export const AREAS: Area[] = [
       { id: "suporte", label: "SUPORTE", icon: "headset", type: "AGENTE", title: "Agente de Suporte", desc: "Responder tickets, classificar por severidade e escalar incidentes para Engenharia.", skills: ["tickets", "sla", "escalonamento"] },
       { id: "conhecimento", label: "CONHECIMENTO", icon: "book", type: "AGENTE", title: "Agente de Conhecimento", desc: "Manter a base de conhecimento, tutoriais e respostas padrão sempre atualizadas.", skills: ["base de conhecimento", "tutoriais", "faq"] },
       { id: "retencao", label: "RETENÇÃO", icon: "heart", type: "AGENTE", title: "Agente de Retenção", desc: "Monitorar saúde da conta, prever churn e acionar planos de recuperação.", skills: ["health score", "churn", "renovação"] },
+      { id: "avaliacoes", label: "AVALIAÇÕES", icon: "star", type: "AGENTE", title: "Agente de Avaliações", desc: "Coletar, aprovar e responder as avaliações de produto e da loja (BFF e Moranga), pedir avaliação depois da entrega e acompanhar nota, NPS e reputação.", skills: ["avaliações", "pedir avaliação", "nps", "reputação"] },
     ],
   },
   {
@@ -154,6 +155,7 @@ export const AREAS: Area[] = [
       { id: "distribuicao", label: "DISTRIBUIÇÃO", icon: "share", type: "AGENTE", title: "Agente de Distribuição", desc: "Programar e distribuir conteúdo nos canais certos, medindo alcance por peça.", skills: ["calendário", "canais", "alcance"] },
       { id: "seo", label: "SEO", icon: "globe", type: "AGENTE", title: "Agente de SEO", desc: "Pesquisar palavras-chave, otimizar páginas e acompanhar posições semanalmente.", skills: ["keywords", "on-page", "ranking"] },
       { id: "paid", label: "PAID", icon: "ad", type: "AGENTE", title: "Agente de Mídia Paga", desc: "Operar campanhas, criativos e orçamento com ROAS como métrica de decisão.", skills: ["campanhas", "criativos", "roas"] },
+      { id: "conversao", label: "CONVERSÃO", icon: "target", type: "AGENTE", title: "Agente de Conversão", desc: "Entender por que cada produto vende: funil visto → carrinho → compra, prova social, plano de melhorias por produto e histórico do que foi feito.", skills: ["funil", "prova social", "melhorias", "histórico"] },
     ],
   },
 ];
@@ -177,7 +179,7 @@ export interface RegistroBusca {
   papelId?: string;
 }
 
-/** Catálogo achatado pra busca global — 7 áreas + 36 papéis = 43 registros. */
+/** Catálogo achatado pra busca global — 7 áreas + todos os papéis. */
 export const CATALOGO_BUSCA: RegistroBusca[] = AREAS.flatMap((area) => [
   { kind: "ÁREA" as const, label: area.name, sub: area.sub, areaId: area.id },
   ...area.children.map((p) => ({

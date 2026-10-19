@@ -32,7 +32,12 @@ const semCache = { key: "Cache-Control", value: "no-store, max-age=0" };
 
 const nextConfig: NextConfig = {
   async headers() {
-    return [{ source: "/:path*", headers: [...securityHeaders, semCache] }];
+    return [
+      // /avaliacoes/... é o sistema de avaliações (repassado pelo proxy): o cache é o que ele mandar, porque o
+      // widget e as estrelas das lojas precisam do cache da CDN (sem ele, cada visita na loja vira acesso ao servidor).
+      { source: "/((?!avaliacoes(?:/|$)).*)", headers: [...securityHeaders, semCache] },
+      { source: "/avaliacoes/:path*", headers: securityHeaders },
+    ];
   },
 };
 

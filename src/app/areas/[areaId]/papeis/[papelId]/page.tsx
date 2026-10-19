@@ -2,13 +2,25 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getPapel } from "@/lib/orgCatalog";
 import { Icon } from "@/components/hub/Icon";
+import AvaliacoesPapel, { type PapelAvaliacoes } from "@/components/hub/avaliacoes/AvaliacoesPapel";
 
 /**
  * Ficha de um papel (manager ou agente) — equivalente ao painel lateral
  * `openPanel()` do protótipo original, só que como página de verdade (rota
  * própria, volta funciona, compartilhável por link) em vez de um overlay
  * temporário.
+ *
+ * Papéis ligados ao sistema de avaliações (BFF e Moranga) têm conteúdo REAL
+ * logo abaixo da ficha: números de cada loja e atalhos que abrem o painel de
+ * avaliações aqui dentro do app (/avaliacoes/...), com o mesmo login.
  */
+const PAPEIS_AVALIACOES: Record<string, PapelAvaliacoes> = {
+  "cliente/avaliacoes": "avaliacoes",
+  "cliente/conhecimento": "conhecimento",
+  "cliente/suporte": "suporte",
+  "growth/conversao": "conversao",
+};
+
 export default async function PapelPage({
   params,
 }: {
@@ -18,9 +30,10 @@ export default async function PapelPage({
   const encontrado = getPapel(areaId, papelId);
   if (!encontrado) notFound();
   const { area, papel } = encontrado;
+  const avaliacoes = PAPEIS_AVALIACOES[`${areaId}/${papelId}`];
 
   return (
-    <div className="max-w-2xl space-y-6 pb-10">
+    <div className={`${avaliacoes ? "max-w-4xl" : "max-w-2xl"} space-y-6 pb-10`}>
       <Link
         href={`/areas/${area.id}`}
         className="inline-flex items-center gap-1.5 text-xs font-medium text-[#8a8f9c] hover:text-[#1b1f2b]"
@@ -57,9 +70,13 @@ export default async function PapelPage({
           </div>
         </div>
 
-        <div className="mt-5 rounded-xl border border-dashed border-[#e3e5ea] bg-[#f9fafb] p-3 text-xs text-[#8a8f9c]">
-          Papel catalogado apenas — ainda sem execução automatizada ou ferramenta conectada.
-        </div>
+        {avaliacoes ? (
+          <AvaliacoesPapel papel={avaliacoes} />
+        ) : (
+          <div className="mt-5 rounded-xl border border-dashed border-[#e3e5ea] bg-[#f9fafb] p-3 text-xs text-[#8a8f9c]">
+            Papel catalogado apenas — ainda sem execução automatizada ou ferramenta conectada.
+          </div>
+        )}
       </div>
     </div>
   );
