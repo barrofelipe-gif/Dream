@@ -14,11 +14,19 @@ import { hasSectorAccess } from "@/lib/permissions";
  */
 async function repassarAvaliacoes(req: NextRequest, user: { email?: string | null; id?: string; role?: string } | null) {
   const { pathname, search } = req.nextUrl;
-  const rest = pathname.replace(/^\/avaliacoes/, "");
+  // Tira TODOS os /avaliacoes da frente: o serviço também aceita /avaliacoes/... e tiraria de novo, então a regra
+  // de login tem que olhar a rota final (senão /avaliacoes/avaliacoes/api/admin passaria como pública).
+  let rest = pathname;
+  while (/^\/avaliacoes(\/|$)/i.test(rest)) rest = rest.replace(/^\/avaliacoes/i, "");
+  rest = rest.replace(/^\/+/, "/");
   if (rest === "" || rest === "/") return NextResponse.redirect(new URL("/avaliacoes/admin", req.nextUrl.origin));
   if (!REVIEWS_ORIGIN) return new NextResponse("Sistema de avaliações não configurado (REVIEWS_ORIGIN).", { status: 503 });
+  let rota: string;
+  try { rota = decodeURIComponent(rest).replace(/\\/g, "/").replace(/\/{2,}/g, "/").toLowerCase(); }
+  catch { return new NextResponse("Endereço inválido.", { status: 400 }); }
+  if (/^\/avaliacoes(\/|$)/.test(rota)) return new NextResponse("Endereço inválido.", { status: 400 });
 
-  const painel = rest === "/admin" || rest.startsWith("/admin/") || rest.startsWith("/api/admin/") || rest.startsWith("/api/cron/");
+  const painel = /^\/(admin(\/|$)|api\/admin(\/|$)|api\/cron(\/|$))/.test(rota);
   const headers = new Headers(req.headers);
   headers.delete("x-bffr-sso");
   headers.delete("host");
@@ -33,12 +41,22 @@ async function repassarAvaliacoes(req: NextRequest, user: { email?: string | nul
       loginUrl.searchParams.set("callbackUrl", pathname + search);
       return NextResponse.redirect(loginUrl);
     }
+    // Só admin ou quem tem acesso ao setor Clientes. Sem isso, nem chega ao serviço (nem com a senha própria dele).
     const pode = user.role === "admin" || (!!user.id && (await hasSectorAccess(user.id, user.role || "", "clientes")));
-    const pass = pode && user.email ? reviewsPass(user.email) : null;
-    if (pass) headers.set("x-bffr-sso", pass);
-    // Sem permissão (ou sem segredo configurado) o painel pede a senha própria dele, como antes.
+    if (!pode) {
+      return rota.startsWith("/api/")
+        ? NextResponse.json({ error: "Seu usuário não tem acesso ao painel de avaliações (setor Clientes)." }, { status: 403 })
+        : new NextResponse("Seu usuário não tem acesso ao painel de avaliações. Peça ao administrador para liberar o setor Clientes.", { status: 403, headers: { "content-type": "text/plain; charset=utf-8" } });
+    }
+    const pass = user.email ? reviewsPass(user.email) : null;
+    if (!pass) return new NextResponse("Login único do painel de avaliações não configurado (REVIEWS_SSO_SECRET).", { status: 503 });
+    headers.set("x-bffr-sso", pass);
   }
-  return NextResponse.rewrite(new URL(rest + search, REVIEWS_ORIGIN), { request: { headers } });
+  // Monta o destino trocando só o caminho: o servidor de destino é sempre o REVIEWS_ORIGIN (nunca outro host).
+  const destino = new URL(REVIEWS_ORIGIN);
+  destino.pathname = rest;
+  destino.search = search;
+  return NextResponse.rewrite(destino, { request: { headers } });
 }
 
 export default auth(async (req) => {
