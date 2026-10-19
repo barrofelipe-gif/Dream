@@ -21,6 +21,16 @@ export function reviewsPass(email: string): string | null {
   return `${ts}.${who}.${sig}`;
 }
 
+/**
+ * Marca de "veio pelo app" em todo pedido repassado: quando o endereço antigo do serviço for desligado, só o app
+ * (e as rotinas/scripts dele) continua falando com ele direto; o resto é mandado para app.../avaliacoes.
+ */
+export function viaToken(): string | null {
+  const s = process.env.REVIEWS_SSO_SECRET;
+  if (!s || s.length < 24) return null;
+  return createHmac("sha256", s).update("via-app").digest("base64url");
+}
+
 export type LojaId = "bff" | "moranga";
 export const LOJAS: { id: LojaId; nome: string }[] = [
   { id: "bff", nome: "BFF Fitness" },

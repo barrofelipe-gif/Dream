@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { NextResponse, type NextRequest } from "next/server";
-import { REVIEWS_ORIGIN, reviewsPass } from "@/lib/avaliacoes";
+import { REVIEWS_ORIGIN, reviewsPass, viaToken } from "@/lib/avaliacoes";
 import { hasSectorAccess } from "@/lib/permissions";
 
 /**
@@ -30,6 +30,10 @@ async function repassarAvaliacoes(req: NextRequest, user: { email?: string | nul
   const headers = new Headers(req.headers);
   headers.delete("x-bffr-sso");
   headers.delete("host");
+  // "Veio pelo app": com o endereço antigo desligado, o serviço só atende direto quem traz esta marca.
+  const via = viaToken();
+  if (via) headers.set("x-bffr-via", via);
+  else headers.delete("x-bffr-via");
   const cookies = (req.headers.get("cookie") || "").split(/;\s*/).filter((c) => c.startsWith("bffr_")).join("; ");
   if (cookies) headers.set("cookie", cookies);
   else headers.delete("cookie");
