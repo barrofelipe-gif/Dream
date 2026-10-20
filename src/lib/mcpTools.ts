@@ -13,6 +13,8 @@ import { AVALIACOES_TOOLS, isAvaliacoesTool, runAvaliacoesTool } from "@/lib/ava
  *
  * Tudo aqui é SOMENTE LEITURA de propósito: um assistente conectado pode
  * consultar vendas, clientes e pendências, mas não altera nada.
+ * Única exceção (pedido do Felipe, 19/10/2026): as funções de avaliações marcadas "ALTERA O SITE" em
+ * src/lib/avaliacoesMcp.ts (importar planilha com conferência, aprovar/rejeitar/devolver para a fila, responder).
  */
 
 export interface McpTool {
@@ -20,9 +22,11 @@ export interface McpTool {
   description: string;
   inputSchema: {
     type: "object";
-    properties: Record<string, { type: string; description: string; enum?: unknown[] }>;
+    properties: Record<string, { type: string; description: string; enum?: unknown[]; items?: { type: string } }>;
     required?: string[];
   };
+  /** Dica do protocolo MCP para o assistente: só leitura ou altera algo (o Claude pede confirmação nas que alteram). */
+  annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean; openWorldHint?: boolean };
 }
 
 export const MCP_TOOLS: McpTool[] = [

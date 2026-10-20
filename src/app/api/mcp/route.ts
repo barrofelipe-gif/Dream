@@ -7,7 +7,8 @@ import { MCP_TOOLS, runMcpTool } from "@/lib/mcpTools";
  * Servidor MCP (Model Context Protocol) remoto — Streamable HTTP.
  *
  * Conecta assistentes externos (Claude no celular/desktop, ChatGPT) aos dados
- * da BFF. Somente leitura: nenhuma ferramenta cria, altera ou apaga nada.
+ * da BFF. Somente leitura: nenhuma ferramenta cria, altera ou apaga nada — exceto as de avaliações marcadas
+ * "ALTERA O SITE" (src/lib/avaliacoesMcp.ts), pedidas pelo Felipe em 19/10/2026, que exigem a empresa explícita.
  *
  * SEGURANÇA
  * - O token vai no cabeçalho `Authorization: Bearer <token>`, nunca na URL.

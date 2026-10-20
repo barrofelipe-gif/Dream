@@ -3,25 +3,98 @@ import type { McpTool } from "@/lib/mcpTools";
 import { LOJAS, type LojaId } from "@/lib/avaliacoes";
 
 /**
- * Avaliações (BFF e Moranga) dentro do conector MCP do app — SOMENTE LEITURA.
+ * Avaliações (BFF e Moranga) dentro do conector MCP do app.
  *
  * O sistema de avaliações tem o próprio conector MCP (ferramentas prontas, que leem direto do banco dele e já
- * tiram e-mail, telefone e IP). Aqui o app só repassa as consultas de LEITURA para lá, por uma lista fechada:
- * aprovar, responder, rejeitar e registrar NUNCA passam por este conector (continuam no painel, com conferência).
+ * tiram e-mail, telefone e IP). Aqui o app repassa para lá, por uma LISTA FECHADA (DEFS):
+ *  - leitura (relatórios, panorama, listas);
+ *  - edição pedida pelo Felipe em 19/10/2026 (escrita: true): importar planilha com conferência, aprovar/rejeitar/
+ *    devolver para a fila, responder avaliação e pergunta, rascunho da IA, registrar melhoria. Essas exigem a
+ *    empresa explícita (nada de "padrão bff" numa ação que muda o site) e vão marcadas "ALTERA O SITE".
+ * O texto, a nota e a data escritos pela cliente não são editáveis aqui nem no painel.
  *
  *  - REVIEWS_MCP_URL  endereço secreto do conector de lá (https://.../api/mcp/<segredo>). A empresa vai em ?loja=.
  */
 
 const LOJA = {
   type: "string",
-  description: "Empresa: bff (BFF Fitness, atacado) ou moranga (Moranga Biquínis, varejo). Padrão: bff.",
+  description: "Empresa: bff (BFF Fitness, atacado) ou moranga (Moranga Biquínis, varejo). Padrão nas consultas: bff.",
   enum: LOJAS.map((l) => l.id),
 };
 
-type Def = { remoto: string; description: string; properties?: McpTool["inputSchema"]["properties"]; required?: string[] };
+type Def = { remoto: string; description: string; properties?: McpTool["inputSchema"]["properties"]; required?: string[]; escrita?: boolean };
 
-// nome aqui -> ferramenta de leitura de lá. So o que esta nesta lista e repassado.
+const STATUS_ACAO = { type: "string", description: "approved = publicar no site; rejected = rejeitar; pending = tirar do site e devolver para a fila (sem apagar).", enum: ["approved", "rejected", "pending"] };
+const IDS = (o: string) => ({ type: "array", items: { type: "number" }, description: `IDs das ${o} (até 500 por vez).` });
+
+// nome aqui -> ferramenta de lá. Só o que está nesta lista é repassado.
 const DEFS: Record<string, Def> = {
+  avaliacoes_panorama: {
+    remoto: "panorama",
+    description: "Panorama de ponta a ponta das avaliações numa chamada: avaliações (quantas, nota, fila, compra verificada), loja e reputação, perguntas e buscas sem resposta, pedidos de avaliação e cashback, alertas com a lista de produtos (ID), funil da loja e por família, piores produtos antes do carrinho, os que mais perdem venda e o que fazer, mudanças recentes e moderação. Use primeiro quando pedirem panorama, resumo geral, \"como estamos\" ou análise completa.",
+    properties: { dias: { type: "number", description: "Período das avaliações e perguntas. Padrão: 30. O funil é sempre 30 dias." } },
+  },
+  avaliacoes_importar: {
+    remoto: "importar_avaliacoes", escrita: true,
+    description: "Sobe uma lista de avaliações (de produto ou da loja), como em Importar e backup do painel. A planilha vai como texto CSV com cabeçalho na 1ª linha (separador ; , ou tab). Produto: id_produto*, nota*, nome*, texto, cidade, data (dd/mm/aaaa), qualidade, conforto, tamanho, recomenda, titulo, email, fotos, resposta_loja, verificado, pedido. Loja: nota*, nome*, texto, cidade, data, entrega, atendimento, email, verificado, pedido. SEMPRE rode antes com conferir=true e mostre o resultado; só grave (conferir=false) depois que o Felipe confirmar. publicar=false (padrão) manda para a fila de aprovação. Até uns 2.000 linhas por vez.",
+    properties: {
+      tipo: { type: "string", description: "produto ou loja.", enum: ["produto", "loja"] },
+      planilha_csv: { type: "string", description: "Conteúdo da planilha em CSV, com o cabeçalho." },
+      conferir: { type: "boolean", description: "true = só confere, não grava (padrão). false = grava." },
+      publicar: { type: "boolean", description: "true = publica direto no site; false = vai para a fila (padrão)." },
+    },
+    required: ["loja", "tipo", "planilha_csv"],
+  },
+  avaliacoes_moderar: {
+    remoto: "moderar_avaliacoes", escrita: true,
+    description: "Avaliações de PRODUTO: publicar no site (paga o cashback da Bonifiq quando for o caso), rejeitar ou tirar do site e devolver para a fila.",
+    properties: { avaliacao_ids: IDS("avaliações"), acao: STATUS_ACAO },
+    required: ["loja", "avaliacao_ids", "acao"],
+  },
+  avaliacoes_moderar_loja: {
+    remoto: "moderar_avaliacoes_da_loja", escrita: true,
+    description: "Avaliações da LOJA (depoimentos da home e do selo): publicar, rejeitar ou tirar do site e devolver para a fila.",
+    properties: { avaliacao_ids: IDS("avaliações da loja"), acao: STATUS_ACAO },
+    required: ["loja", "avaliacao_ids", "acao"],
+  },
+  avaliacoes_responder: {
+    remoto: "responder_avaliacao", escrita: true,
+    description: "Grava a resposta da loja numa avaliação de produto (aparece abaixo dela no site). Texto vazio apaga a resposta. Só com o texto aprovado pelo Felipe.",
+    properties: { avaliacao_id: { type: "number", description: "ID da avaliação." }, resposta: { type: "string", description: "Texto da resposta (até 1.500 letras)." } },
+    required: ["loja", "avaliacao_id", "resposta"],
+  },
+  avaliacoes_responder_pergunta: {
+    remoto: "responder_pergunta", escrita: true,
+    description: "Publica a resposta da loja numa pergunta de produto (aparece no site na hora). Só com o texto aprovado pelo Felipe.",
+    properties: {
+      pergunta_id: { type: "number", description: "ID da pergunta." },
+      resposta: { type: "string", description: "Texto da resposta." },
+      salvar_como_padrao: { type: "string", description: "Também salvar como pergunta padrão: nao (padrão), todos (todos os produtos) ou produto (só este).", enum: ["nao", "todos", "produto"] },
+    },
+    required: ["loja", "pergunta_id", "resposta"],
+  },
+  avaliacoes_rejeitar_pergunta: {
+    remoto: "rejeitar_pergunta", escrita: true,
+    description: "Tira uma pergunta da fila sem publicar (spam, ofensiva, repetida).",
+    properties: { pergunta_id: { type: "number", description: "ID da pergunta." } },
+    required: ["loja", "pergunta_id"],
+  },
+  avaliacoes_rascunho_resposta: {
+    remoto: "rascunho_resposta_ia", escrita: true,
+    description: "Gera um rascunho de resposta para uma pergunta (IA, com descrição do produto e perguntas padrão). NÃO publica: o rascunho fica salvo no painel para revisar.",
+    properties: { pergunta_id: { type: "number", description: "ID da pergunta." } },
+    required: ["loja", "pergunta_id"],
+  },
+  avaliacoes_registrar_melhoria: {
+    remoto: "registrar_melhoria", escrita: true,
+    description: "Anota no Histórico de melhorias algo feito num produto (ex.: \"coloquei 3 fotos novas\", \"pedi avaliação para 40 clientes\"). Só quando o Felipe disser que fez.",
+    properties: {
+      produto_id: { type: "number", description: "ID do produto (opcional: sem ele vale para a loja toda)." },
+      area: { type: "string", description: "Área: prova social, fotos, descrição, preço, estoque, dúvidas, reclamações, carrinho, página, tráfego ou outro." },
+      o_que_foi_feito: { type: "string", description: "O que foi feito." },
+    },
+    required: ["loja", "area", "o_que_foi_feito"],
+  },
   avaliacoes_resumo: {
     remoto: "resumo_painel",
     description: "Avaliações e perguntas: números gerais do período — avaliações de produto (nota, distribuição, com foto, compra verificada), avaliações da loja e NPS, perguntas (na fila, tempo de resposta), o que as clientes buscam, pedidos de avaliação e cashback, mais vendidos x quantas avaliações têm.",
@@ -113,8 +186,11 @@ const DEFS: Record<string, Def> = {
 
 export const AVALIACOES_TOOLS: McpTool[] = Object.entries(DEFS).map(([name, d]) => ({
   name,
-  description: `${d.description} (Sistema de avaliações; somente leitura.)`,
+  description: d.escrita
+    ? `ALTERA O SITE (sistema de avaliações). Só use quando o Felipe pedir e confirme a empresa e o que vai mudar antes. ${d.description}`
+    : `${d.description} (Sistema de avaliações; somente leitura.)`,
   inputSchema: { type: "object", properties: { loja: LOJA, ...(d.properties || {}) }, ...(d.required ? { required: d.required } : {}) },
+  annotations: d.escrita ? { readOnlyHint: false, destructiveHint: d.remoto !== "registrar_melhoria" && d.remoto !== "rascunho_resposta_ia", openWorldHint: true } : { readOnlyHint: true, openWorldHint: false },
 }));
 
 export const isAvaliacoesTool = (name: string) => Object.prototype.hasOwnProperty.call(DEFS, name);
@@ -155,6 +231,8 @@ export async function runAvaliacoesTool(name: string, args: Record<string, unkno
   if (!base) throw new Error("Conector de avaliações não configurado no app (REVIEWS_MCP_URL).");
 
   const { loja: lojaArg, ...resto } = args;
+  // Acao que muda o site nunca cai na BFF "por padrao": a empresa tem que vir dita.
+  if (def.escrita && lojaArg == null) throw new Error("Diga a empresa (bff ou moranga) antes de alterar o site.");
   const loja = (lojaArg ?? "bff") as LojaId;
   if (!LOJAS.some((l) => l.id === loja)) throw new Error(`Empresa inválida: ${String(lojaArg)}. Use bff ou moranga.`);
   const url = new URL(base);
