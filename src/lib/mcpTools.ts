@@ -5,6 +5,7 @@ import { fetchOrdersSince, summarizeSales, dataDiasAtras, isCancelado } from "@/
 import { fetchProducts, analisarProdutos, resumirAbc } from "@/lib/trayProducts";
 import { buscarPedidosCaixa, montarFluxoCaixa } from "@/lib/trayCaixa";
 import { produtoGradeVendas } from "@/lib/trayVariants";
+import { AVALIACOES_TOOLS, isAvaliacoesTool, runAvaliacoesTool } from "@/lib/avaliacoesMcp";
 
 /**
  * Ferramentas expostas via MCP (Model Context Protocol) para clientes externos
@@ -188,6 +189,8 @@ export const MCP_TOOLS: McpTool[] = [
       required: ["product_id"],
     },
   },
+  // Avaliações (BFF e Moranga): só leitura, repassadas ao sistema de avaliações (src/lib/avaliacoesMcp.ts)
+  ...AVALIACOES_TOOLS,
 ];
 
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -210,6 +213,7 @@ function mascararEmail(email: string | null | undefined): string {
 
 /** Executa uma ferramenta e devolve texto pronto pro assistente ler. */
 export async function runMcpTool(name: string, args: Record<string, unknown>): Promise<string> {
+  if (isAvaliacoesTool(name)) return runAvaliacoesTool(name, args);
   switch (name) {
     case "vendas_resumo": {
       const pedido = Number(args.dias ?? 30);
