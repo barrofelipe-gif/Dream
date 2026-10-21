@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
     const r = await enviarEstoque(produtos, mes);
     return NextResponse.json({ ok: true, produtos: produtos.length, variacoes, paginasVendas, mes, enviados: r.saved, ms: Date.now() - t0 });
   } catch (e) {
+    console.error("[estoque-avaliacoes]", e instanceof Error ? e.message : e);
     return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : String(e), ms: Date.now() - t0 }, { status: 500 });
   }
 }
