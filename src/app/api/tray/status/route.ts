@@ -8,7 +8,14 @@ export async function GET() {
 
   const connection = await prisma.trayConnection.findFirst({
     orderBy: { createdAt: "desc" },
-    select: { storeId: true, apiAddress: true, lastSyncAt: true, accessTokenExpiresAt: true, createdAt: true },
+    select: {
+      storeId: true,
+      apiAddress: true,
+      lastSyncAt: true,
+      accessTokenExpiresAt: true,
+      refreshTokenExpiresAt: true,
+      createdAt: true,
+    },
   });
 
   return NextResponse.json({ connected: !!connection, ...connection });
