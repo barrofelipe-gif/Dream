@@ -20,6 +20,30 @@ const LOJA_SOBRE: Record<Loja, string> = {
   moranga: "Moranga Biquínis (moda praia no varejo, venda para a consumidora final; não é atacado)",
 };
 
+const APP_BFF = "https://converta.app/redirectbff.html";
+const REGRAS: Partial<Record<Loja, Entrada[]>> = {
+  bff: [
+    {
+      kind: "faq",
+      id: 9001,
+      question: "Qual é o prazo de entrega? Quanto tempo demora para chegar? Prazo para o meu estado?",
+      answer: `Para saber o prazo de entrega é só baixar o app e simular lá: você digita o seu CEP e aparece o prazo. Link do app: ${APP_BFF}`,
+    },
+    {
+      kind: "faq",
+      id: 9002,
+      question: "Aceita cartão? Como posso pagar? Parcela? Qual a forma de pagamento?",
+      answer: "Aceitamos cartão de crédito, parcelando em até 12 vezes, e também Pix. Os valores são diferentes no Pix e no cartão, conforme o site.",
+    },
+    {
+      kind: "faq",
+      id: 9003,
+      question: "Quais são os valores? Qual o preço? O valor é no Pix ou no cartão? Tem desconto no Pix?",
+      answer: "Temos dois valores: um para pagamento no Pix e outro para o cartão, conforme mostra o site.",
+    },
+  ],
+};
+
 // A base muda pouco: cache de 5 min por loja evita bater na API a cada DM.
 const cache = new Map<Loja, { at: number; entradas: Entrada[] }>();
 
@@ -33,7 +57,14 @@ async function carregarBase(loja: Loja): Promise<Entrada[]> {
     ...faq.map((f) => ({ kind: "faq" as const, id: f.id, question: f.question, answer: f.answer })),
     ...qa.map((q) => ({ kind: "pergunta" as const, id: q.id, question: q.question, answer: q.answer })),
   ];
-  const liberadas = entradas.filter((e) => !bloqueadas.has(`${e.kind}-${e.id}`));
+  // Regras ditas pelo dono da loja valem MAIS que a base do site: entram na frente e
+  // substituem as entradas que dizem outra coisa (ex: prazo de entrega).
+  const regras = REGRAS[loja] ?? [];
+  const substituidas = new Set(["faq-5"]);
+  const liberadas = [
+    ...(loja === "bff" ? regras : []),
+    ...entradas.filter((e) => !bloqueadas.has(`${e.kind}-${e.id}`) && !(loja === "bff" && substituidas.has(`${e.kind}-${e.id}`))),
+  ];
   cache.set(loja, { at: Date.now(), entradas: liberadas });
   return liberadas;
 }
