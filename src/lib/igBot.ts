@@ -4,7 +4,12 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { listarFaq, listarPerguntasRespondidas, type Loja } from "@/lib/avaliacoesLeitura";
 
-const client = new Anthropic(); // lê ANTHROPIC_API_KEY do ambiente
+// A chave da conta não é presa a um workspace: a Anthropic exige o ID no cabeçalho.
+const client = new Anthropic({
+  defaultHeaders: process.env.ANTHROPIC_WORKSPACE_ID
+    ? { "anthropic-workspace-id": process.env.ANTHROPIC_WORKSPACE_ID }
+    : undefined,
+}); // lê ANTHROPIC_API_KEY do ambiente
 const MODEL = process.env.IG_BOT_MODEL ?? "claude-haiku-5-5";
 
 type Entrada = { kind: "faq" | "pergunta"; id: number; question: string; answer: string };
