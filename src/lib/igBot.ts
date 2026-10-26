@@ -27,20 +27,38 @@ const REGRAS: Partial<Record<Loja, Entrada[]>> = {
       kind: "faq",
       id: 9001,
       question: "Qual é o prazo de entrega? Quanto tempo demora para chegar? Prazo para o meu estado?",
-      answer: `Para saber o prazo de entrega é só baixar o app e simular lá: você digita o seu CEP e aparece o prazo. Link do app: ${APP_BFF}`,
+      answer: `Enviamos o pedido em até 5 dias úteis depois da confirmação do pagamento. Para ver o prazo de entrega, baixe o app e simule lá: você digita o seu CEP e aparece o prazo. Link do app: ${APP_BFF}`,
+    },
+    {
+      kind: "faq",
+      id: 9004,
+      question: "Como eu compro? Onde faço o pedido? A compra é pelo site ou pelo app? Como funciona para comprar?",
+      answer: `A compra é feita pelo site ou pelo app. Link do app: ${APP_BFF}`,
+    },
+    {
+      kind: "faq",
+      id: 9006,
+      question: "Me manda o catálogo? Tem catálogo? Quero ver os produtos. Tem tabela de preços? Lista de produtos? Manda as fotos?",
+      answer: `A gente não tem catálogo. As compras são feitas direto pelo app. Link do app: ${APP_BFF}`,
+    },
+    {
+      kind: "faq",
+      id: 9005,
+      question: "Precisa de CNPJ para comprar? Posso comprar sem CNPJ? Vendem para pessoa física? Posso comprar no CPF?",
+      answer: "Sim, pode comprar sem CNPJ.",
     },
     {
       kind: "faq",
       id: 9002,
       question: "Aceita cartão? Como posso pagar? Parcela? Qual a forma de pagamento?",
-      answer: "Aceitamos cartão de crédito, parcelando em até 12 vezes, e também Pix. Os valores são diferentes no Pix e no cartão, conforme o site.",
+      answer: "Aceitamos cartão de crédito, parcelando em até 12 vezes, e também Pix.",
     },
     {
       kind: "faq",
       id: 9003,
       question:
-        "Quais são os valores? Qual o preço? O valor é no Pix ou no cartão? Tem desconto no Pix? Os valores são diferentes no Pix e no cartão? O preço muda se eu pagar no Pix? Qual é mais barato, Pix ou cartão?",
-      answer: "Temos dois valores: um para pagamento no Pix e outro para o cartão, conforme mostra o site.",
+        "Quais são os valores? Qual o preço? Quanto custa? Tem desconto no Pix? Os valores são diferentes no Pix e no cartão? O preço muda se eu pagar no Pix? Qual é mais barato, Pix ou cartão?",
+      answer: "Os valores estão no site e no app.",
     },
   ],
 };
@@ -61,7 +79,7 @@ async function carregarBase(loja: Loja): Promise<Entrada[]> {
   // Regras ditas pelo dono da loja valem MAIS que a base do site: entram na frente e
   // substituem as entradas que dizem outra coisa (ex: prazo de entrega).
   const regras = REGRAS[loja] ?? [];
-  const substituidas = new Set(["faq-5"]);
+  const substituidas = new Set(["faq-5", "faq-4"]);
   const liberadas = [
     ...(loja === "bff" ? regras : []),
     ...entradas.filter((e) => !bloqueadas.has(`${e.kind}-${e.id}`) && !(loja === "bff" && substituidas.has(`${e.kind}-${e.id}`))),
@@ -91,7 +109,10 @@ const formatarHistorico = (h: Mensagem[]) =>
 
 const PERSONA = (loja: Loja) => `Você atende clientes no direct do Instagram da ${LOJA_SOBRE[loja]}. Converse como uma pessoa simpática e atenciosa, não como um robô de menu: natural, acolhedor, de igual para igual, em português do Brasil, tratando por "você".
 - Responda ao que a pessoa disse, no jeito dela, usando o contexto da conversa (não repita saudação se já cumprimentou, não repita o que já disse).
-- SEJA DIRETA E CURTA. Cada mensagem tem no máximo 1 ou 2 frases curtas (até uns 160 caracteres). Vá direto à informação, sem enrolação, sem introdução, sem repetir a pergunta. Se a resposta precisar de mais, divida em 2 ou 3 mensagens curtas separadas (nunca um textão). Sem markdown, sem listas, sem assinatura. No máximo um emoji, só se combinar.
+- SEJA DIRETA E CURTA. Vá direto à informação, sem enrolação, sem introdução, sem repetir a pergunta. UMA INFORMAÇÃO POR MENSAGEM: cada recado numa mensagem separada e bem curta (uma frase, uns 90 caracteres), por exemplo "A gente parcela em até 12x no cartão." numa mensagem e "Enviamos em até 5 dias úteis." em outra. Até 4 mensagens. Nunca um textão. Sem markdown, sem listas, sem assinatura. No máximo um emoji, só se combinar.
+- NUNCA diga que o preço ou o valor é diferente no Pix e no cartão, nem fale de desconto no Pix: isso gera dúvida. Se perguntarem de valores, diga só que os valores estão no site e no app.
+- Não existe catálogo: se pedirem catálogo, diga que a gente não tem e que as compras são feitas direto pelo app (com o link do app).
+- Comprar sem CNPJ pode, sim.
 - Fale como a loja ("nós"), nunca na primeira pessoa de alguém específico. Se perguntarem se você é uma pessoa ou um robô, diga com simpatia que é a assistente virtual da loja.
 - Use SOMENTE os fatos das FONTES da loja. Nunca invente nem arredonde preço, prazo, política, medida, composição, estoque ou data. Pode reescrever com suas palavras e adaptar à pergunta, mas sem mudar nem acrescentar fatos.
 - Não faça deduções além das fontes: não calcule tamanho, medida, valor ou prazo para a pessoa, nem a oriente por conta própria. Se a pessoa deu um dado (ex: "uso 40"), não o traduza em recomendação que as fontes não trazem; repasse o que as fontes dizem e, se faltar, diga que a equipe confirma.
@@ -121,11 +142,11 @@ const Redacao = z.object({
     .describe("true se as FONTES permitem responder o que a pessoa perguntou; false se faltar informação para responder com segurança"),
   mensagens: z
     .array(z.string())
-    .describe("De 1 a 3 mensagens curtas e diretas para enviar em sequência (cada uma com até ~160 caracteres); vazio se suficiente for false"),
+    .describe("De 1 a 4 mensagens curtas, UMA informação em cada (uma frase de ~90 caracteres), para enviar em sequência; vazio se suficiente for false"),
 });
 
 /** Divide um texto longo em até 3 mensagens curtas, cortando nas frases. */
-export function dividirTexto(texto: string, max = 3, tamanho = 150): string[] {
+export function dividirTexto(texto: string, max = 4, tamanho = 90): string[] {
   const frases = texto.replace(/\s*\n+\s*/g, " ").match(/[^.!?]+[.!?]*\s*/g) ?? [texto];
   const partes: string[] = [];
   let atual = "";
@@ -145,6 +166,17 @@ export function dividirTexto(texto: string, max = 3, tamanho = 150): string[] {
 }
 
 const RASTREIO_APP = "https://converta.app/redirectbff.html";
+
+/**
+ * Tira das mensagens qualquer frase sobre preço diferente no Pix x cartão (ou desconto no Pix):
+ * a loja não quer falar disso porque gera dúvida. Vale para texto reescrito e para texto da base.
+ */
+export function limparPartes(partes: string[]): string[] {
+  const proibida = /(pix|cart[aã]o)[^.!?]*(diferen|mais barato|menor|desconto|econom)|(diferen|desconto|mais barato|econom)[^.!?]*(pix|cart[aã]o)/i;
+  return partes
+    .map((p) => (p.match(/[^.!?]+[.!?]*\s*/g) ?? [p]).filter((f) => !proibida.test(f)).join("").trim())
+    .filter(Boolean);
+}
 
 /**
  * Passo 1 escolhe quais entradas da base servem (ou se é só um cumprimento);
@@ -233,7 +265,7 @@ export async function responder(loja: Loja, contexto: string, historico: Mensage
     return { tipo: "resposta", partes: dividirTexto(principal0.answer), kind: principal0.kind, id: principal0.id, confianca: "media" };
   }
   const r = red.parsed_output;
-  const partesRedigidas = (r?.mensagens ?? []).map((m) => m.trim()).filter(Boolean).slice(0, 3);
+  const partesRedigidas = limparPartes((r?.mensagens ?? []).map((m) => m.trim()).filter(Boolean)).slice(0, 4);
   if (!r?.suficiente || partesRedigidas.length === 0) return { tipo: "humano", motivo: "fontes insuficientes" };
 
   // Checagem: qualquer fato (número, tamanho, preço, prazo, política) que não esteja nas fontes derruba
@@ -254,7 +286,8 @@ ${texto}
 </resposta>` }],
     output_config: { format: zodOutputFormat(Verificacao) },
   });
-  const partes = checagem.parsed_output?.ok ? partesRedigidas : dividirTexto(principal.answer);
+  const partes = limparPartes(checagem.parsed_output?.ok ? partesRedigidas : dividirTexto(principal.answer));
+  if (partes.length === 0) return { tipo: "humano", motivo: "nada seguro para enviar" };
   void texto;
   return {
     tipo: "resposta",
@@ -344,5 +377,5 @@ ${texto}
 </texto>` }],
     output_config: { format: zodOutputFormat(Verificacao) },
   });
-  return chk.parsed_output?.ok ? texto.slice(0, 900) : null;
+  return chk.parsed_output?.ok ? limparPartes([texto]).join(" ").slice(0, 900) || null : null;
 }
