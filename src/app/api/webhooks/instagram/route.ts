@@ -4,6 +4,15 @@ import { assinaturaValida, dentroDaJanela, enviarDm } from "@/lib/instagram";
 import { responder } from "@/lib/igBot";
 import type { Loja } from "@/lib/avaliacoesLeitura";
 
+// Quando o robô não tem resposta, encaminha para o WhatsApp da loja (a equipe
+// responde mais rápido por lá). Números dos próprios sites das lojas.
+const WHATSAPP: Record<Loja, string> = {
+  bff: "5527936187331",
+  moranga: "5527998924839",
+};
+const textoWhatsapp = (loja: Loja) =>
+  `Oi! Para esse assunto, o melhor é falar com a nossa equipe no WhatsApp, que costuma responder mais rápido: https://wa.me/${WHATSAPP[loja]}`;
+
 type Evento = {
   sender?: { id: string };
   recipient?: { id: string };
@@ -77,34 +86,46 @@ async function tratarEvento(ev: Evento) {
     data: { lastCustomerMessageAt: agora },
   });
 
-  // Humano assumiu ou conversa já aguarda humano: o robô fica quieto.
-  if (conversa.status !== "BOT") return;
+  // Humano assumiu ou conversa encerrada: o robô fica quieto.
+  if (conversa.status === "HUMAN" || conversa.status === "CLOSED") return;
   if (!dentroDaJanela(agora)) return;
 
-  const r = await responder(account.loja as Loja, text);
+  const loja = account.loja as Loja;
+  const r = await responder(loja, text);
+
+  let resposta: { texto: string; kind: string; id: number | null; confianca: string | null };
   if (r.tipo === "humano") {
-    // Nunca inventa: passa para uma pessoa (fila NEEDS_HUMAN).
+    console.warn(`[ig-bot] conversa ${conversa.id} sem resposta na base: ${r.motivo}`);
     await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "NEEDS_HUMAN" } });
-    console.warn(`[ig-bot] conversa ${conversa.id} passou para humano: ${r.motivo}`);
-    return;
+    // Não repete o encaminhamento para a mesma pessoa em 12h.
+    const jaEncaminhou = await prisma.igMessage.findFirst({
+      where: { conversationId: conversa.id, matchedKind: "whatsapp", createdAt: { gt: new Date(Date.now() - 12 * 60 * 60 * 1000) } },
+    });
+    if (jaEncaminhou) return;
+    resposta = { texto: textoWhatsapp(loja), kind: "whatsapp", id: null, confianca: null };
+  } else {
+    resposta = { texto: r.texto, kind: r.kind, id: r.id, confianca: r.confianca };
+    if (conversa.status !== "BOT") {
+      await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "BOT" } });
+    }
   }
 
   const sentId = await enviarDm({
     igUserId: account.igUserId,
     encryptedToken: account.accessToken,
     recipientId: ev.sender.id,
-    text: r.texto,
+    text: resposta.texto,
   });
   await prisma.igMessage.create({
     data: {
       conversationId: conversa.id,
       direction: "OUT",
       source: "BOT",
-      text: r.texto,
+      text: resposta.texto,
       metaMessageId: sentId || null,
-      matchedKind: r.kind,
-      matchedId: r.id,
-      confidence: r.confianca,
+      matchedKind: resposta.kind,
+      matchedId: resposta.id,
+      confidence: resposta.confianca,
     },
   });
 }
