@@ -2,6 +2,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { assinaturaValida, dentroDaJanela, enviarDm } from "@/lib/instagram";
 import { responder, escreverApoio, type Mensagem } from "@/lib/igBot";
+import { atualizarPerfil } from "@/lib/igPerfil";
 import type { Loja } from "@/lib/avaliacoesLeitura";
 
 type Evento = {
@@ -122,6 +123,8 @@ async function tratarEvento(ev: Evento) {
     data: { conversationId: conversa.id, direction: "IN", source: "CLIENTE", text, metaMessageId: mid },
   });
   await prisma.igConversation.update({ where: { id: conversa.id }, data: { lastCustomerMessageAt: agora } });
+
+  await atualizarPerfil(conversa.id);
 
   if (conversa.status === "CLOSED") return;
   if (!dentroDaJanela(agora)) return;

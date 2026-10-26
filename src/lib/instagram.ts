@@ -38,3 +38,40 @@ export async function enviarDm(opts: {
   const json = (await res.json()) as { message_id?: string };
   return json.message_id ?? "";
 }
+
+export type PerfilIg = {
+  nome: string | null;
+  username: string | null;
+  fotoUrl: string | null;
+  seguidores: number | null;
+  verificado: boolean;
+  seguePagina: boolean | null;
+};
+
+/** Perfil de quem escreveu (User Profile API): foto, @, seguidores, se segue a loja. */
+export async function buscarPerfil(encryptedToken: string, scopedId: string): Promise<PerfilIg | null> {
+  const fields = "name,username,profile_pic,follower_count,is_verified_user,is_user_follow_business";
+  const res = await fetch(`${GRAPH_BASE}/${GRAPH_VERSION}/${scopedId}?fields=${fields}`, {
+    headers: { Authorization: `Bearer ${decrypt(encryptedToken)}` },
+  });
+  if (!res.ok) {
+    console.warn("[ig-perfil] Meta respondeu", res.status, (await res.text()).slice(0, 200));
+    return null;
+  }
+  const j = (await res.json()) as {
+    name?: string;
+    username?: string;
+    profile_pic?: string;
+    follower_count?: number;
+    is_verified_user?: boolean;
+    is_user_follow_business?: boolean;
+  };
+  return {
+    nome: j.name ?? null,
+    username: j.username ?? null,
+    fotoUrl: j.profile_pic ?? null,
+    seguidores: typeof j.follower_count === "number" ? j.follower_count : null,
+    verificado: !!j.is_verified_user,
+    seguePagina: typeof j.is_user_follow_business === "boolean" ? j.is_user_follow_business : null,
+  };
+}

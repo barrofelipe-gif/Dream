@@ -311,6 +311,15 @@ model IgConversation {
   status                String   @default("BOT")
   lastCustomerMessageAt DateTime? // base da janela de 24h da Meta
 
+  // Perfil do cliente no Instagram (User Profile API), renovado a cada ~12h.
+  nome                  String?
+  username              String?
+  fotoUrl               String?  // URL assinada da Meta, expira: por isso é renovada
+  seguidores            Int?
+  verificado            Boolean  @default(false)
+  seguePagina           Boolean? // o cliente já segue a conta da loja?
+  perfilEm              DateTime?
+
   messages              IgMessage[]
 
   createdAt             DateTime @default(now())

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { exigirAdmin } from "@/lib/igAdmin";
 import { dentroDaJanela } from "@/lib/instagram";
+import { atualizarPerfil } from "@/lib/igPerfil";
 
 // Uma conversa com todas as mensagens (a caixa de entrada atualiza isto a cada poucos segundos).
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -9,6 +10,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (erro) return erro;
   const { id } = await params;
 
+  await atualizarPerfil(id); // só refaz se passou de 12h
   const c = await prisma.igConversation.findUnique({
     where: { id },
     include: { account: true, messages: { orderBy: { createdAt: "asc" } } },
@@ -17,6 +19,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   return NextResponse.json({
     id: c.id,
+    nome: c.nome,
+    username: c.username,
+    fotoUrl: c.fotoUrl,
+    seguidores: c.seguidores,
+    verificado: c.verificado,
+    seguePagina: c.seguePagina,
+    primeiroContato: c.createdAt.toISOString(),
+    totalMensagens: c.messages.length,
     status: c.status,
     cliente: c.igScopedUserId.slice(-6),
     conta: c.account.username,
