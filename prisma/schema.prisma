@@ -416,3 +416,66 @@ model IgAutomacaoExec {
   @@unique([automacaoId, commentId])
   @@index([automacaoId, createdAt])
 }
+
+// ── Publicador multi-rede ─────────────────────────────────────────────────────
+// Uma conta/página/canal de uma rede social, ligada a uma loja. Tokens sempre criptografados.
+model SocialConta {
+  id           String   @id @default(cuid())
+  rede         String   // "instagram" | "facebook" | "tiktok" | "youtube" | "pinterest"
+  loja         String   // "bff" | "moranga"
+  externoId    String   // id da conta/página/canal na rede
+  nome         String?
+  username     String?
+  fotoUrl      String?
+  accessToken  String   // criptografado (AES-256-GCM)
+  refreshToken String?  // criptografado
+  expiraEm     DateTime?
+  escopos      String   @default("")
+  ativo        Boolean  @default(true)
+  extra        String   @default("{}") // JSON livre da rede (ex: pageId, id do IG ligado)
+
+  alvos        SocialPostAlvo[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([rede, externoId])
+  @@index([loja, rede])
+}
+
+// Uma postagem criada no painel, que pode sair em várias redes de uma vez.
+model SocialPost {
+  id           String   @id @default(cuid())
+  titulo       String   @default("")
+  legenda      String   @default("")
+  tipo         String   @default("imagem") // "imagem" | "video" | "carrossel" | "texto"
+  midias       String   @default("[]")     // JSON: [{ url, tipo: "imagem"|"video", nome? }]
+  porRede      String   @default("{}")     // JSON: ajustes por rede { tiktok: { legenda, ... } }
+  agendadoPara DateTime?
+  status       String   @default("RASCUNHO") // RASCUNHO | AGENDADO | PUBLICANDO | PUBLICADO | PARCIAL | ERRO
+  criadoPor    String?
+
+  alvos        SocialPostAlvo[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([status, agendadoPara])
+}
+
+// Uma postagem em UMA conta (resultado por rede).
+model SocialPostAlvo {
+  id            String   @id @default(cuid())
+  postId        String
+  post          SocialPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  contaId       String
+  conta         SocialConta @relation(fields: [contaId], references: [id], onDelete: Cascade)
+  status        String   @default("PENDENTE") // PENDENTE | PUBLICANDO | PUBLICADO | ERRO
+  externoPostId String?
+  url           String?
+  erro          String?
+  tentativas    Int      @default(0)
+  publicadoEm   DateTime?
+
+  @@unique([postId, contaId])
+}
