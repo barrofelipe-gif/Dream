@@ -21,6 +21,9 @@ const LOJA_SOBRE: Record<Loja, string> = {
 };
 
 const APP_BFF = "https://converta.app/redirectbff.html";
+// Link que abre o Google Maps direto no endereço da loja física.
+const MAPS_BFF =
+  "https://www.google.com/maps/search/?api=1&query=BFF+Fitness+Atacado+Rua+Celso+Calmon+172+Praia+do+Canto+Vit%C3%B3ria+ES";
 const REGRAS: Partial<Record<Loja, Entrada[]>> = {
   bff: [
     {
@@ -34,6 +37,12 @@ const REGRAS: Partial<Record<Loja, Entrada[]>> = {
       id: 9004,
       question: "Como eu compro? Onde faço o pedido? A compra é pelo site ou pelo app? Como funciona para comprar?",
       answer: `A compra é feita pelo site ou pelo app. Link do app: ${APP_BFF}`,
+    },
+    {
+      kind: "faq",
+      id: 9007,
+      question: "Onde fica a loja? Qual o endereço? Tem loja física? Como chego aí? Onde vocês ficam? Localização? Posso ir aí?",
+      answer: `Nossa loja física fica na Rua Celso Calmon, 172, loja 2, Praia do Canto, em Vitória/ES. Para abrir direto no Google Maps: ${MAPS_BFF}`,
     },
     {
       kind: "faq",
@@ -79,7 +88,7 @@ async function carregarBase(loja: Loja): Promise<Entrada[]> {
   // Regras ditas pelo dono da loja valem MAIS que a base do site: entram na frente e
   // substituem as entradas que dizem outra coisa (ex: prazo de entrega).
   const regras = REGRAS[loja] ?? [];
-  const substituidas = new Set(["faq-5", "faq-4", "faq-14"]);
+  const substituidas = new Set(["faq-5", "faq-4", "faq-14", "faq-30", "faq-43", "faq-217"]);
   const liberadas = [
     ...(loja === "bff" ? regras : []),
     ...entradas.filter((e) => !bloqueadas.has(`${e.kind}-${e.id}`) && !(loja === "bff" && substituidas.has(`${e.kind}-${e.id}`))),
