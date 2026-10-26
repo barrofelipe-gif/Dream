@@ -8,6 +8,7 @@ import ControladoriaPapel from "@/components/hub/financas/ControladoriaPapel";
 import CobrancaPapel from "@/components/hub/financas/CobrancaPapel";
 import FaturamentoPapel from "@/components/hub/financas/FaturamentoPapel";
 import AvaliacoesPapel, { type PapelAvaliacoes } from "@/components/hub/avaliacoes/AvaliacoesPapel";
+import InstagramPapel from "@/components/hub/growth/InstagramPapel";
 
 /**
  * Ficha de um papel (manager ou agente) — equivalente ao painel lateral
@@ -48,7 +49,12 @@ export default async function PapelPage({
   if (!encontrado) notFound();
   const { area, papel } = encontrado;
   const avaliacoes = PAPEIS_AVALIACOES[`${areaId}/${papelId}`];
-  const conteudoReal = areaId === "financas" ? CONTEUDO_FINANCAS[papelId] : undefined;
+  const conteudoReal =
+    areaId === "financas"
+      ? CONTEUDO_FINANCAS[papelId]
+      : areaId === "growth" && papelId === "instagram"
+        ? () => <InstagramPapel status={status} conversa={conversa} />
+        : undefined;
 
   return (
     <div className={`${avaliacoes || conteudoReal ? "max-w-4xl" : "max-w-2xl"} space-y-6 pb-10`}>
