@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { responder } from "@/lib/igBot";
+import { responder, escreverApoio, type Mensagem } from "@/lib/igBot";
 
-// Teste a seco do robô: /api/instagram/teste?loja=bff&q=<mensagem>
+// Teste a seco do robô: /api/instagram/teste?loja=bff&q=<mensagem>[&prev=c:oi||l:Oi!&apoio=esclarecer1|esclarecer2|atendente]
+// prev = conversa anterior (c: cliente, l: loja), separada por ||
 // Roda a mesma escolha de resposta do webhook, sem enviar nada ao Instagram.
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -15,7 +16,16 @@ export async function GET(req: NextRequest) {
   }
   const t0 = Date.now();
   try {
-    const r = await responder(loja, q);
+    const prev = (req.nextUrl.searchParams.get("prev") ?? "")
+      .split("||")
+      .filter(Boolean)
+      .map((x): Mensagem => ({ de: x.startsWith("l:") ? "loja" : "cliente", texto: x.slice(2) }));
+    const historico: Mensagem[] = [...prev, { de: "cliente", texto: q }];
+    const apoio = req.nextUrl.searchParams.get("apoio");
+    if (apoio === "esclarecer1" || apoio === "esclarecer2" || apoio === "atendente") {
+      return NextResponse.json({ pergunta: q, apoio, texto: await escreverApoio(loja, apoio, historico), ms: Date.now() - t0 });
+    }
+    const r = await responder(loja, q, historico);
     return NextResponse.json({ pergunta: q, ms: Date.now() - t0, ...r });
   } catch (err) {
     return NextResponse.json({ pergunta: q, erro: (err as Error).message }, { status: 500 });

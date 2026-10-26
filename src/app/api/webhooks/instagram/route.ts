@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { assinaturaValida, dentroDaJanela, enviarDm } from "@/lib/instagram";
-import { responder } from "@/lib/igBot";
+import { responder, escreverApoio, type Mensagem } from "@/lib/igBot";
 import type { Loja } from "@/lib/avaliacoesLeitura";
 
 type Evento = {
@@ -17,21 +17,9 @@ const ESCLARECER = [
   "Oi! Não consegui entender bem a sua dúvida. Pode me explicar com mais detalhes o que você quer saber?",
   "Ainda não consegui entender. Pode tentar explicar de outro jeito? Por exemplo, sobre qual produto, pedido ou assunto é a sua dúvida?",
 ];
+// Textos de reserva, usados só se a IA falhar ao escrever a mensagem de apoio.
 const CHAMAR_ATENDENTE =
   "Como eu não estou conseguindo entender o que você precisa, vou chamar uma atendente aqui para te ajudar. Já já ela te responde por aqui.";
-
-function saudacao(): string {
-  const hora = Number(
-    new Intl.DateTimeFormat("pt-BR", { hour: "numeric", hour12: false, timeZone: "America/Sao_Paulo" }).format(new Date()),
-  );
-  const periodo = hora < 12 ? "Bom dia" : hora < 18 ? "Boa tarde" : "Boa noite";
-  const variantes = [
-    `${periodo}! Tudo bem? O que eu posso te ajudar hoje?`,
-    `Ei, ${periodo.toLowerCase()}! O que eu posso fazer por você hoje?`,
-    `Oi, ${periodo.toLowerCase()}! Qual é a sua dúvida? Pode me contar que eu te ajudo.`,
-  ];
-  return variantes[Math.floor(Math.random() * variantes.length)];
-}
 
 const HORAS = (h: number) => new Date(Date.now() - h * 60 * 60 * 1000);
 
@@ -151,7 +139,15 @@ async function tratarEvento(ev: Evento) {
     take: 3,
   });
   const contexto = recentes.map((m) => m.text).reverse().join("\n");
-  const r = await responder(loja, contexto || text);
+  const ultimasMsgs = await prisma.igMessage.findMany({
+    where: { conversationId: conversa.id },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+  const historico: Mensagem[] = ultimasMsgs
+    .reverse()
+    .map((m) => ({ de: m.direction === "IN" ? ("cliente" as const) : ("loja" as const), texto: m.text }));
+  const r = await responder(loja, contexto || text, historico);
 
   let resposta: { texto: string; kind: string; id: number | null; confianca: string | null };
   if (r.tipo === "resposta") {
@@ -161,7 +157,7 @@ async function tratarEvento(ev: Evento) {
     }
   } else if (r.tipo === "saudacao") {
     // Só cumprimentou ou disse que tem uma dúvida: convida a perguntar (não conta como falha).
-    resposta = { texto: saudacao(), kind: "saudacao", id: null, confianca: null };
+    resposta = { texto: r.texto, kind: "saudacao", id: null, confianca: null };
   } else {
     console.warn(`[ig-bot] conversa ${conversa.id} sem resposta na base: ${r.motivo}`);
     // Já chamou atendente nas últimas 12h: não insiste, a equipe vai responder.
@@ -181,9 +177,11 @@ async function tratarEvento(ev: Evento) {
       seguidos++;
     }
     if (seguidos < MAX_ESCLARECIMENTOS) {
-      resposta = { texto: ESCLARECER[seguidos], kind: "esclarecer", id: null, confianca: null };
+      const texto = await escreverApoio(loja, seguidos === 0 ? "esclarecer1" : "esclarecer2", historico).catch(() => ESCLARECER[seguidos]);
+      resposta = { texto: texto || ESCLARECER[seguidos], kind: "esclarecer", id: null, confianca: null };
     } else {
-      resposta = { texto: CHAMAR_ATENDENTE, kind: "atendente", id: null, confianca: null };
+      const texto = await escreverApoio(loja, "atendente", historico).catch(() => CHAMAR_ATENDENTE);
+      resposta = { texto: texto || CHAMAR_ATENDENTE, kind: "atendente", id: null, confianca: null };
       // Fila da equipe: a atendente responde pelo próprio Instagram.
       await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "NEEDS_HUMAN" } });
     }
