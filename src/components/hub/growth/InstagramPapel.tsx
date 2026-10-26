@@ -5,6 +5,7 @@ import InstagramBoasVindas from "@/components/hub/growth/InstagramBoasVindas";
 import InstagramAutomacoes from "@/components/hub/growth/InstagramAutomacoes";
 import InstagramMenu from "@/components/hub/growth/InstagramMenu";
 import SocialPublicador from "@/components/hub/growth/SocialPublicador";
+import SocialMetricas from "@/components/hub/growth/SocialMetricas";
 
 /**
  * Growth › Instagram: robô de mensagens da BFF e da Moranga. Conversas, contas conectadas
@@ -102,6 +103,8 @@ export default async function InstagramPapel() {
       </section>
 
       <SocialPublicador />
+
+      <SocialMetricas />
 
       <InstagramInbox />
 

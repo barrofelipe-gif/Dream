@@ -435,6 +435,9 @@ model SocialConta {
   extra        String   @default("{}") // JSON livre da rede (ex: pageId, id do IG ligado)
 
   alvos        SocialPostAlvo[]
+  metricasDia  SocialMetricaConta[]
+  metricasPost SocialMetricaPost[]
+  metricasPublico SocialMetricaPublico[]
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -478,4 +481,73 @@ model SocialPostAlvo {
   publicadoEm   DateTime?
 
   @@unique([postId, contaId])
+}
+
+// ── Métricas das redes sociais ──────────────────────────────────────────────
+
+// Um registro por conta e dia (métricas da conta inteira).
+model SocialMetricaConta {
+  id                String      @id @default(cuid())
+  contaId           String
+  conta             SocialConta @relation(fields: [contaId], references: [id], onDelete: Cascade)
+  data              DateTime // dia (00:00 UTC do dia em Brasília)
+  alcance           Int         @default(0)
+  visualizacoes     Int         @default(0)
+  visitasPerfil     Int         @default(0)
+  toquesLink        Int         @default(0) // toques nos links do perfil (link da bio)
+  contasEngajadas   Int         @default(0)
+  interacoes        Int         @default(0)
+  seguidores        Int? // total de seguidores no momento da coleta (só o dia da coleta)
+  curtidas          Int         @default(0)
+  comentarios       Int         @default(0)
+  compartilhamentos Int         @default(0)
+  salvamentos       Int         @default(0)
+  bruto             String      @default("{}") // JSON com tudo que a API devolveu
+  coletadoEm        DateTime    @default(now())
+
+  @@unique([contaId, data])
+  @@index([contaId, data])
+}
+
+// Uma linha por mídia publicada.
+model SocialMetricaPost {
+  id                     String      @id @default(cuid())
+  contaId                String
+  conta                  SocialConta @relation(fields: [contaId], references: [id], onDelete: Cascade)
+  externoId              String
+  tipo                   String // foto | reel | carrossel | story
+  legenda                String      @default("")
+  permalink              String?
+  miniatura              String?
+  publicadoEm            DateTime
+  hora                   Int // 0–23, fuso de Brasília
+  diaSemana              Int // 0 = domingo … 6 = sábado, fuso de Brasília
+  alcance                Int         @default(0)
+  visualizacoes          Int         @default(0)
+  curtidas               Int         @default(0)
+  comentarios            Int         @default(0)
+  compartilhamentos      Int         @default(0)
+  salvamentos            Int         @default(0)
+  interacoes             Int         @default(0)
+  seguidoresGanhos       Int         @default(0)
+  visitasPerfil          Int         @default(0)
+  cliquesLinkBio         Int         @default(0)
+  tempoMedioAssistidoSeg Float?
+  bruto                  String      @default("{}") // JSON com tudo que a API devolveu (mídia + insights)
+  coletadoEm             DateTime    @default(now())
+
+  @@unique([contaId, externoId])
+  @@index([contaId, publicadoEm])
+}
+
+// Público da conta: um registro por conta e dia da coleta.
+model SocialMetricaPublico {
+  id         String      @id @default(cuid())
+  contaId    String
+  conta      SocialConta @relation(fields: [contaId], references: [id], onDelete: Cascade)
+  data       DateTime
+  bruto      String      @default("{}") // { seguidores: {age,gender,city,country}, engajados: {...}, alcancados: {...}, avisos: [] }
+  coletadoEm DateTime    @default(now())
+
+  @@unique([contaId, data])
 }

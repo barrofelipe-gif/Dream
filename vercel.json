@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/publicar-agendados",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/coletar-metricas",
+      "schedule": "0 10 * * *"
     }
   ]
 }

@@ -51,6 +51,8 @@ const PEDIR_DUVIDA = [
   "Pode mandar! Qual é a sua dúvida?",
 ];
 
+const REGEX_HUMANO = /\b(human[oa]s?|atendente|atendimento|pessoa|alguém|alguem|funcion[aá]ri[oa]|vendedor[a]?|gerente|dono|dona|falar com (a )?(gente|equipe|loja))\b/i;
+
 const HORAS = (h: number) => new Date(Date.now() - h * 60 * 60 * 1000);
 const APP_BFF = "https://converta.app/redirectbff.html";
 
@@ -319,10 +321,34 @@ async function tratarEvento(ev: Evento) {
   const historico: Mensagem[] = ultimasMsgs
     .reverse()
     .map((m) => ({ de: m.direction === "IN" ? ("cliente" as const) : ("loja" as const), texto: m.text }));
-  const r = await responder(loja, contexto || text, historico);
+  // Pedido de humano sem dúvida dita: antes de transferir, o robô descobre a pergunta (quase sempre
+  // dá para ele mesmo responder). Só chama a atendente se a pessoa insistir ou se a base não responder.
+  const pediuHumano = text.length <= 90 && REGEX_HUMANO.test(text);
+  const contextoSemPedido = contexto
+    .split("\n")
+    .filter((l) => !(l.length <= 90 && REGEX_HUMANO.test(l)))
+    .join("\n")
+    .trim();
+  const r = pediuHumano && !contextoSemPedido ? ({ tipo: "pedir_duvida" } as const) : await responder(loja, (pediuHumano ? contextoSemPedido : contexto) || text, historico);
 
   let saida: Saida;
-  if (r.tipo === "resposta") {
+  if (r.tipo === "pedir_duvida") {
+    const pedidos = await prisma.igMessage.count({
+      where: { conversationId: conversa.id, direction: "OUT", matchedKind: "pedir_duvida", createdAt: { gt: HORAS(24) } },
+    });
+    if (pedidos === 0) {
+      saida = { texto: "Claro! Me conta qual é a sua dúvida? 😊", kind: "pedir_duvida" };
+    } else if (pedidos === 1) {
+      saida = {
+        texto: "Então, primeiro preciso saber qual é a sua dúvida pra eu te direcionar certinho. Me conta aqui que, se eu não conseguir resolver, passo pra uma atendente.",
+        kind: "pedir_duvida",
+      };
+    } else {
+      // Insistiu pela 3ª vez: não prende a pessoa, transfere (fica não lida para a equipe).
+      saida = { texto: "Tudo bem, vou chamar uma atendente pra te ajudar, já já ela te responde por aqui.", kind: "atendente" };
+      await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "NEEDS_HUMAN", naoLida: true } });
+    }
+  } else if (r.tipo === "resposta") {
     // Primeira conversa e a pessoa ainda não segue: a resposta já leva o convite para seguir.
     const convite = primeiroContato && config.pedirSeguir && naoSegue && config.textoSeguir.trim() ? [config.textoSeguir] : [];
     const partes = [...r.partes, ...convite];
