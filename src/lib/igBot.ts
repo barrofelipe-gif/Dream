@@ -91,7 +91,7 @@ const Redacao = z.object({
 });
 
 /** Divide um texto longo em até 3 mensagens curtas, cortando nas frases. */
-export function dividirTexto(texto: string, max = 3, tamanho = 220): string[] {
+export function dividirTexto(texto: string, max = 3, tamanho = 150): string[] {
   const frases = texto.replace(/\s*\n+\s*/g, " ").match(/[^.!?]+[.!?]*\s*/g) ?? [texto];
   const partes: string[] = [];
   let atual = "";
