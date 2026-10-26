@@ -77,10 +77,15 @@ async function tratarEco(ev: Evento) {
   const mid = ev.message?.mid;
   if (mid && (await prisma.igMessage.findUnique({ where: { metaMessageId: mid } }))) return; // foi o robô
   // O eco do envio do robô pode chegar antes de gravarmos o id: tolerância de 30s.
-  const recenteDoRobo = await prisma.igMessage.findFirst({
-    where: { conversationId: conversa.id, direction: "OUT", source: "BOT", createdAt: { gt: new Date(Date.now() - 30_000) } },
+  const recenteNosso = await prisma.igMessage.findFirst({
+    where: {
+      conversationId: conversa.id,
+      direction: "OUT",
+      createdAt: { gt: new Date(Date.now() - 30_000) },
+      OR: [{ source: "BOT" }, { text: ev.message?.text?.trim() || "[mídia]" }],
+    },
   });
-  if (recenteDoRobo) return;
+  if (recenteNosso) return;
 
   await prisma.igMessage.create({
     data: {

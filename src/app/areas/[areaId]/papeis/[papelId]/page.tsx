@@ -41,13 +41,10 @@ const PAPEIS_AVALIACOES: Record<string, PapelAvaliacoes> = {
 
 export default async function PapelPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ areaId: string; papelId: string }>;
-  searchParams: Promise<{ status?: string; conversa?: string }>;
 }) {
   const { areaId, papelId } = await params;
-  const { status, conversa } = await searchParams;
   const encontrado = getPapel(areaId, papelId);
   if (!encontrado) notFound();
   const { area, papel } = encontrado;
@@ -56,11 +53,11 @@ export default async function PapelPage({
     areaId === "financas"
       ? CONTEUDO_FINANCAS[papelId]
       : areaId === "growth" && papelId === "instagram"
-        ? () => <InstagramPapel status={status} conversa={conversa} />
+        ? () => <InstagramPapel />
         : undefined;
 
   return (
-    <div className={`${avaliacoes || conteudoReal ? "max-w-4xl" : "max-w-2xl"} space-y-6 pb-10`}>
+    <div className={`${areaId === "growth" && papelId === "instagram" ? "max-w-6xl" : avaliacoes || conteudoReal ? "max-w-4xl" : "max-w-2xl"} space-y-6 pb-10`}>
       <Link
         href={`/areas/${area.id}`}
         className="inline-flex items-center gap-1.5 text-xs font-medium text-[#8a8f9c] hover:text-[#1b1f2b]"
