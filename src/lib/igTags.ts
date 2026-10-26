@@ -10,6 +10,10 @@ export const TAG = {
   querComprar: "Quer comprar",
   atraso: "Pedido atrasado",
   seguiu: "Segue a loja",
+  comprador: "Comprador",
+  veioAnuncio: "Veio de anúncio",
+  organico: "Orgânico",
+  origemStory: "Veio de story",
 } as const;
 
 export const SUGESTOES_TAGS = Object.values(TAG);

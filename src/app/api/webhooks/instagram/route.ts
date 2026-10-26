@@ -24,8 +24,10 @@ type Evento = {
     is_echo?: boolean;
     quick_reply?: { payload?: string };
     attachments?: { type?: string }[];
+    // Conversa que nasceu de um anúncio "clique para o Direct" ou de um link ig.me.
+    referral?: { source?: string; type?: string; ad_id?: string; ref?: string };
   };
-  postback?: { mid?: string; title?: string; payload?: string };
+  postback?: { mid?: string; title?: string; payload?: string; referral?: { source?: string; ad_id?: string; ref?: string } };
 };
 type Mudanca = {
   field?: string;
@@ -53,6 +55,10 @@ const PEDIR_DUVIDA = [
 ];
 
 const REGEX_HUMANO = /\b(human[oa]s?|atendente|atendimento|pessoa|alguém|alguem|funcion[aá]ri[oa]|vendedor[a]?|gerente|dono|dona|falar com (a )?(gente|equipe|loja))\b/i;
+
+// A pessoa se declara cliente ("já comprei", "fiz um pedido"): vira "Comprador" e sai das cobranças em massa.
+const REGEX_COMPROU = /(j[aá] comprei|comprei|fiz (um |o |meu )?(pedido|compra)|j[aá] sou (cliente|revendedora?)|j[aá] (comprava|compro|fui cliente))/i;
+const REGEX_NAO_COMPROU = /(n[aã]o|nunca|ainda n[aã]o|quero|vou|queria|pretendo)\s+(\w+\s+)?(comprei|comprar|fiz (um |o )?(pedido|compra))/i;
 
 const HORAS = (h: number) => new Date(Date.now() - h * 60 * 60 * 1000);
 const APP_BFF = "https://converta.app/redirectbff.html";
@@ -219,6 +225,16 @@ async function tratarEvento(ev: Evento) {
   await prisma.igMessage.create({
     data: { conversationId: conversa.id, direction: "IN", source: "CLIENTE", text, metaMessageId: mid },
   });
+
+  // Origem da conversa (anúncio ou orgânico) e autodeclaração de comprador, para etiquetar sozinho.
+  const ref = ev.message?.referral ?? ev.postback?.referral;
+  const veioDeAnuncio = ref?.source === "ADS" || !!ref?.ad_id;
+  const entradas = await prisma.igMessage.count({ where: { conversationId: conversa.id, direction: "IN" } });
+  const novasTags: string[] = [];
+  if (veioDeAnuncio) novasTags.push(TAG.veioAnuncio);
+  else if (entradas === 1) novasTags.push(mencionou ? TAG.origemStory : TAG.organico);
+  if (REGEX_COMPROU.test(text) && !REGEX_NAO_COMPROU.test(text)) novasTags.push(TAG.comprador);
+  if (novasTags.length) await etiquetar(conversa.id, novasTags, veioDeAnuncio ? [TAG.organico] : []);
   // Conversa com a equipe envolvida (aguardando ou atendendo): cada mensagem nova do cliente
   // volta a aparecer como NÃO LIDA na caixa de entrada.
   const comEquipe = conversa.status === "NEEDS_HUMAN" || conversa.status === "HUMAN";
@@ -375,7 +391,7 @@ async function tratarEvento(ev: Evento) {
     }
     await etiquetar(conversa.id, [r.id === 9004 ? TAG.querComprar : TAG.resolvidoRobo], [TAG.semDuvida]);
   } else if (r.tipo === "atraso") {
-    await etiquetar(conversa.id, [TAG.atraso]);
+    await etiquetar(conversa.id, [TAG.atraso, TAG.comprador]); // reclamar de pedido = já comprou
     // Pedido atrasado: 1ª vez orienta a conferir no app (todo mundo para dentro do app);
     // se a pessoa volta dizendo que já passou do prazo, chama a atendente.
     const jaOrientou = await prisma.igMessage.findFirst({
