@@ -3,6 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { exigirAdmin } from "@/lib/igAdmin";
 import { publicarPost } from "@/lib/social/publicar";
 
+// Publicar em várias redes (com vídeo) demora: o plano gratuito da Vercel aceita até 60 segundos.
+export const maxDuration = 60;
+
 // POST = publicar agora (ou tentar de novo as redes que falharam).
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { erro } = await exigirAdmin();

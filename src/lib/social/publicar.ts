@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { abrirConta } from "@/lib/social/contas";
+import { encrypt } from "@/lib/crypto";
 import { adaptadorDe } from "@/lib/social";
 import type { Midia } from "@/lib/social/types";
 
@@ -33,6 +34,23 @@ export async function publicarPost(postId: string): Promise<{ status: string }> 
         if (!adaptador?.disponivel) throw new Error(`${adaptador?.rotulo ?? rede} ainda não está disponível.`);
         const conta = await abrirConta(alvo.contaId);
         if (!conta) throw new Error("Conta desconectada ou desativada.");
+
+        // Token perto de vencer (ex: TikTok vale só 24h): renova antes de publicar e guarda o novo.
+        if (adaptador.renovar && conta.expiraEm && conta.expiraEm.getTime() < Date.now() + 10 * 60_000) {
+          const novo = await adaptador.renovar(conta);
+          if (novo) {
+            conta.accessToken = novo.accessToken;
+            if (novo.refreshToken) conta.refreshToken = novo.refreshToken;
+            await prisma.socialConta.update({
+              where: { id: conta.id },
+              data: {
+                accessToken: encrypt(novo.accessToken),
+                ...(novo.refreshToken ? { refreshToken: encrypt(novo.refreshToken) } : {}),
+                expiraEm: novo.expiraEm ?? null,
+              },
+            });
+          }
+        }
 
         const ajuste = porRede[rede] ?? {};
         const entrada = {

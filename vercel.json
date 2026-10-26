@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/estoque-avaliacoes",
       "schedule": "30 9 * * *"
+    },
+    {
+      "path": "/api/cron/publicar-agendados",
+      "schedule": "0 12 * * *"
     }
   ]
 }
