@@ -17,7 +17,13 @@ type Evento = {
   sender?: { id: string };
   recipient?: { id: string };
   timestamp?: number;
-  message?: { mid?: string; text?: string; is_echo?: boolean; quick_reply?: { payload?: string } };
+  message?: {
+    mid?: string;
+    text?: string;
+    is_echo?: boolean;
+    quick_reply?: { payload?: string };
+    attachments?: { type?: string }[];
+  };
   postback?: { mid?: string; title?: string; payload?: string };
 };
 type Mudanca = {
@@ -46,6 +52,7 @@ const PEDIR_DUVIDA = [
 ];
 
 const HORAS = (h: number) => new Date(Date.now() - h * 60 * 60 * 1000);
+const APP_BFF = "https://converta.app/redirectbff.html";
 
 // Handshake de verificação da Meta ao cadastrar o webhook no app.
 export async function GET(req: NextRequest) {
@@ -186,7 +193,9 @@ async function tratarEvento(ev: Evento) {
   if (ev.message?.is_echo) return tratarEco(ev);
   // Toque em botão de resposta rápida (message.quick_reply) ou em botão do modelo (postback).
   const botao = ev.message?.quick_reply?.payload ?? ev.postback?.payload;
-  const text = ev.message?.text?.trim() || ev.postback?.title?.trim();
+  // Alguém marcou a loja num story: chega como anexo "story_mention", sem texto.
+  const mencionou = !!ev.message?.attachments?.some((a) => a.type === "story_mention");
+  const text = ev.message?.text?.trim() || ev.postback?.title?.trim() || (mencionou ? "[Marcou a loja num story]" : undefined);
   if (!text || !ev.sender?.id || !ev.recipient?.id) return;
 
   const account = await prisma.instagramAccount.findUnique({ where: { igUserId: ev.recipient.id } });
@@ -224,6 +233,21 @@ async function tratarEvento(ev: Evento) {
 
   if (conversa.status === "CLOSED") return;
   if (!dentroDaJanela(agora)) return;
+
+  // Agradece a marcação no story (uma vez por dia por pessoa) e não passa pela triagem.
+  if (mencionou) {
+    const jaAgradeceu = await prisma.igMessage.findFirst({
+      where: { conversationId: conversa.id, matchedKind: "story_mencao", createdAt: { gt: HORAS(24) } },
+      select: { id: true },
+    });
+    if (!jaAgradeceu) {
+      await enviarEGravar(account, conversa.id, ev.sender.id, {
+        texto: "Obrigada por marcar a gente! 💜",
+        kind: "story_mencao",
+      });
+    }
+    return;
+  }
 
   // Uma atendente assumiu: o robô fica quieto enquanto ela está ativa (24h desde a
   // última mensagem dela); passado isso, volta a atender.
@@ -305,6 +329,30 @@ async function tratarEvento(ev: Evento) {
     saida = { texto: partes.join("\n"), partes, kind: r.kind, id: r.id, confianca: r.confianca };
     if (conversa.status !== "BOT") {
       await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "BOT" } });
+    }
+  } else if (r.tipo === "atraso") {
+    // Pedido atrasado: 1ª vez orienta a conferir no app (todo mundo para dentro do app);
+    // se a pessoa volta dizendo que já passou do prazo, chama a atendente.
+    const jaOrientou = await prisma.igMessage.findFirst({
+      where: { conversationId: conversa.id, matchedKind: "atraso", createdAt: { gt: HORAS(24) } },
+      select: { id: true },
+    });
+    if (!jaOrientou) {
+      saida = {
+        texto: "Entendi, vou te ajudar com isso.",
+        partes: [
+          "Entendi, vou te ajudar com isso 😊",
+          `Primeiro confere no app: entra na sua conta, vai em Minha conta e vê a movimentação do seu pedido. ${APP_BFF}`,
+          "Se por lá já passou do prazo de entrega, me avisa aqui que eu chamo uma atendente.",
+        ],
+        kind: "atraso",
+      };
+    } else {
+      saida = {
+        texto: "Vou chamar uma atendente pra verificar o seu pedido, já já ela te responde por aqui.",
+        kind: "atendente",
+      };
+      await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "NEEDS_HUMAN", naoLida: true } });
     }
   } else if (r.tipo === "saudacao") {
     if (primeiroContato && config.ativo) {

@@ -363,6 +363,8 @@ model IgBoasVindas {
   infoTexto   String   @default("") // informações enviadas ao tocar no botão; vazio = o robô monta a partir da base
   linkTitulo  String   @default("")
   linkUrl     String   @default("")
+  iniciadores String   @default("") // perguntas do chat novo (até 4, uma por linha)
+  menu        String   @default("") // menu principal (até 5 linhas: "Título | https://link" ou só "Título")
   updatedAt   DateTime @updatedAt
 }
 
