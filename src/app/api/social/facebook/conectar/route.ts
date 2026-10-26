@@ -21,7 +21,15 @@ export async function GET(req: NextRequest) {
   url.searchParams.set("client_id", appId);
   url.searchParams.set("redirect_uri", `${req.nextUrl.origin}/api/social/facebook/callback`);
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", FB_ESCOPOS.join(","));
+  // App do tipo Negócio usa "Login do Facebook para Empresas": as permissões vêm de uma Configuração
+  // criada no painel da Meta (FB_CONFIG_ID), no lugar de "scope". Sem a variável, usa o login clássico.
+  const configId = process.env.FB_CONFIG_ID;
+  if (configId) {
+    url.searchParams.set("config_id", configId);
+    url.searchParams.set("override_default_response_type", "true");
+  } else {
+    url.searchParams.set("scope", FB_ESCOPOS.join(","));
+  }
   url.searchParams.set("state", state);
 
   const res = NextResponse.redirect(url);
