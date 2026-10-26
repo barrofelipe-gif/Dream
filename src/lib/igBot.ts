@@ -176,6 +176,9 @@ export function dividirTexto(texto: string, max = 4, tamanho = 90): string[] {
 }
 
 const RASTREIO_APP = "https://converta.app/redirectbff.html";
+// Palavras que indicam dúvida de compra (atacado, varejo, pedido mínimo, revenda, CNPJ, catálogo, como comprar).
+const REGEX_COMPRA =
+  /atacado|varejo|pedido m[ií]nimo|valor m[ií]nimo|compra m[ií]nima|revend|lojista|sacoleir|cnpj|cat[aá]logo|como (eu )?(fa[cç]o|faz|posso|consigo|compro)[^.?!]{0,12}comprar|quero comprar|onde (eu )?compro|como compro/i;
 
 /**
  * Tira das mensagens qualquer frase sobre preço diferente no Pix x cartão (ou desconto no Pix):
@@ -220,7 +223,11 @@ export async function responder(loja: Loja, contexto: string, historico: Mensage
   });
 
   const t = triagem.parsed_output;
-  if (!t || t.tipo === "nenhuma" || t.confianca === "baixa") return { tipo: "humano", motivo: "nenhuma entrada serve" };
+  // Palavras de compra valem mesmo que a triagem tenha classificado de outro jeito (menos rastreio e atraso).
+  const forcaCompra =
+    loja === "bff" && REGEX_COMPRA.test(contexto) && t?.tipo !== "rastreio" && t?.tipo !== "atraso" && t?.tipo !== "saudacao";
+  if (!forcaCompra && (!t || t.tipo === "nenhuma" || t.confianca === "baixa")) return { tipo: "humano", motivo: "nenhuma entrada serve" };
+  if (!t) return { tipo: "humano", motivo: "nenhuma entrada serve" };
 
   // Rastreio: regra fixa da BFF. O acompanhamento é só pelo app (nunca por aqui nem por WhatsApp).
   if (t.tipo === "rastreio" && loja === "bff") {
@@ -239,7 +246,7 @@ export async function responder(loja: Loja, contexto: string, historico: Mensage
   if (t.tipo === "rastreio") return { tipo: "humano", motivo: "rastreio sem regra para esta loja" };
 
   // Compra: roteiro fixo da BFF, um recado por mensagem e SEMPRE com o link do app.
-  if (t.tipo === "compra" && loja === "bff") {
+  if ((t.tipo === "compra" || forcaCompra) && loja === "bff") {
     const semCnpj = /cnpj|pessoa f[ií]sica|\bcpf\b/i.test(contexto) ? ["Pode comprar sem CNPJ, sim."] : [];
     return {
       tipo: "resposta",
