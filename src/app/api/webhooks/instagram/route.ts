@@ -137,12 +137,15 @@ async function tratarEco(ev: Evento) {
       metaMessageId: mid,
     },
   });
-  await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "HUMAN" } });
+  // Quem respondeu pelo Instagram obviamente leu a conversa.
+  await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "HUMAN", naoLida: false } });
 }
 
 type Conta = { id: string; igUserId: string; accessToken: string };
 type Saida = {
   texto: string;
+  /** Várias mensagens curtas em sequência (botões e link vão só na última). */
+  partes?: string[];
   kind: string;
   id?: number | null;
   confianca?: string | null;
@@ -152,26 +155,31 @@ type Saida = {
 
 /** Envia a mensagem no Instagram e grava na conversa como do robô. */
 async function enviarEGravar(conta: Conta, conversaId: string, destinatario: string, s: Saida) {
-  const sentId = await enviarDm({
-    igUserId: conta.igUserId,
-    encryptedToken: conta.accessToken,
-    recipientId: destinatario,
-    text: s.texto,
-    quickReplies: s.quickReplies,
-    link: s.link,
-  });
-  await prisma.igMessage.create({
-    data: {
-      conversationId: conversaId,
-      direction: "OUT",
-      source: "BOT",
-      text: s.texto,
-      metaMessageId: sentId || null,
-      matchedKind: s.kind,
-      matchedId: s.id ?? null,
-      confidence: s.confianca ?? null,
-    },
-  });
+  const partes = s.partes?.length ? s.partes : [s.texto];
+  for (let i = 0; i < partes.length; i++) {
+    const ultima = i === partes.length - 1;
+    if (i > 0) await new Promise((r) => setTimeout(r, 1200)); // pausa curta: parece digitação, não rajada
+    const sentId = await enviarDm({
+      igUserId: conta.igUserId,
+      encryptedToken: conta.accessToken,
+      recipientId: destinatario,
+      text: partes[i],
+      quickReplies: ultima ? s.quickReplies : undefined,
+      link: ultima ? s.link : undefined,
+    });
+    await prisma.igMessage.create({
+      data: {
+        conversationId: conversaId,
+        direction: "OUT",
+        source: "BOT",
+        text: partes[i],
+        metaMessageId: sentId || null,
+        matchedKind: s.kind,
+        matchedId: s.id ?? null,
+        confidence: s.confianca ?? null,
+      },
+    });
+  }
 }
 
 async function tratarEvento(ev: Evento) {
@@ -198,7 +206,13 @@ async function tratarEvento(ev: Evento) {
   await prisma.igMessage.create({
     data: { conversationId: conversa.id, direction: "IN", source: "CLIENTE", text, metaMessageId: mid },
   });
-  await prisma.igConversation.update({ where: { id: conversa.id }, data: { lastCustomerMessageAt: agora } });
+  // Conversa com a equipe envolvida (aguardando ou atendendo): cada mensagem nova do cliente
+  // volta a aparecer como NÃO LIDA na caixa de entrada.
+  const comEquipe = conversa.status === "NEEDS_HUMAN" || conversa.status === "HUMAN";
+  await prisma.igConversation.update({
+    where: { id: conversa.id },
+    data: { lastCustomerMessageAt: agora, ...(comEquipe ? { naoLida: true } : {}) },
+  });
 
   await atualizarPerfil(conversa.id);
 
@@ -242,7 +256,7 @@ async function tratarEvento(ev: Evento) {
     let info = config.infoTexto.trim() ? aplicarNome(config.infoTexto, perfil?.nome ?? null) : await escreverInfoCompra(loja).catch(() => null);
     if (!info) {
       // Sem texto seguro para mandar: uma atendente envia as informações.
-      await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "NEEDS_HUMAN" } });
+      await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "NEEDS_HUMAN", naoLida: true } });
       await enviarEGravar(account, conversa.id, ev.sender.id, {
         texto: "Vou pedir para uma atendente te mandar essas informações agora mesmo, só um instante.",
         kind: "atendente",
@@ -286,23 +300,29 @@ async function tratarEvento(ev: Evento) {
   let saida: Saida;
   if (r.tipo === "resposta") {
     // Primeira conversa e a pessoa ainda não segue: a resposta já leva o convite para seguir.
-    const convite = primeiroContato && config.pedirSeguir && naoSegue ? `\n\n${config.textoSeguir}` : "";
-    saida = { texto: r.texto + convite, kind: r.kind, id: r.id, confianca: r.confianca };
+    const convite = primeiroContato && config.pedirSeguir && naoSegue && config.textoSeguir.trim() ? [config.textoSeguir] : [];
+    const partes = [...r.partes, ...convite];
+    saida = { texto: partes.join("\n"), partes, kind: r.kind, id: r.id, confianca: r.confianca };
     if (conversa.status !== "BOT") {
       await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "BOT" } });
     }
   } else if (r.tipo === "saudacao") {
     if (primeiroContato && config.ativo) {
       // Boas-vindas com botões (como no ManyChat): convida a receber as informações e a seguir a loja.
-      const texto =
-        aplicarNome(config.mensagem, perfil?.nome ?? null) + (config.pedirSeguir && naoSegue ? `\n\n${config.textoSeguir}` : "");
+      const abertura = aplicarNome(config.mensagem, perfil?.nome ?? null);
+      const convite = config.pedirSeguir && naoSegue && config.textoSeguir.trim() ? [config.textoSeguir] : [];
       saida = {
-        texto,
+        texto: abertura,
+        // Uma pergunta só e espera a resposta; o convite para seguir vai numa mensagem curta separada.
+        partes: [abertura, ...convite],
         kind: "boasvindas",
-        quickReplies: [
-          { title: config.botao, payload: PAYLOAD_SIM },
-          { title: BOTAO_DUVIDA, payload: PAYLOAD_DUVIDA },
-        ],
+        // Botões só se o texto do botão estiver preenchido no editor.
+        quickReplies: config.botao.trim()
+          ? [
+              { title: config.botao, payload: PAYLOAD_SIM },
+              { title: BOTAO_DUVIDA, payload: PAYLOAD_DUVIDA },
+            ]
+          : undefined,
       };
     } else {
       // Só cumprimentou ou disse que tem uma dúvida: convida a perguntar (não conta como falha).
@@ -332,8 +352,8 @@ async function tratarEvento(ev: Evento) {
     } else {
       const texto = await escreverApoio(loja, "atendente", historico).catch(() => CHAMAR_ATENDENTE);
       saida = { texto: texto || CHAMAR_ATENDENTE, kind: "atendente" };
-      // Fila da equipe: a atendente responde pelo próprio Instagram.
-      await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "NEEDS_HUMAN" } });
+      // Fila da equipe: a atendente responde pelo próprio Instagram. Fica NÃO LIDA até alguém abrir.
+      await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "NEEDS_HUMAN", naoLida: true } });
     }
   }
 

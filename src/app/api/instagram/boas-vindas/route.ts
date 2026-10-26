@@ -36,7 +36,6 @@ export async function PUT(req: NextRequest) {
     linkUrl: texto(body.linkUrl, 300),
   };
   if (!dados.mensagem) return NextResponse.json({ error: "Escreva a mensagem de boas-vindas" }, { status: 400 });
-  if (!dados.botao) return NextResponse.json({ error: "Escreva o texto do botão (até 20 caracteres)" }, { status: 400 });
   if (dados.linkUrl && !/^https:\/\//i.test(dados.linkUrl)) {
     return NextResponse.json({ error: "O link precisa começar com https://" }, { status: 400 });
   }

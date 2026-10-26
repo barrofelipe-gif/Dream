@@ -17,6 +17,7 @@ export async function GET() {
     conversas: conversas.map((c) => ({
       id: c.id,
       status: c.status,
+      naoLida: c.naoLida,
       cliente: c.igScopedUserId.slice(-6),
       nome: c.nome,
       username: c.username,

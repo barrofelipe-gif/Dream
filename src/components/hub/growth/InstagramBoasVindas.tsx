@@ -140,9 +140,9 @@ export default function InstagramBoasVindas() {
               <textarea value={cfg.mensagem} onChange={(e) => set("mensagem", e.target.value)} rows={4} className={campo} />
               <p className="mt-1 text-[11px] text-[#a1a5b0]">Use {"{nome}"} para o primeiro nome da pessoa (se o Instagram não informar, o nome é omitido).</p>
 
-              <label className="mb-1 mt-3 block text-sm font-medium text-[#1b1f2b]">Botão de resposta</label>
+              <label className="mb-1 mt-3 block text-sm font-medium text-[#1b1f2b]">Botão de resposta (opcional)</label>
               <input value={cfg.botao} maxLength={20} onChange={(e) => set("botao", e.target.value)} className={campo} />
-              <p className="mt-1 text-[11px] text-[#a1a5b0]">Até 20 caracteres. Junto vem sempre o botão &ldquo;Tenho uma dúvida&rdquo;.</p>
+              <p className="mt-1 text-[11px] text-[#a1a5b0]">Deixe vazio para mandar só a pergunta e esperar a resposta (recomendado). Se preencher, vai junto o botão &ldquo;Tenho uma dúvida&rdquo;.</p>
             </div>
 
             <div className="rounded-xl border border-[#e3e5ea] p-4">
@@ -199,6 +199,8 @@ export default function InstagramBoasVindas() {
                   <div className="max-w-[88%] rounded-2xl bg-[#262833] px-3 py-2 text-[#e9eaf0]">
                     <p className="whitespace-pre-wrap">{exemplo(cfg.mensagem)}{cfg.pedirSeguir ? `\n\n${cfg.textoSeguir}` : ""}</p>
                   </div>
+                  {cfg.botao.trim() ? (
+                    <>
                   <div className="flex flex-wrap gap-1.5">
                     <span className="rounded-full border border-[#6366f1] px-3 py-1 text-[11px] text-[#a5a8ff]">{cfg.botao || "Botão"}</span>
                     <span className="rounded-full border border-[#6366f1] px-3 py-1 text-[11px] text-[#a5a8ff]">Tenho uma dúvida</span>
@@ -206,7 +208,11 @@ export default function InstagramBoasVindas() {
                   <div className="flex justify-end">
                     <div className="max-w-[80%] rounded-2xl bg-[#6366f1] px-3 py-2 text-white">{cfg.botao || "Botão"}</div>
                   </div>
-                  <div className="max-w-[88%] rounded-2xl bg-[#262833] px-3 py-2 text-[#e9eaf0]">
+                    </>
+                  ) : (
+                    <p className="pt-1 text-center text-[10px] text-[#7d8190]">…espera a resposta da pessoa…</p>
+                  )}
+                  <div className={`max-w-[88%] rounded-2xl bg-[#262833] px-3 py-2 text-[#e9eaf0] ${cfg.botao.trim() ? "" : "hidden"}`}>
                     <p className="whitespace-pre-wrap">
                       {cfg.infoTexto.trim() ? exemplo(cfg.infoTexto) : "As informações para comprar (pedido mínimo, pagamento, prazo…) montadas na hora a partir da base da loja."}
                     </p>

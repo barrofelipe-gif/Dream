@@ -311,6 +311,7 @@ model IgConversation {
   // Felipe/equipe · HUMAN: um humano assumiu (robô fica quieto) · CLOSED
   status                String   @default("BOT")
   lastCustomerMessageAt DateTime? // base da janela de 24h da Meta
+  naoLida               Boolean  @default(false) // transferida para a equipe e ainda não aberta
 
   // Perfil do cliente no Instagram (User Profile API), renovado a cada ~12h.
   nome                  String?

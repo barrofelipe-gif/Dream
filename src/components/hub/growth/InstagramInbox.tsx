@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 type Resumo = {
   id: string;
   status: string;
+  naoLida: boolean;
   cliente: string;
   nome: string | null;
   username: string | null;
@@ -123,6 +124,7 @@ function SeloGrande({ n }: { n: number | null }) {
 
 const FILTROS: [string, string][] = [
   ["todas", "Todas"],
+  ["NAO_LIDAS", "Não lidas"],
   ["NEEDS_HUMAN", "Aguardando"],
   ["BOT", "Robô"],
   ["HUMAN", "Equipe"],
@@ -164,7 +166,8 @@ export default function InstagramInbox() {
     fim.current?.scrollIntoView({ block: "end" });
   }, [conversa?.mensagens.length, selecionada]);
 
-  const visiveis = (lista ?? []).filter((c) => filtro === "todas" || c.status === filtro);
+  const visiveis = (lista ?? []).filter((c) => filtro === "todas" || (filtro === "NAO_LIDAS" ? c.naoLida : c.status === filtro));
+  const naoLidas = (lista ?? []).filter((c) => c.naoLida).length;
   const aguardando = (lista ?? []).filter((c) => c.status === "NEEDS_HUMAN").length;
 
   async function enviar() {
@@ -183,6 +186,18 @@ export default function InstagramInbox() {
     }
     setTexto("");
     await Promise.all([carregarConversa(selecionada), carregarLista()]);
+  }
+
+  async function marcarNaoLida() {
+    if (!selecionada) return;
+    await fetch(`/api/instagram/conversas/${selecionada}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ naoLida: true }),
+    });
+    setSelecionada(null);
+    setConversa(null);
+    await carregarLista();
   }
 
   async function mudarStatus(status: string) {
@@ -213,6 +228,9 @@ export default function InstagramInbox() {
         <div className="border-b border-[#e3e5ea] px-4 py-3">
           <div className="flex items-center justify-between">
             <p className="text-base font-semibold text-[#1b1f2b]">Mensagens</p>
+            {naoLidas > 0 && (
+              <span className="rounded-full bg-[#6366f1] px-2.5 py-0.5 text-[11px] font-semibold text-white">{naoLidas} não lida{naoLidas > 1 ? "s" : ""}</span>
+            )}
             {aguardando > 0 && (
               <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800">
                 {aguardando} aguardando
@@ -241,13 +259,14 @@ export default function InstagramInbox() {
               <button
                 key={c.id}
                 onClick={() => setSelecionada(c.id)}
-                className={`flex w-full items-start gap-3 border-b border-[#f1f2f5] px-4 py-3 text-left transition ${ativa ? "bg-[#f1f2ff]" : "hover:bg-[#f9fafb]"}`}
+                className={`flex w-full items-start gap-3 border-b border-[#f1f2f5] px-4 py-3 text-left transition ${ativa ? "bg-[#f1f2ff]" : c.naoLida ? "bg-[#f7f7ff] hover:bg-[#f1f2ff]" : "hover:bg-[#f9fafb]"}`}
               >
                 <Avatar c={c} tamanho={44} pontoCor={s.ponto} />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center justify-between gap-2">
                     <span className="flex min-w-0 items-center gap-1">
-                      <span className="truncate text-sm font-semibold text-[#1b1f2b]">{nomeExibido(c)}</span>
+                      <span className={`truncate text-sm text-[#1b1f2b] ${c.naoLida ? "font-bold" : "font-semibold"}`}>{nomeExibido(c)}</span>
+                      {c.naoLida && <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#6366f1]" title="Não lida" />}
                       {c.verificado && <span className="text-[#3b82f6]" title="Verificado">✔</span>}
                     </span>
                     <span className="shrink-0 text-[11px] text-[#a1a5b0]">{quando(c.ultimaEm)}</span>
@@ -256,7 +275,7 @@ export default function InstagramInbox() {
                     {c.username && c.nome ? `@${c.username} · ` : ""}
                     {c.seguidores !== null ? `${seguidoresCurto(c.seguidores)} seguidores` : ""}
                   </span>
-                  <span className="mt-0.5 block truncate text-[13px] text-[#5a5f6d]">
+                  <span className={`mt-0.5 block truncate text-[13px] ${c.naoLida ? "font-semibold text-[#1b1f2b]" : "text-[#5a5f6d]"}`}>
                     {c.ultima
                       ? `${c.ultima.de === "cliente" ? "" : c.ultima.de === "equipe" ? "Equipe: " : "Robô: "}${c.ultima.texto}`
                       : "—"}
@@ -313,6 +332,9 @@ export default function InstagramInbox() {
                     Devolver ao robô
                   </button>
                 )}
+                <button onClick={marcarNaoLida} className="rounded-lg bg-[#eef0f4] px-3 py-1.5 text-xs font-medium text-[#1b1f2b] hover:bg-[#e3e5ea]">
+                  Marcar como não lida
+                </button>
                 {conversa.status !== "CLOSED" && (
                   <button onClick={() => mudarStatus("CLOSED")} className="rounded-lg bg-[#eef0f4] px-3 py-1.5 text-xs font-medium text-[#1b1f2b] hover:bg-[#e3e5ea]">
                     Encerrar

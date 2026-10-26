@@ -11,6 +11,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
 
   await atualizarPerfil(id); // só refaz se passou de 12h
+  // Abrir a conversa = leu: tira o destaque de não lida.
+  await prisma.igConversation.updateMany({ where: { id, naoLida: true }, data: { naoLida: false } });
   const c = await prisma.igConversation.findUnique({
     where: { id },
     include: { account: true, messages: { orderBy: { createdAt: "asc" } } },
@@ -48,7 +50,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { erro } = await exigirAdmin();
   if (erro) return erro;
   const { id } = await params;
-  const { status } = (await req.json().catch(() => ({}))) as { status?: string };
+  const body = (await req.json().catch(() => ({}))) as { status?: string; naoLida?: boolean };
+  if (typeof body.naoLida === "boolean") {
+    await prisma.igConversation.update({ where: { id }, data: { naoLida: body.naoLida } });
+    return NextResponse.json({ ok: true });
+  }
+  const { status } = body;
   if (!status || !["BOT", "HUMAN", "CLOSED", "NEEDS_HUMAN"].includes(status)) {
     return NextResponse.json({ error: "Status inválido" }, { status: 400 });
   }

@@ -20,22 +20,20 @@ export const PAYLOAD_DUVIDA = "BV_DUVIDA";
 export const PADRAO: Record<Loja, BoasVindasConfig> = {
   bff: {
     ativo: true,
-    mensagem:
-      "Oi, {nome}! Que bom ter você por aqui na BFF Fitness Atacado. Posso te mandar agora as informações para comprar no atacado (pedido mínimo, pagamento, prazo e como funciona)?",
-    botao: "Sim, manda aí",
+    mensagem: "Ei, {nome}, tudo bem? O que eu posso te ajudar?",
+    botao: "",
     pedirSeguir: true,
-    textoSeguir: "Aproveita e segue a gente aqui no Instagram para ficar por dentro dos lançamentos e das promoções.",
+    textoSeguir: "Ah, e segue a gente aqui pra ficar por dentro das novidades 😉",
     infoTexto: "",
     linkTitulo: "Ver o site",
     linkUrl: "https://www.bfffitnessatacado.com.br",
   },
   moranga: {
     ativo: true,
-    mensagem:
-      "Oi, {nome}! Que bom ter você por aqui na Moranga Biquínis. Quer que eu te mande as informações de como comprar (pagamento, prazo e como funciona)?",
-    botao: "Sim, manda aí",
+    mensagem: "Ei, {nome}, tudo bem? O que eu posso te ajudar?",
+    botao: "",
     pedirSeguir: true,
-    textoSeguir: "Aproveita e segue a gente aqui no Instagram para ficar por dentro das novidades e das promoções.",
+    textoSeguir: "Ah, e segue a gente aqui pra ficar por dentro das novidades 😉",
     infoTexto: "",
     linkTitulo: "Ver o site",
     linkUrl: "https://www.usemoranga.com.br",
