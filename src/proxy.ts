@@ -77,6 +77,8 @@ export default auth(async (req) => {
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/.well-known/oauth-");
   const isCron = pathname.startsWith("/api/cron");
+  // Webhooks externos (Meta) autenticam sozinhos por assinatura HMAC do corpo.
+  const isWebhook = pathname.startsWith("/api/webhooks/");
   // O endpoint MCP autentica sozinho por token/cabeçalho (ver
   // src/app/api/mcp/route.ts) — não usa sessão de navegador, porque quem
   // chama é um assistente externo (Claude, ChatGPT). Exceção: a tela de
@@ -85,7 +87,7 @@ export default auth(async (req) => {
   // usar o login de verdade do painel, em vez de um token solto.
   const isMcp = pathname.startsWith("/api/mcp") && pathname !== "/api/mcp/oauth/authorize";
 
-  if (isPublic || isCron || isMcp) return NextResponse.next();
+  if (isPublic || isCron || isMcp || isWebhook) return NextResponse.next();
 
   if (!isLoggedIn) {
     const loginUrl = new URL("/login", req.nextUrl.origin);

@@ -279,3 +279,63 @@ model TrayConnection {
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 }
+
+// ── Robô de DM do Instagram ──────────────────────────────────────────────
+// Conversas ficam AQUI, separadas das perguntas que aparecem nas páginas dos
+// produtos (essas moram no bff-avaliacoes, que o robô só lê).
+
+// Uma conta do Instagram ligada a uma loja: cada conta responde com a base
+// de perguntas e respostas da sua loja.
+model InstagramAccount {
+  id           String   @id @default(cuid())
+  igUserId     String   @unique // id da conta profissional (é o "recipient" no webhook)
+  username     String?
+  loja         String   // "bff" | "moranga" — qual base do bff-avaliacoes usar
+  accessToken  String   // criptografado (AES-256-GCM) — ver src/lib/crypto.ts
+  active       Boolean  @default(true)
+
+  conversations IgConversation[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model IgConversation {
+  id                    String   @id @default(cuid())
+  accountId             String
+  account               InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  igScopedUserId        String   // id da pessoa no Instagram (escopo do app)
+
+  // BOT: robô responde · NEEDS_HUMAN: robô não achou resposta, aguardando o
+  // Felipe/equipe · HUMAN: um humano assumiu (robô fica quieto) · CLOSED
+  status                String   @default("BOT")
+  lastCustomerMessageAt DateTime? // base da janela de 24h da Meta
+
+  messages              IgMessage[]
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([accountId, igScopedUserId])
+  @@index([status, updatedAt])
+}
+
+model IgMessage {
+  id              String   @id @default(cuid())
+  conversationId  String
+  conversation    IgConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  direction       String   // "IN" (cliente) | "OUT" (nós)
+  source          String   // "CLIENTE" | "BOT" | "HUMANO"
+  text            String
+  metaMessageId   String?  @unique // idempotência: a Meta reenvia o mesmo webhook
+
+  // Só nas respostas do robô: qual entrada da base foi usada e com que certeza.
+  matchedKind     String?  // "faq" | "pergunta"
+  matchedId       Int?
+  confidence      String?  // "alta" | "media" | "baixa"
+
+  createdAt       DateTime @default(now())
+
+  @@index([conversationId, createdAt])
+}
