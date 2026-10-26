@@ -79,7 +79,7 @@ async function carregarBase(loja: Loja): Promise<Entrada[]> {
   // Regras ditas pelo dono da loja valem MAIS que a base do site: entram na frente e
   // substituem as entradas que dizem outra coisa (ex: prazo de entrega).
   const regras = REGRAS[loja] ?? [];
-  const substituidas = new Set(["faq-5", "faq-4"]);
+  const substituidas = new Set(["faq-5", "faq-4", "faq-14"]);
   const liberadas = [
     ...(loja === "bff" ? regras : []),
     ...entradas.filter((e) => !bloqueadas.has(`${e.kind}-${e.id}`) && !(loja === "bff" && substituidas.has(`${e.kind}-${e.id}`))),
