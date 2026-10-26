@@ -312,6 +312,7 @@ model IgConversation {
   status                String   @default("BOT")
   lastCustomerMessageAt DateTime? // base da janela de 24h da Meta
   naoLida               Boolean  @default(false) // transferida para a equipe e ainda não aberta
+  tags                  String[] @default([])    // etiquetas (robô e equipe), como as tags do ManyChat
 
   // Perfil do cliente no Instagram (User Profile API), renovado a cada ~12h.
   nome                  String?

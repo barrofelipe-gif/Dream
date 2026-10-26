@@ -18,6 +18,7 @@ export async function GET() {
       id: c.id,
       status: c.status,
       naoLida: c.naoLida,
+      tags: c.tags,
       cliente: c.igScopedUserId.slice(-6),
       nome: c.nome,
       username: c.username,

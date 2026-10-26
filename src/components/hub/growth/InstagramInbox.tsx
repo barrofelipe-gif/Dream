@@ -6,6 +6,7 @@ type Resumo = {
   id: string;
   status: string;
   naoLida: boolean;
+  tags: string[];
   cliente: string;
   nome: string | null;
   username: string | null;
@@ -21,6 +22,7 @@ type Msg = { id: string; de: "cliente" | "equipe" | "robo"; texto: string; em: s
 type Conversa = {
   id: string;
   status: string;
+  tags: string[];
   cliente: string;
   nome: string | null;
   username: string | null;
@@ -122,6 +124,29 @@ function SeloGrande({ n }: { n: number | null }) {
   );
 }
 
+const PALETA = ["bg-violet-100 text-violet-700", "bg-sky-100 text-sky-700", "bg-emerald-100 text-emerald-700", "bg-amber-100 text-amber-800", "bg-rose-100 text-rose-700", "bg-teal-100 text-teal-700", "bg-fuchsia-100 text-fuchsia-700"];
+const corTag = (t: string) => {
+  if (t === "Não atendido") return "bg-red-100 text-red-700";
+  if (t === "Atendido pela equipe") return "bg-emerald-100 text-emerald-700";
+  let h = 0;
+  for (const ch of t) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return PALETA[h % PALETA.length];
+};
+const TAGS_SUGERIDAS = ["Pediu humano", "Sem dúvida informada", "Não atendido", "Atendido pela equipe", "Resolvido pelo robô", "Quer comprar", "Pedido atrasado", "Cliente VIP"];
+
+function Etiqueta({ t, onRemover }: { t: string; onRemover?: () => void }) {
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${corTag(t)}`}>
+      {t}
+      {onRemover && (
+        <button onClick={onRemover} className="opacity-60 hover:opacity-100" title="Tirar etiqueta">
+          ×
+        </button>
+      )}
+    </span>
+  );
+}
+
 const FILTROS: [string, string][] = [
   ["todas", "Todas"],
   ["NAO_LIDAS", "Não lidas"],
@@ -133,6 +158,8 @@ const FILTROS: [string, string][] = [
 export default function InstagramInbox() {
   const [lista, setLista] = useState<Resumo[] | null>(null);
   const [filtro, setFiltro] = useState("todas");
+  const [filtroTag, setFiltroTag] = useState<string | null>(null);
+  const [novaTag, setNovaTag] = useState("");
   const [selecionada, setSelecionada] = useState<string | null>(null);
   const [conversa, setConversa] = useState<Conversa | null>(null);
   const [texto, setTexto] = useState("");
@@ -166,7 +193,23 @@ export default function InstagramInbox() {
     fim.current?.scrollIntoView({ block: "end" });
   }, [conversa?.mensagens.length, selecionada]);
 
-  const visiveis = (lista ?? []).filter((c) => filtro === "todas" || (filtro === "NAO_LIDAS" ? c.naoLida : c.status === filtro));
+  const visiveis = (lista ?? [])
+    .filter((c) => filtro === "todas" || (filtro === "NAO_LIDAS" ? c.naoLida : c.status === filtro))
+    .filter((c) => !filtroTag || c.tags.includes(filtroTag));
+  const todasTags = [...new Set((lista ?? []).flatMap((c) => c.tags))].sort();
+  async function mexerTag(corpo: { tagAdd?: string; tagRemove?: string }) {
+    if (!selecionada) return;
+    const r = await fetch(`/api/instagram/conversas/${selecionada}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(corpo),
+    });
+    if (r.ok) {
+      const { tags } = await r.json();
+      setConversa((c) => (c ? { ...c, tags } : c));
+      carregarLista();
+    }
+  }
   const naoLidas = (lista ?? []).filter((c) => c.naoLida).length;
   const aguardando = (lista ?? []).filter((c) => c.status === "NEEDS_HUMAN").length;
 
@@ -248,6 +291,19 @@ export default function InstagramInbox() {
               </button>
             ))}
           </div>
+          {todasTags.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {todasTags.map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setFiltroTag(filtroTag === t ? null : t)}
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 transition ${filtroTag === t ? "bg-[#1b1f2b] text-white ring-[#1b1f2b]" : `${corTag(t)} ring-transparent hover:ring-[#c9ccd6]`}`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
           {lista === null && <p className="p-4 text-xs text-[#8a8f9c]">Carregando…</p>}
@@ -280,6 +336,14 @@ export default function InstagramInbox() {
                       ? `${c.ultima.de === "cliente" ? "" : c.ultima.de === "equipe" ? "Equipe: " : "Robô: "}${c.ultima.texto}`
                       : "—"}
                   </span>
+                  {c.tags.length > 0 && (
+                    <span className="mt-1 flex flex-wrap gap-1">
+                      {c.tags.slice(0, 3).map((t) => (
+                        <Etiqueta key={t} t={t} />
+                      ))}
+                      {c.tags.length > 3 && <span className="text-[10px] text-[#a1a5b0]">+{c.tags.length - 3}</span>}
+                    </span>
+                  )}
                   <span className="mt-1.5 flex items-center gap-1.5">
                     <SeloGrande n={c.seguidores} />
                     <span className="text-[10px] uppercase tracking-wide text-[#a1a5b0]">@{c.conta}</span>
@@ -340,6 +404,32 @@ export default function InstagramInbox() {
                     Encerrar
                   </button>
                 )}
+              </div>
+              <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                {conversa.tags.map((t) => (
+                  <Etiqueta key={t} t={t} onRemover={() => mexerTag({ tagRemove: t })} />
+                ))}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (novaTag.trim()) mexerTag({ tagAdd: novaTag.trim() });
+                    setNovaTag("");
+                  }}
+                  className="flex items-center gap-1"
+                >
+                  <input
+                    list="tags-sugeridas"
+                    value={novaTag}
+                    onChange={(e) => setNovaTag(e.target.value)}
+                    placeholder="+ etiqueta"
+                    className="w-28 rounded-full border border-dashed border-[#d5d8e0] bg-transparent px-2.5 py-0.5 text-[11px] outline-none focus:border-[#6366f1]"
+                  />
+                  <datalist id="tags-sugeridas">
+                    {[...new Set([...TAGS_SUGERIDAS, ...todasTags])].map((t) => (
+                      <option key={t} value={t} />
+                    ))}
+                  </datalist>
+                </form>
               </div>
               {/* Faixa do perfil quando não cabe o painel lateral */}
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-[#f7f8fa] px-3 py-2 text-[11px] text-[#5a5f6d] @5xl:hidden">

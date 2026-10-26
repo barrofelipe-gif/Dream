@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { assinaturaValida, dentroDaJanela, enviarDm } from "@/lib/instagram";
 import { responder, escreverApoio, escreverInfoCompra, type Mensagem } from "@/lib/igBot";
 import { atualizarPerfil } from "@/lib/igPerfil";
+import { etiquetar, TAG } from "@/lib/igTags";
 import { PREFIXO_POSTBACK, processarComentario, processarPostbackAutomacao } from "@/lib/igAutomacoes";
 import {
   aplicarNome,
@@ -148,6 +149,7 @@ async function tratarEco(ev: Evento) {
   });
   // Quem respondeu pelo Instagram obviamente leu a conversa.
   await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "HUMAN", naoLida: false } });
+  await etiquetar(conversa.id, [TAG.atendidoEquipe], [TAG.naoAtendido]);
 }
 
 type Conta = { id: string; igUserId: string; accessToken: string };
@@ -331,6 +333,8 @@ async function tratarEvento(ev: Evento) {
     .trim();
   const r = pediuHumano && !contextoSemPedido ? ({ tipo: "pedir_duvida" } as const) : await responder(loja, (pediuHumano ? contextoSemPedido : contexto) || text, historico);
 
+  if (pediuHumano) await etiquetar(conversa.id, [TAG.pediuHumano]);
+
   let saida: Saida;
   if (r.tipo === "pedir_duvida") {
     const pedidos = await prisma.igMessage.count({
@@ -339,6 +343,7 @@ async function tratarEvento(ev: Evento) {
     if (pedidos === 0) {
       saida = { texto: "Claro! Me conta qual é a sua dúvida? 😊", kind: "pedir_duvida" };
     } else if (pedidos === 1) {
+      await etiquetar(conversa.id, [TAG.semDuvida]);
       saida = {
         texto: "Então, primeiro preciso saber qual é a sua dúvida pra te direcionar certinho 😊",
         partes: [
@@ -368,7 +373,9 @@ async function tratarEvento(ev: Evento) {
     if (conversa.status !== "BOT") {
       await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "BOT" } });
     }
+    await etiquetar(conversa.id, [r.id === 9004 ? TAG.querComprar : TAG.resolvidoRobo], [TAG.semDuvida]);
   } else if (r.tipo === "atraso") {
+    await etiquetar(conversa.id, [TAG.atraso]);
     // Pedido atrasado: 1ª vez orienta a conferir no app (todo mundo para dentro do app);
     // se a pessoa volta dizendo que já passou do prazo, chama a atendente.
     const jaOrientou = await prisma.igMessage.findFirst({

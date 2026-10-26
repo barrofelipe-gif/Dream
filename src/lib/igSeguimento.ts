@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { dentroDaJanela, enviarDm } from "@/lib/instagram";
+import { etiquetar, TAG } from "@/lib/igTags";
 
 const MINUTOS = (m: number) => new Date(Date.now() - m * 60 * 1000);
 
@@ -52,6 +53,7 @@ export async function seguirSemAtendente(): Promise<number> {
       }
       // Volta para o robô atender; continua marcada como não lida para a equipe ver.
       await prisma.igConversation.update({ where: { id: conversationId }, data: { status: "BOT" } });
+      await etiquetar(conversationId, [TAG.naoAtendido]);
       enviadas++;
     } catch (e) {
       console.error(`[ig-seguimento] conversa ${conversationId}:`, e);

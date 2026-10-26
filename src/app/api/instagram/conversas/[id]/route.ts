@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { exigirAdmin } from "@/lib/igAdmin";
 import { dentroDaJanela } from "@/lib/instagram";
 import { atualizarPerfil } from "@/lib/igPerfil";
+import { etiquetar } from "@/lib/igTags";
 
 // Uma conversa com todas as mensagens (a caixa de entrada atualiza isto a cada poucos segundos).
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -30,6 +31,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     primeiroContato: c.createdAt.toISOString(),
     totalMensagens: c.messages.length,
     status: c.status,
+    tags: c.tags,
     cliente: c.igScopedUserId.slice(-6),
     conta: c.account.username,
     loja: c.account.loja,
@@ -50,7 +52,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { erro } = await exigirAdmin();
   if (erro) return erro;
   const { id } = await params;
-  const body = (await req.json().catch(() => ({}))) as { status?: string; naoLida?: boolean };
+  const body = (await req.json().catch(() => ({}))) as { status?: string; naoLida?: boolean; tagAdd?: string; tagRemove?: string };
+  if (body.tagAdd || body.tagRemove) {
+    const tags = await etiquetar(id, body.tagAdd ? [body.tagAdd] : [], body.tagRemove ? [body.tagRemove] : []);
+    return NextResponse.json({ ok: true, tags });
+  }
   if (typeof body.naoLida === "boolean") {
     await prisma.igConversation.update({ where: { id }, data: { naoLida: body.naoLida } });
     return NextResponse.json({ ok: true });
