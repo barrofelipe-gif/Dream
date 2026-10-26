@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { assinaturaValida, dentroDaJanela, enviarDm } from "@/lib/instagram";
 import { responder, escreverApoio, escreverInfoCompra, type Mensagem } from "@/lib/igBot";
 import { atualizarPerfil } from "@/lib/igPerfil";
+import { PREFIXO_POSTBACK, processarComentario, processarPostbackAutomacao } from "@/lib/igAutomacoes";
 import {
   aplicarNome,
   BOTAO_DUVIDA,
@@ -19,7 +20,17 @@ type Evento = {
   message?: { mid?: string; text?: string; is_echo?: boolean; quick_reply?: { payload?: string } };
   postback?: { mid?: string; title?: string; payload?: string };
 };
-type Payload = { object?: string; entry?: { id: string; messaging?: Evento[] }[] };
+type Mudanca = {
+  field?: string;
+  value?: {
+    id?: string;
+    text?: string;
+    parent_id?: string;
+    from?: { id?: string; username?: string };
+    media?: { id?: string };
+  };
+};
+type Payload = { object?: string; entry?: { id: string; messaging?: Evento[]; changes?: Mudanca[] }[] };
 
 const MAX_ESCLARECIMENTOS = 2;
 const ESCLARECER = [
@@ -63,6 +74,23 @@ export async function POST(req: NextRequest) {
 
   after(async () => {
     for (const entry of payload.entry ?? []) {
+      // Comentários nas publicações: automação "comentário -> resposta pública + DM".
+      for (const c of entry.changes ?? []) {
+        if (c.field !== "comments" || !c.value?.id || !c.value.from?.id) continue;
+        try {
+          await processarComentario({
+            contaId: entry.id,
+            commentId: c.value.id,
+            texto: c.value.text ?? "",
+            userId: c.value.from.id,
+            username: c.value.from.username,
+            midiaId: c.value.media?.id ?? "",
+            parentId: c.value.parent_id,
+          });
+        } catch (err) {
+          console.error("[ig-webhook] falha na automação de comentário", err);
+        }
+      }
       for (const ev of entry.messaging ?? []) {
         try {
           await tratarEvento(ev);
@@ -173,6 +201,12 @@ async function tratarEvento(ev: Evento) {
   await prisma.igConversation.update({ where: { id: conversa.id }, data: { lastCustomerMessageAt: agora } });
 
   await atualizarPerfil(conversa.id);
+
+  // "Já segui" de uma automação de comentário: confere o follow e libera o conteúdo.
+  if (botao?.startsWith(PREFIXO_POSTBACK)) {
+    await processarPostbackAutomacao(ev.recipient.id, ev.sender.id, botao);
+    return;
+  }
 
   if (conversa.status === "CLOSED") return;
   if (!dentroDaJanela(agora)) return;

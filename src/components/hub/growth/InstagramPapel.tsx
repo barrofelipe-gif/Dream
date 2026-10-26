@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import InstagramInbox from "@/components/hub/growth/InstagramInbox";
 import InstagramBoasVindas from "@/components/hub/growth/InstagramBoasVindas";
+import InstagramAutomacoes from "@/components/hub/growth/InstagramAutomacoes";
 
 /**
  * Growth › Instagram: robô de mensagens da BFF e da Moranga. Conversas, contas conectadas
@@ -99,6 +100,8 @@ export default async function InstagramPapel() {
       </section>
 
       <InstagramInbox />
+
+      <InstagramAutomacoes />
 
       <InstagramBoasVindas />
 

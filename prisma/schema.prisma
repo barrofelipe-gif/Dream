@@ -295,6 +295,7 @@ model InstagramAccount {
   active       Boolean  @default(true)
 
   conversations IgConversation[]
+  automacoes    IgAutomacao[]
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -362,4 +363,53 @@ model IgBoasVindas {
   linkTitulo  String   @default("")
   linkUrl     String   @default("")
   updatedAt   DateTime @updatedAt
+}
+
+// Automações do Instagram (gatilho -> ação). Hoje: comentário numa publicação -> resposta pública + DM.
+model IgAutomacao {
+  id             String   @id @default(cuid())
+  accountId      String
+  account        InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  nome           String
+  tipo           String   @default("comentario")
+  ativo          Boolean  @default(false)
+
+  // Gatilho
+  midiaId        String   @default("") // "" = qualquer publicação ou reel
+  midiaLegenda   String   @default("") // só para mostrar no painel
+  midiaThumb     String   @default("")
+  palavras       String   @default("") // separadas por vírgula; vazio = qualquer comentário
+  modoPalavra    String   @default("contem") // "contem" | "exata"
+
+  // Ações
+  respostasPublicas String @default("") // variantes, uma por linha; vazio = não responde em público
+  dmTexto        String   // mensagem enviada no direct; {nome} = primeiro nome
+  dmBotaoTitulo  String   @default("")
+  dmBotaoUrl     String   @default("")
+  exigirSeguir   Boolean  @default(false)
+  seguirTexto    String   @default("")
+  seguirBotao    String   @default("Já segui")
+
+  execucoes      Int      @default(0)
+  execucoesLista IgAutomacaoExec[]
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([accountId, ativo])
+}
+
+// Uma execução = um comentário atendido (evita responder o mesmo comentário duas vezes).
+model IgAutomacaoExec {
+  id            String   @id @default(cuid())
+  automacaoId   String
+  automacao     IgAutomacao @relation(fields: [automacaoId], references: [id], onDelete: Cascade)
+  commentId     String
+  igUserId      String   // quem comentou (id no escopo do app)
+  username      String?
+  etapa         String   @default("enviado") // "enviado" | "aguardando_seguir" | "liberado"
+  createdAt     DateTime @default(now())
+
+  @@unique([automacaoId, commentId])
+  @@index([automacaoId, createdAt])
 }
