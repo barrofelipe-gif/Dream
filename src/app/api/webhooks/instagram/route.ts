@@ -10,8 +10,13 @@ const WHATSAPP: Record<Loja, string> = {
   bff: "5527936187331",
   moranga: "5527998924839",
 };
+const MAX_ESCLARECIMENTOS = 2;
+const ESCLARECER = [
+  "Oi! Não consegui entender bem a sua dúvida. Pode me explicar com mais detalhes o que você quer saber?",
+  "Ainda não consegui entender. Pode tentar explicar de outro jeito? Por exemplo, sobre qual produto, pedido ou assunto é a sua dúvida?",
+];
 const textoWhatsapp = (loja: Loja) =>
-  `Oi! Para esse assunto, o melhor é falar com a nossa equipe no WhatsApp, que costuma responder mais rápido: https://wa.me/${WHATSAPP[loja]}`;
+  `Acho que não estou conseguindo entender o que você quer saber. Melhor falar com a nossa equipe no WhatsApp, que resolve isso com você: https://wa.me/${WHATSAPP[loja]}`;
 
 type Evento = {
   sender?: { id: string };
@@ -91,18 +96,40 @@ async function tratarEvento(ev: Evento) {
   if (!dentroDaJanela(agora)) return;
 
   const loja = account.loja as Loja;
-  const r = await responder(loja, text);
+
+  // A pessoa costuma explicar em várias mensagens: o robô lê as últimas (30 min) juntas.
+  const recentes = await prisma.igMessage.findMany({
+    where: { conversationId: conversa.id, direction: "IN", createdAt: { gt: new Date(Date.now() - 30 * 60 * 1000) } },
+    orderBy: { createdAt: "desc" },
+    take: 3,
+  });
+  const contexto = recentes.map((m) => m.text).reverse().join("\n");
+  const r = await responder(loja, contexto || text);
 
   let resposta: { texto: string; kind: string; id: number | null; confianca: string | null };
   if (r.tipo === "humano") {
     console.warn(`[ig-bot] conversa ${conversa.id} sem resposta na base: ${r.motivo}`);
     await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "NEEDS_HUMAN" } });
-    // Não repete o encaminhamento para a mesma pessoa em 12h.
+    // Já encaminhou ao WhatsApp nas últimas 12h: não insiste (lá a loja paga por mensagem).
     const jaEncaminhou = await prisma.igMessage.findFirst({
       where: { conversationId: conversa.id, matchedKind: "whatsapp", createdAt: { gt: new Date(Date.now() - 12 * 60 * 60 * 1000) } },
     });
     if (jaEncaminhou) return;
-    resposta = { texto: textoWhatsapp(loja), kind: "whatsapp", id: null, confianca: null };
+    // Quantos pedidos de esclarecimento seguidos o robô já fez (para no primeiro envio de outro tipo).
+    const ultimas = await prisma.igMessage.findMany({
+      where: { conversationId: conversa.id, direction: "OUT", createdAt: { gt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+      orderBy: { createdAt: "desc" },
+      take: MAX_ESCLARECIMENTOS,
+    });
+    let seguidos = 0;
+    for (const m of ultimas) {
+      if (m.matchedKind !== "esclarecer") break;
+      seguidos++;
+    }
+    resposta =
+      seguidos < MAX_ESCLARECIMENTOS
+        ? { texto: ESCLARECER[seguidos], kind: "esclarecer", id: null, confianca: null }
+        : { texto: textoWhatsapp(loja), kind: "whatsapp", id: null, confianca: null };
   } else {
     resposta = { texto: r.texto, kind: r.kind, id: r.id, confianca: r.confianca };
     if (conversa.status !== "BOT") {
