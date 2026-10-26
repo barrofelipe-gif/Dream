@@ -206,9 +206,10 @@ export default function InstagramInbox() {
   }
 
   return (
-    <div className="grid h-[700px] grid-cols-1 overflow-hidden rounded-2xl border border-[#e3e5ea] bg-white shadow-sm md:grid-cols-[330px_1fr] xl:grid-cols-[330px_1fr_290px]">
+    <div className="@container">
+    <div className="grid h-[720px] grid-cols-1 overflow-hidden rounded-2xl border border-[#e3e5ea] bg-white shadow-sm @3xl:grid-cols-[290px_minmax(0,1fr)] @5xl:grid-cols-[290px_minmax(0,1fr)_270px]">
       {/* Lista */}
-      <div className={`${selecionada ? "hidden md:flex" : "flex"} min-h-0 flex-col border-r border-[#e3e5ea]`}>
+      <div className={`${selecionada ? "hidden @3xl:flex" : "flex"} min-h-0 flex-col border-r border-[#e3e5ea]`}>
         <div className="border-b border-[#e3e5ea] px-4 py-3">
           <div className="flex items-center justify-between">
             <p className="text-base font-semibold text-[#1b1f2b]">Mensagens</p>
@@ -272,7 +273,7 @@ export default function InstagramInbox() {
       </div>
 
       {/* Chat */}
-      <div className={`${selecionada ? "flex" : "hidden md:flex"} min-h-0 min-w-0 flex-col`}>
+      <div className={`${selecionada ? "flex" : "hidden @3xl:flex"} min-h-0 min-w-0 flex-col`}>
         {!selecionada || !conversa ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
             <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#eef0f4] text-2xl">💬</span>
@@ -283,28 +284,28 @@ export default function InstagramInbox() {
           </div>
         ) : (
           <>
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e3e5ea] px-5 py-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <button onClick={() => setSelecionada(null)} className="text-xs text-[#6366f1] md:hidden">
+            <div className="border-b border-[#e3e5ea] px-5 py-3">
+              <div className="flex items-center gap-3">
+                <button onClick={() => setSelecionada(null)} className="text-sm text-[#6366f1] @3xl:hidden">
                   ←
                 </button>
-                <Avatar c={conversa} tamanho={40} />
-                <div className="min-w-0">
+                <Avatar c={conversa} tamanho={44} />
+                <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-1 truncate text-sm font-semibold text-[#1b1f2b]">
                     {nomeExibido(conversa)}
                     {conversa.verificado && <span className="text-[#3b82f6]">✔</span>}
                   </p>
                   <p className="truncate text-[11px] text-[#8a8f9c]">
                     {conversa.username ? `@${conversa.username} · ` : ""}
-                    {conversa.seguidores !== null ? `${seguidoresCurto(conversa.seguidores)} seguidores` : "seguidores indisponíveis"}
+                    loja {conversa.loja}
                   </p>
                 </div>
-                {st && <span className={`hidden rounded-full px-2.5 py-0.5 text-[11px] font-medium sm:inline ${st.cor}`}>{st.rotulo}</span>}
+                {st && <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium ${st.cor}`}>{st.rotulo}</span>}
               </div>
-              <div className="flex gap-1.5">
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
                 {conversa.status !== "HUMAN" && (
                   <button onClick={() => mudarStatus("HUMAN")} className="rounded-lg bg-[#1b1f2b] px-3 py-1.5 text-xs font-medium text-white hover:bg-black">
-                    Assumir
+                    Assumir conversa
                   </button>
                 )}
                 {conversa.status !== "BOT" && (
@@ -317,6 +318,19 @@ export default function InstagramInbox() {
                     Encerrar
                   </button>
                 )}
+              </div>
+              {/* Faixa do perfil quando não cabe o painel lateral */}
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-[#f7f8fa] px-3 py-2 text-[11px] text-[#5a5f6d] @5xl:hidden">
+                <span>
+                  <b className="text-[#1b1f2b]">{seguidoresCurto(conversa.seguidores)}</b> seguidores
+                </span>
+                <span>
+                  Segue a loja: <b className="text-[#1b1f2b]">{conversa.seguePagina === null ? "—" : conversa.seguePagina ? "Sim" : "Ainda não"}</b>
+                </span>
+                <span>
+                  Cliente desde <b className="text-[#1b1f2b]">{dia(conversa.primeiroContato)}</b>
+                </span>
+                <SeloGrande n={conversa.seguidores} />
               </div>
             </div>
 
@@ -390,7 +404,7 @@ export default function InstagramInbox() {
       </div>
 
       {/* Perfil do cliente */}
-      <aside className="hidden min-h-0 overflow-y-auto border-l border-[#e3e5ea] bg-white xl:block">
+      <aside className="hidden min-h-0 overflow-y-auto border-l border-[#e3e5ea] bg-white @5xl:block">
         {conversa && selecionada ? (
           <div className="p-5 text-center">
             <div className="flex justify-center">
@@ -449,6 +463,7 @@ export default function InstagramInbox() {
           <p className="p-5 text-center text-xs text-[#8a8f9c]">O perfil do cliente aparece aqui quando você abrir uma conversa.</p>
         )}
       </aside>
+    </div>
     </div>
   );
 }
