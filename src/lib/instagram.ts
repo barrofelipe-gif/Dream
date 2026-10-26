@@ -25,14 +25,41 @@ export async function enviarDm(opts: {
   encryptedToken: string;
   recipientId: string;
   text: string;
+  /** Botões de resposta rápida (até 13; título até 20 caracteres). */
+  quickReplies?: { title: string; payload: string }[];
+  /** Botão com link abaixo do texto (modelo "button template": texto até 640 caracteres). */
+  link?: { title: string; url: string };
 }): Promise<string> {
+  const message = opts.link
+    ? {
+        attachment: {
+          type: "template",
+          payload: {
+            template_type: "button",
+            text: opts.text.slice(0, 640),
+            buttons: [{ type: "web_url", url: opts.link.url, title: opts.link.title.slice(0, 20) }],
+          },
+        },
+      }
+    : {
+        text: opts.text,
+        ...(opts.quickReplies?.length
+          ? {
+              quick_replies: opts.quickReplies.map((q) => ({
+                content_type: "text",
+                title: q.title.slice(0, 20),
+                payload: q.payload,
+              })),
+            }
+          : {}),
+      };
   const res = await fetch(`${GRAPH_BASE}/${GRAPH_VERSION}/${opts.igUserId}/messages`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${decrypt(opts.encryptedToken)}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ recipient: { id: opts.recipientId }, message: { text: opts.text } }),
+    body: JSON.stringify({ recipient: { id: opts.recipientId }, message }),
   });
   if (!res.ok) throw new Error(`Meta respondeu ${res.status} ao enviar DM: ${(await res.text()).slice(0, 300)}`);
   const json = (await res.json()) as { message_id?: string };

@@ -208,3 +208,61 @@ export async function escreverApoio(
     600,
   );
 }
+
+const Selecao = z.object({
+  ids: z.array(z.string()).describe("Até 6 códigos de entradas (ex: 'faq-12') úteis para quem vai comprar pela primeira vez"),
+});
+
+/**
+ * Informações para quem quer comprar (pedido mínimo, pagamento, prazo, frete, como funciona),
+ * montadas SÓ com a base da loja e conferidas contra ela. Usado na automação de boas-vindas
+ * quando o texto não foi escrito à mão no painel.
+ */
+export async function escreverInfoCompra(loja: Loja): Promise<string | null> {
+  const entradas = await carregarBase(loja);
+  if (!entradas.length) return null;
+  const catalogo = entradas.map((e) => `[${e.kind}-${e.id}] ${e.question}`).join("\n");
+  const sel = await client.messages.parse({
+    model: MODEL,
+    max_tokens: 600,
+    system:
+      "Escolha até 6 entradas da lista que, juntas, explicam a quem nunca comprou como comprar nesta loja: pedido mínimo, formas de pagamento, prazo de entrega e frete, como fazer o pedido e vantagens (cashback). Prefira entradas objetivas e gerais, não de produto específico.",
+    messages: [{ role: "user", content: `<perguntas_da_loja>
+${catalogo}
+</perguntas_da_loja>` }],
+    output_config: { format: zodOutputFormat(Selecao) },
+  });
+  const escolhidas = (sel.parsed_output?.ids ?? [])
+    .map((cod) => entradas.find((x) => `${x.kind}-${x.id}` === cod))
+    .filter((e): e is Entrada => !!e)
+    .slice(0, 6);
+  if (!escolhidas.length) return null;
+
+  const fontes = escolhidas.map((e) => `Pergunta: ${e.question}
+Resposta da loja: ${e.answer}`).join("\n\n---\n\n");
+  const texto = await escrever(
+    PERSONA(loja),
+    `<fontes>
+${fontes}
+</fontes>
+
+A pessoa acabou de aceitar receber as informações para comprar. Escreva UMA mensagem de DM (até 600 caracteres) com o essencial, em linhas curtas (pode usar "•" no início de cada item, sem markdown), só com fatos das fontes. Termine convidando a perguntar o que quiser. Escreva só a mensagem.`,
+    900,
+  );
+  if (!texto) return null;
+  const chk = await client.messages.parse({
+    model: MODEL,
+    max_tokens: 500,
+    system:
+      "Você confere textos de atendimento. ok = true somente se todo fato (números, valores, prazos, condições, políticas) está nas fontes. Se acrescenta, calcula, deduz ou contradiz algo, ok = false.",
+    messages: [{ role: "user", content: `<fontes>
+${fontes}
+</fontes>
+
+<texto>
+${texto}
+</texto>` }],
+    output_config: { format: zodOutputFormat(Verificacao) },
+  });
+  return chk.parsed_output?.ok ? texto.slice(0, 900) : null;
+}

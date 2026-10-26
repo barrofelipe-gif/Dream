@@ -348,3 +348,18 @@ model IgMessage {
 
   @@index([conversationId, createdAt])
 }
+
+// Automação de boas-vindas do Instagram (uma linha por loja). Sem linha, valem os padrões do código.
+model IgBoasVindas {
+  id          String   @id @default(cuid())
+  loja        String   @unique // "bff" | "moranga"
+  ativo       Boolean  @default(true)
+  mensagem    String   // 1ª mensagem ao primeiro contato; {nome} = primeiro nome do cliente
+  botao       String   // texto do botão de resposta rápida (até 20 caracteres)
+  pedirSeguir Boolean  @default(true)
+  textoSeguir String   // convite para seguir a loja (só para quem ainda não segue)
+  infoTexto   String   @default("") // informações enviadas ao tocar no botão; vazio = o robô monta a partir da base
+  linkTitulo  String   @default("")
+  linkUrl     String   @default("")
+  updatedAt   DateTime @updatedAt
+}

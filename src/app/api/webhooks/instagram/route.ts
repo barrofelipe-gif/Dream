@@ -1,15 +1,23 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { assinaturaValida, dentroDaJanela, enviarDm } from "@/lib/instagram";
-import { responder, escreverApoio, type Mensagem } from "@/lib/igBot";
+import { responder, escreverApoio, escreverInfoCompra, type Mensagem } from "@/lib/igBot";
 import { atualizarPerfil } from "@/lib/igPerfil";
+import {
+  aplicarNome,
+  BOTAO_DUVIDA,
+  carregarConfig,
+  PAYLOAD_DUVIDA,
+  PAYLOAD_SIM,
+} from "@/lib/igBoasVindas";
 import type { Loja } from "@/lib/avaliacoesLeitura";
 
 type Evento = {
   sender?: { id: string };
   recipient?: { id: string };
   timestamp?: number;
-  message?: { mid?: string; text?: string; is_echo?: boolean };
+  message?: { mid?: string; text?: string; is_echo?: boolean; quick_reply?: { payload?: string } };
+  postback?: { mid?: string; title?: string; payload?: string };
 };
 type Payload = { object?: string; entry?: { id: string; messaging?: Evento[] }[] };
 
@@ -21,6 +29,10 @@ const ESCLARECER = [
 // Textos de reserva, usados só se a IA falhar ao escrever a mensagem de apoio.
 const CHAMAR_ATENDENTE =
   "Como eu não estou conseguindo entender o que você precisa, vou chamar uma atendente aqui para te ajudar. Já já ela te responde por aqui.";
+const PEDIR_DUVIDA = [
+  "Claro! Me conta qual é a sua dúvida que eu te ajudo.",
+  "Pode mandar! Qual é a sua dúvida?",
+];
 
 const HORAS = (h: number) => new Date(Date.now() - h * 60 * 60 * 1000);
 
@@ -100,16 +112,52 @@ async function tratarEco(ev: Evento) {
   await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "HUMAN" } });
 }
 
+type Conta = { id: string; igUserId: string; accessToken: string };
+type Saida = {
+  texto: string;
+  kind: string;
+  id?: number | null;
+  confianca?: string | null;
+  quickReplies?: { title: string; payload: string }[];
+  link?: { title: string; url: string };
+};
+
+/** Envia a mensagem no Instagram e grava na conversa como do robô. */
+async function enviarEGravar(conta: Conta, conversaId: string, destinatario: string, s: Saida) {
+  const sentId = await enviarDm({
+    igUserId: conta.igUserId,
+    encryptedToken: conta.accessToken,
+    recipientId: destinatario,
+    text: s.texto,
+    quickReplies: s.quickReplies,
+    link: s.link,
+  });
+  await prisma.igMessage.create({
+    data: {
+      conversationId: conversaId,
+      direction: "OUT",
+      source: "BOT",
+      text: s.texto,
+      metaMessageId: sentId || null,
+      matchedKind: s.kind,
+      matchedId: s.id ?? null,
+      confidence: s.confianca ?? null,
+    },
+  });
+}
+
 async function tratarEvento(ev: Evento) {
   if (ev.message?.is_echo) return tratarEco(ev);
-  const text = ev.message?.text?.trim();
+  // Toque em botão de resposta rápida (message.quick_reply) ou em botão do modelo (postback).
+  const botao = ev.message?.quick_reply?.payload ?? ev.postback?.payload;
+  const text = ev.message?.text?.trim() || ev.postback?.title?.trim();
   if (!text || !ev.sender?.id || !ev.recipient?.id) return;
 
   const account = await prisma.instagramAccount.findUnique({ where: { igUserId: ev.recipient.id } });
   if (!account?.active) return;
 
   // Idempotência: a Meta reenvia o mesmo webhook se demorarmos ou falharmos.
-  const mid = ev.message?.mid;
+  const mid = ev.message?.mid ?? ev.postback?.mid;
   if (mid && (await prisma.igMessage.findUnique({ where: { metaMessageId: mid } }))) return;
 
   const conversa = await prisma.igConversation.upsert({
@@ -139,7 +187,51 @@ async function tratarEvento(ev: Evento) {
   }
 
   const loja = account.loja as Loja;
+  const config = await carregarConfig(loja);
+  // Perfil já atualizado acima: nome e se a pessoa segue a loja.
+  const perfil = await prisma.igConversation.findUnique({
+    where: { id: conversa.id },
+    select: { nome: true, seguePagina: true },
+  });
+  const naoSegue = perfil?.seguePagina === false;
+  const primeiroContato = !(await prisma.igMessage.findFirst({
+    where: { conversationId: conversa.id, direction: "OUT" },
+    select: { id: true },
+  }));
 
+  // ── Botões da automação de boas-vindas ──────────────────────────────────────
+  if (botao === PAYLOAD_SIM) {
+    const jaConvidou = await prisma.igMessage.findFirst({
+      where: { conversationId: conversa.id, matchedKind: "boasvindas", text: { contains: config.textoSeguir.slice(0, 30) } },
+      select: { id: true },
+    });
+    let info = config.infoTexto.trim() ? aplicarNome(config.infoTexto, perfil?.nome ?? null) : await escreverInfoCompra(loja).catch(() => null);
+    if (!info) {
+      // Sem texto seguro para mandar: uma atendente envia as informações.
+      await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "NEEDS_HUMAN" } });
+      await enviarEGravar(account, conversa.id, ev.sender.id, {
+        texto: "Vou pedir para uma atendente te mandar essas informações agora mesmo, só um instante.",
+        kind: "atendente",
+      });
+      return;
+    }
+    if (config.pedirSeguir && naoSegue && !jaConvidou) info += `\n\n${config.textoSeguir}`;
+    await enviarEGravar(account, conversa.id, ev.sender.id, {
+      texto: info,
+      kind: "boasvindas_info",
+      link: config.linkUrl ? { title: config.linkTitulo || "Ver o site", url: config.linkUrl } : undefined,
+    });
+    return;
+  }
+  if (botao === PAYLOAD_DUVIDA) {
+    await enviarEGravar(account, conversa.id, ev.sender.id, {
+      texto: PEDIR_DUVIDA[Math.floor(Math.random() * PEDIR_DUVIDA.length)],
+      kind: "saudacao",
+    });
+    return;
+  }
+
+  // ── Conversa normal ─────────────────────────────────────────────────────────
   // A pessoa costuma explicar em várias mensagens: o robô lê as últimas (30 min) juntas.
   const recentes = await prisma.igMessage.findMany({
     where: { conversationId: conversa.id, direction: "IN", createdAt: { gt: new Date(Date.now() - 30 * 60 * 1000) } },
@@ -157,15 +249,31 @@ async function tratarEvento(ev: Evento) {
     .map((m) => ({ de: m.direction === "IN" ? ("cliente" as const) : ("loja" as const), texto: m.text }));
   const r = await responder(loja, contexto || text, historico);
 
-  let resposta: { texto: string; kind: string; id: number | null; confianca: string | null };
+  let saida: Saida;
   if (r.tipo === "resposta") {
-    resposta = { texto: r.texto, kind: r.kind, id: r.id, confianca: r.confianca };
+    // Primeira conversa e a pessoa ainda não segue: a resposta já leva o convite para seguir.
+    const convite = primeiroContato && config.pedirSeguir && naoSegue ? `\n\n${config.textoSeguir}` : "";
+    saida = { texto: r.texto + convite, kind: r.kind, id: r.id, confianca: r.confianca };
     if (conversa.status !== "BOT") {
       await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "BOT" } });
     }
   } else if (r.tipo === "saudacao") {
-    // Só cumprimentou ou disse que tem uma dúvida: convida a perguntar (não conta como falha).
-    resposta = { texto: r.texto, kind: "saudacao", id: null, confianca: null };
+    if (primeiroContato && config.ativo) {
+      // Boas-vindas com botões (como no ManyChat): convida a receber as informações e a seguir a loja.
+      const texto =
+        aplicarNome(config.mensagem, perfil?.nome ?? null) + (config.pedirSeguir && naoSegue ? `\n\n${config.textoSeguir}` : "");
+      saida = {
+        texto,
+        kind: "boasvindas",
+        quickReplies: [
+          { title: config.botao, payload: PAYLOAD_SIM },
+          { title: BOTAO_DUVIDA, payload: PAYLOAD_DUVIDA },
+        ],
+      };
+    } else {
+      // Só cumprimentou ou disse que tem uma dúvida: convida a perguntar (não conta como falha).
+      saida = { texto: r.texto, kind: "saudacao" };
+    }
   } else {
     console.warn(`[ig-bot] conversa ${conversa.id} sem resposta na base: ${r.motivo}`);
     // Já chamou atendente nas últimas 12h: não insiste, a equipe vai responder.
@@ -186,31 +294,14 @@ async function tratarEvento(ev: Evento) {
     }
     if (seguidos < MAX_ESCLARECIMENTOS) {
       const texto = await escreverApoio(loja, seguidos === 0 ? "esclarecer1" : "esclarecer2", historico).catch(() => ESCLARECER[seguidos]);
-      resposta = { texto: texto || ESCLARECER[seguidos], kind: "esclarecer", id: null, confianca: null };
+      saida = { texto: texto || ESCLARECER[seguidos], kind: "esclarecer" };
     } else {
       const texto = await escreverApoio(loja, "atendente", historico).catch(() => CHAMAR_ATENDENTE);
-      resposta = { texto: texto || CHAMAR_ATENDENTE, kind: "atendente", id: null, confianca: null };
+      saida = { texto: texto || CHAMAR_ATENDENTE, kind: "atendente" };
       // Fila da equipe: a atendente responde pelo próprio Instagram.
       await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "NEEDS_HUMAN" } });
     }
   }
 
-  const sentId = await enviarDm({
-    igUserId: account.igUserId,
-    encryptedToken: account.accessToken,
-    recipientId: ev.sender.id,
-    text: resposta.texto,
-  });
-  await prisma.igMessage.create({
-    data: {
-      conversationId: conversa.id,
-      direction: "OUT",
-      source: "BOT",
-      text: resposta.texto,
-      metaMessageId: sentId || null,
-      matchedKind: resposta.kind,
-      matchedId: resposta.id,
-      confidence: resposta.confianca,
-    },
-  });
+  await enviarEGravar(account, conversa.id, ev.sender.id, saida);
 }
