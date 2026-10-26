@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { publicarAgendados } from "@/lib/social/publicar";
 import { seguirSemAtendente } from "@/lib/igSeguimento";
+import { processarTransmissoes } from "@/lib/igTransmissao";
 
 // Publicar em várias redes (com vídeo) demora: o plano gratuito da Vercel aceita até 60 segundos.
 export const maxDuration = 60;
@@ -16,5 +17,6 @@ export async function GET(req: NextRequest) {
   const r = await publicarAgendados();
   // Aproveita o agendador de 5 min: retoma conversas em que ninguém da equipe respondeu.
   const seguimentos = await seguirSemAtendente().catch(() => 0);
-  return NextResponse.json({ ok: true, ...r, seguimentos, em: new Date().toISOString() });
+  const transmitidas = await processarTransmissoes().catch(() => 0);
+  return NextResponse.json({ ok: true, ...r, seguimentos, transmitidas, em: new Date().toISOString() });
 }

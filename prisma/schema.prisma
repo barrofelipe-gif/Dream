@@ -299,6 +299,7 @@ model InstagramAccount {
 
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  transmissoes IgTransmissao[]
 }
 
 model IgConversation {
@@ -551,4 +552,34 @@ model SocialMetricaPublico {
   coletadoEm DateTime    @default(now())
 
   @@unique([contaId, data])
+}
+
+// Transmissao (mensagem em massa) no Instagram: so chega a quem falou com a loja nas ultimas 24h (regra da Meta).
+model IgTransmissao {
+  id           String   @id @default(cuid())
+  accountId    String
+  account      InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  nome         String
+  texto        String
+  incluirTags  String[] @default([])
+  excluirTags  String[] @default([])
+  status       String   @default("ENVIANDO") // ENVIANDO | CONCLUIDA | CANCELADA
+  total        Int      @default(0)
+  enviadas     Int      @default(0)
+  falhas       Int      @default(0)
+  alvos        IgTransmissaoAlvo[]
+  createdAt    DateTime @default(now())
+
+  @@index([status, createdAt])
+}
+
+model IgTransmissaoAlvo {
+  id             String   @id @default(cuid())
+  transmissaoId  String
+  transmissao    IgTransmissao @relation(fields: [transmissaoId], references: [id], onDelete: Cascade)
+  conversationId String
+  status         String   @default("PENDENTE") // PENDENTE | ENVIADA | FALHOU | EXPIRADA
+  erro           String?
+
+  @@index([transmissaoId, status])
 }
