@@ -21,12 +21,15 @@ async function carregarBase(loja: Loja): Promise<Entrada[]> {
   const hit = cache.get(loja);
   if (hit && Date.now() - hit.at < 5 * 60_000) return hit.entradas;
   const [faq, qa] = await Promise.all([listarFaq(loja), listarPerguntasRespondidas(loja)]);
+  // Entradas que o robô nunca usa (ex: "faq-17"), até serem corrigidas na base do site.
+  const bloqueadas = new Set((process.env.IG_BOT_BLOQUEAR ?? "").split(",").map((x) => x.trim()).filter(Boolean));
   const entradas: Entrada[] = [
     ...faq.map((f) => ({ kind: "faq" as const, id: f.id, question: f.question, answer: f.answer })),
     ...qa.map((q) => ({ kind: "pergunta" as const, id: q.id, question: q.question, answer: q.answer })),
   ];
-  cache.set(loja, { at: Date.now(), entradas });
-  return entradas;
+  const liberadas = entradas.filter((e) => !bloqueadas.has(`${e.kind}-${e.id}`));
+  cache.set(loja, { at: Date.now(), entradas: liberadas });
+  return liberadas;
 }
 
 const Escolha = z.object({
