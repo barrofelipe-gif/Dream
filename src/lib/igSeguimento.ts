@@ -33,6 +33,10 @@ export async function seguirSemAtendente(): Promise<number> {
       select: { id: true },
     });
     if (depois) continue;
+    // Reserva a conversa (NEEDS_HUMAN → BOT) antes de enviar: duas rodadas do agendador ao mesmo tempo
+    // mandariam o "não achei atendente" duas vezes. Se o envio falhar, devolve para NEEDS_HUMAN.
+    const reserva = await prisma.igConversation.updateMany({ where: { id: conversationId, status: "NEEDS_HUMAN" }, data: { status: "BOT" } });
+    if (reserva.count === 0) continue;
 
     const partes = [
       "Não consegui achar nenhuma atendente disponível agora 😕",
@@ -51,12 +55,14 @@ export async function seguirSemAtendente(): Promise<number> {
           data: { conversationId, direction: "OUT", source: "BOT", text: partes[i], metaMessageId: sentId || null, matchedKind: "sem_atendente" },
         });
       }
-      // Volta para o robô atender; continua marcada como não lida para a equipe ver.
-      await prisma.igConversation.update({ where: { id: conversationId }, data: { status: "BOT" } });
+      // Volta para o robô atender (status já virou BOT na reserva); continua marcada como não lida para a equipe ver.
       await etiquetar(conversationId, [TAG.naoAtendido]);
       enviadas++;
     } catch (e) {
       console.error(`[ig-seguimento] conversa ${conversationId}:`, e);
+      await prisma.igConversation
+        .updateMany({ where: { id: conversationId, status: "BOT" }, data: { status: "NEEDS_HUMAN" } })
+        .catch(() => {});
     }
   }
   return enviadas;

@@ -300,6 +300,11 @@ model InstagramAccount {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   transmissoes IgTransmissao[]
+  sequencias   IgSequencia[]
+  campos       IgCampo[]
+  regras          IgRegra[]
+  respostasSalvas IgRespostaSalva[]
+  fluxos          IgFluxo[]
 }
 
 model IgConversation {
@@ -314,6 +319,7 @@ model IgConversation {
   lastCustomerMessageAt DateTime? // base da janela de 24h da Meta
   naoLida               Boolean  @default(false) // transferida para a equipe e ainda não aberta
   tags                  String[] @default([])    // etiquetas (robô e equipe), como as tags do ManyChat
+  campos                Json     @default("{}")  // valores dos campos personalizados (IgCampo.nome -> valor), como no ManyChat
 
   // Perfil do cliente no Instagram (User Profile API), renovado a cada ~12h.
   nome                  String?
@@ -582,4 +588,150 @@ model IgTransmissaoAlvo {
   erro           String?
 
   @@index([transmissaoId, status])
+}
+
+// Campo personalizado dos contatos do Instagram (como os "custom fields" do ManyChat).
+// Os valores ficam em IgConversation.campos, chaveados pelo nome do campo.
+model IgCampo {
+  id        String   @id @default(cuid())
+  accountId String
+  account   InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  nome      String
+  tipo      String   @default("TEXTO") // TEXTO | NUMERO | DATA | SIM_NAO
+  createdAt DateTime @default(now())
+
+  @@unique([accountId, nome])
+}
+
+// Sequência (drip) do Instagram, como no ManyChat: passos com atraso entre eles.
+// Regra da Meta: só envia dentro da janela de 24h desde a última mensagem do cliente; fora dela o inscrito fica PARADA.
+model IgSequencia {
+  id                 String   @id @default(cuid())
+  accountId          String
+  account            InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  nome               String
+  ativa              Boolean  @default(true)
+  passos             Json     // [{ atrasoMinutos: number, texto: string }] — atraso contado a partir do passo anterior (ou da inscrição)
+  pararSeResponder   Boolean  @default(true)
+  etiquetaAoEntrar   String?
+  etiquetaAoConcluir String?
+  inscritos          IgSequenciaInscrito[]
+  createdAt          DateTime @default(now())
+
+  @@index([accountId, createdAt])
+}
+
+model IgSequenciaInscrito {
+  id             String      @id @default(cuid())
+  sequenciaId    String
+  sequencia      IgSequencia @relation(fields: [sequenciaId], references: [id], onDelete: Cascade)
+  conversationId String
+  passoAtual     Int         @default(0) // índice do próximo passo a enviar
+  proximoEm      DateTime
+  status         String      @default("ATIVA") // ATIVA | CONCLUIDA | PARADA
+  motivo         String?     // por que parou (fora da janela, respondeu, manual, falha…)
+  ultimoEnvioEm  DateTime?
+  createdAt      DateTime    @default(now())
+
+  @@unique([sequenciaId, conversationId])
+  @@index([status, proximoEm])
+  @@index([conversationId, status])
+}
+
+// Regra de automação do Instagram ("quando X acontecer, faça Y"), como as Rules do ManyChat.
+// quando: { tipo: "ETIQUETA_APLICADA" | "ETIQUETA_REMOVIDA" | "PALAVRA_NA_MENSAGEM" | "CONVERSA_TRANSFERIDA", valor?: string }
+// fazer:  [{ tipo: "ADICIONAR_ETIQUETA" | "REMOVER_ETIQUETA", valor }, { tipo: "ENVIAR_MENSAGEM", texto }, { tipo: "CHAMAR_ATENDENTE" | "ENCERRAR" | "DEVOLVER_AO_ROBO" }, { tipo: "NOTIFICAR_EQUIPE", motivo? }]
+model IgRegra {
+  id        String   @id @default(cuid())
+  accountId String
+  account   InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  nome      String
+  ativa     Boolean  @default(true)
+  quando    Json
+  fazer     Json     @default("[]")
+  execucoes IgRegraExec[]
+  createdAt DateTime @default(now())
+
+  @@index([accountId, ativa])
+}
+
+// Uma execução de regra numa conversa (trava contra laço: a mesma regra não roda de novo na mesma conversa por 1 minuto).
+model IgRegraExec {
+  id             String   @id @default(cuid())
+  regraId        String
+  regra          IgRegra  @relation(fields: [regraId], references: [id], onDelete: Cascade)
+  conversationId String
+  createdAt      DateTime @default(now())
+
+  @@index([regraId, conversationId, createdAt])
+}
+
+// Respostas salvas (atalhos da equipe na caixa de entrada). accountId vazio = vale para todas as contas.
+model IgRespostaSalva {
+  id        String   @id @default(cuid())
+  accountId String?
+  account   InstagramAccount? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  atalho    String   // ex.: "frete" (digitado como /frete)
+  titulo    String
+  texto     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId])
+}
+
+// E-mails da equipe para avisos do Instagram. Hoje o projeto não tem envio de e-mail (o Gmail está só como leitura),
+// então o aviso vai para o sino do painel (IgNotificacao); estes endereços ficam guardados para quando houver envio.
+model IgConfigNotificacao {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+// Aviso do sino: conversa que precisa de alguém da equipe.
+model IgNotificacao {
+  id             String   @id @default(cuid())
+  conversationId String
+  motivo         String
+  lida           Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  @@index([lida, createdAt])
+  @@index([conversationId, createdAt])
+}
+
+// Fluxo visual do Instagram (Flow Builder do ManyChat): blocos ligados por linhas.
+// gatilho = cópia do bloco GATILHO do grafo (para buscar rápido quais fluxos disparam).
+// grafo = { nos: [{ id, tipo, x, y, dados }], ligacoes: [{ id, de, saida, para }] } — ver src/lib/igFluxosModelo.ts
+model IgFluxo {
+  id        String   @id @default(cuid())
+  accountId String
+  account   InstagramAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  nome      String
+  ativo     Boolean  @default(false)
+  gatilho   Json     @default("{}")
+  grafo     Json     @default("{}")
+  execs     IgFluxoExec[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([accountId, ativo])
+}
+
+// Uma pessoa passando por um fluxo. Regra da Meta: só envia dentro da janela de 24h; fora dela vira CANCELADO.
+model IgFluxoExec {
+  id             String   @id @default(cuid())
+  fluxoId        String
+  fluxo          IgFluxo  @relation(fields: [fluxoId], references: [id], onDelete: Cascade)
+  conversationId String
+  noAtual        String
+  variaveis      Json     @default("{}")
+  status         String   @default("ATIVO") // ATIVO | ESPERANDO_RESPOSTA | ESPERANDO_TEMPO | CONCLUIDO | CANCELADO
+  retomarEm      DateTime? // ESPERANDO_TEMPO: quando continuar · ESPERANDO_RESPOSTA: prazo (fim da janela)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([status, retomarEm])
+  @@index([conversationId, status])
 }

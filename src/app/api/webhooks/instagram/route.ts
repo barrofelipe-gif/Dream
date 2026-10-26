@@ -4,6 +4,10 @@ import { assinaturaValida, dentroDaJanela, enviarDm } from "@/lib/instagram";
 import { responder, escreverApoio, escreverInfoCompra, type Mensagem } from "@/lib/igBot";
 import { atualizarPerfil } from "@/lib/igPerfil";
 import { etiquetar, TAG } from "@/lib/igTags";
+import { aplicarRegras } from "@/lib/igRegras";
+import { notificarEquipe } from "@/lib/igNotificacao";
+import { pararPorResposta } from "@/lib/igSequencias";
+import { continuarComResposta, tentarGatilhoPorComentario, tentarGatilhoPorMensagem } from "@/lib/igFluxos";
 import { PREFIXO_POSTBACK, processarComentario, processarPostbackAutomacao } from "@/lib/igAutomacoes";
 import {
   aplicarNome,
@@ -24,6 +28,7 @@ type Evento = {
     is_echo?: boolean;
     quick_reply?: { payload?: string };
     attachments?: { type?: string }[];
+    reply_to?: { story?: unknown };
     // Conversa que nasceu de um anúncio "clique para o Direct" ou de um link ig.me.
     referral?: { source?: string; type?: string; ad_id?: string; ref?: string };
   };
@@ -57,8 +62,33 @@ const PEDIR_DUVIDA = [
 const REGEX_HUMANO = /\b(human[oa]s?|atendente|atendimento|pessoa|alguém|alguem|funcion[aá]ri[oa]|vendedor[a]?|gerente|dono|dona|falar com (a )?(gente|equipe|loja))\b/i;
 
 // A pessoa se declara cliente ("já comprei", "fiz um pedido"): vira "Comprador" e sai das cobranças em massa.
-const REGEX_COMPROU = /(j[aá] comprei|comprei|fiz (um |o |meu )?(pedido|compra)|j[aá] sou (cliente|revendedora?)|j[aá] (comprava|compro|fui cliente))/i;
-const REGEX_NAO_COMPROU = /(n[aã]o|nunca|ainda n[aã]o|quero|vou|queria|pretendo)\s+(\w+\s+)?(comprei|comprar|fiz (um |o )?(pedido|compra))/i;
+// A negação só anula quando vem logo antes da própria frase de compra ("não comprei", "nunca fiz um pedido");
+// "quero comprar" não anula ("já comprei e quero comprar de novo" continua sendo Comprador).
+// Atenção: escrever \b de verdade (barra + b); um caractere de controle aqui faz a regex nunca casar.
+const REGEX_COMPROU = /\b(comprei|fiz (um |uma |o |a |meu |minha )?(pedido|compra)|j[aá] sou (cliente|revendedora?)|j[aá] (comprava|compro|fui cliente))/i;
+const REGEX_NAO_COMPROU = /\b(n[aã]o|nunca)\s+(\S+\s+)?(comprei|fiz (um |uma |o |a |meu |minha )?(pedido|compra))/i;
+
+/** Conversa foi para a equipe: avisa no sino do painel e dispara as regras de "conversa transferida". */
+async function transferida(conversaId: string, motivo: string) {
+  await notificarEquipe(conversaId, motivo);
+  await aplicarRegras({ tipo: "CONVERSA_TRANSFERIDA" }, conversaId);
+}
+
+/**
+ * Uma automação (regra ou fluxo) já respondeu a esta mensagem do cliente, ou a conversa foi encerrada /
+ * assumida por uma atendente no meio do caminho: o robô padrão não responde (evita resposta dupla).
+ */
+async function automacaoJaCuidou(conversaId: string, desde: Date, statusInicial: string) {
+  const [c, enviada] = await Promise.all([
+    prisma.igConversation.findUnique({ where: { id: conversaId }, select: { status: true } }),
+    prisma.igMessage.findFirst({
+      where: { conversationId: conversaId, direction: "OUT", matchedKind: { in: ["regra", "fluxo"] }, createdAt: { gte: desde } },
+      select: { id: true },
+    }),
+  ]);
+  if (enviada) return true;
+  return c?.status === "CLOSED" || (c?.status === "HUMAN" && statusInicial !== "HUMAN");
+}
 
 const HORAS = (h: number) => new Date(Date.now() - h * 60 * 60 * 1000);
 const APP_BFF = "https://converta.app/redirectbff.html";
@@ -94,7 +124,7 @@ export async function POST(req: NextRequest) {
       for (const c of entry.changes ?? []) {
         if (c.field !== "comments" || !c.value?.id || !c.value.from?.id) continue;
         try {
-          await processarComentario({
+          const evento = {
             contaId: entry.id,
             commentId: c.value.id,
             texto: c.value.text ?? "",
@@ -102,7 +132,14 @@ export async function POST(req: NextRequest) {
             username: c.value.from.username,
             midiaId: c.value.media?.id ?? "",
             parentId: c.value.parent_id,
+          };
+          // Um fluxo visual com gatilho de comentário tem prioridade; senão vale a automação de comentário.
+          // Falha no fluxo não pode impedir a automação de comentário de sempre.
+          const fluxoAssumiu = await tentarGatilhoPorComentario(evento).catch((err) => {
+            console.error("[ig-webhook] falha no fluxo de comentário", err);
+            return false;
           });
+          if (!fluxoAssumiu) await processarComentario(evento);
         } catch (err) {
           console.error("[ig-webhook] falha na automação de comentário", err);
         }
@@ -222,8 +259,18 @@ async function tratarEvento(ev: Evento) {
   });
 
   const agora = new Date(ev.timestamp ?? Date.now());
-  await prisma.igMessage.create({
+  const entrada = await prisma.igMessage.create({
     data: { conversationId: conversa.id, direction: "IN", source: "CLIENTE", text, metaMessageId: mid },
+    select: { createdAt: true },
+  });
+  const statusInicial = conversa.status;
+  // Conversa com a equipe envolvida (aguardando ou atendendo): cada mensagem nova do cliente
+  // volta a aparecer como NÃO LIDA na caixa de entrada.
+  // A janela de 24h é renovada ANTES das etiquetas/regras/fluxos, para que eles vejam a janela certa.
+  const comEquipe = conversa.status === "NEEDS_HUMAN" || conversa.status === "HUMAN";
+  await prisma.igConversation.update({
+    where: { id: conversa.id },
+    data: { lastCustomerMessageAt: agora, ...(comEquipe ? { naoLida: true } : {}) },
   });
 
   // Origem da conversa (anúncio ou orgânico) e autodeclaração de comprador, para etiquetar sozinho.
@@ -235,13 +282,12 @@ async function tratarEvento(ev: Evento) {
   else if (entradas === 1) novasTags.push(mencionou ? TAG.origemStory : TAG.organico);
   if (REGEX_COMPROU.test(text) && !REGEX_NAO_COMPROU.test(text)) novasTags.push(TAG.comprador);
   if (novasTags.length) await etiquetar(conversa.id, novasTags, veioDeAnuncio ? [TAG.organico] : []);
-  // Conversa com a equipe envolvida (aguardando ou atendendo): cada mensagem nova do cliente
-  // volta a aparecer como NÃO LIDA na caixa de entrada.
-  const comEquipe = conversa.status === "NEEDS_HUMAN" || conversa.status === "HUMAN";
-  await prisma.igConversation.update({
-    where: { id: conversa.id },
-    data: { lastCustomerMessageAt: agora, ...(comEquipe ? { naoLida: true } : {}) },
-  });
+  // A pessoa respondeu: sequências em andamento param e as regras de palavra-chave rodam antes do robô responder.
+  await pararPorResposta(conversa.id).catch((err) => console.error("[ig-webhook] pararPorResposta", err));
+  await aplicarRegras({ tipo: "PALAVRA_NA_MENSAGEM", texto: text }, conversa.id);
+  // Regras (ENCERRAR, CHAMAR_ATENDENTE, DEVOLVER_AO_ROBO) podem ter mudado o status: usa o atual daqui em diante.
+  const aposRegras = await prisma.igConversation.findUnique({ where: { id: conversa.id }, select: { status: true } });
+  if (aposRegras) conversa.status = aposRegras.status;
 
   await atualizarPerfil(conversa.id);
 
@@ -253,6 +299,19 @@ async function tratarEvento(ev: Evento) {
 
   if (conversa.status === "CLOSED") return;
   if (!dentroDaJanela(agora)) return;
+  // Uma regra ou um fluxo (disparado por etiqueta) já respondeu esta mensagem: o robô não responde de novo.
+  if (await automacaoJaCuidou(conversa.id, entrada.createdAt, statusInicial)) return;
+
+  // Fluxos visuais: continuam uma pergunta/botão em andamento ou começam por palavra-chave, story ou botão do menu.
+  // Falha num fluxo não pode calar o robô padrão: em erro, segue como se nenhum fluxo tivesse casado.
+  if (conversa.status !== "HUMAN") {
+    const semFluxo = (err: unknown) => {
+      console.error("[ig-webhook] falha no fluxo", err);
+      return false;
+    };
+    if (await continuarComResposta(conversa.id, text, botao).catch(semFluxo)) return;
+    if (await tentarGatilhoPorMensagem(conversa.id, text, { payload: botao, story: mencionou || !!ev.message?.reply_to?.story }).catch(semFluxo)) return;
+  }
 
   // Agradece a marcação no story (uma vez por dia por pessoa) e não passa pela triagem.
   if (mencionou) {
@@ -301,6 +360,7 @@ async function tratarEvento(ev: Evento) {
     if (!info) {
       // Sem texto seguro para mandar: uma atendente envia as informações.
       await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "NEEDS_HUMAN", naoLida: true } });
+      await transferida(conversa.id, "Botão de informações sem texto seguro");
       await enviarEGravar(account, conversa.id, ev.sender.id, {
         texto: "Vou pedir para uma atendente te mandar essas informações agora mesmo, só um instante.",
         kind: "atendente",
@@ -380,6 +440,7 @@ async function tratarEvento(ev: Evento) {
         kind: "procurando_atendente",
       };
       await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "NEEDS_HUMAN", naoLida: true } });
+      await transferida(conversa.id, "Pediu atendente e insistiu sem dizer a dúvida");
     }
   } else if (r.tipo === "resposta") {
     // Primeira conversa e a pessoa ainda não segue: a resposta já leva o convite para seguir.
@@ -414,6 +475,7 @@ async function tratarEvento(ev: Evento) {
         kind: "atendente",
       };
       await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "NEEDS_HUMAN", naoLida: true } });
+      await transferida(conversa.id, "Pedido atrasado depois do prazo");
     }
   } else if (r.tipo === "saudacao") {
     if (primeiroContato && config.ativo) {
@@ -463,8 +525,11 @@ async function tratarEvento(ev: Evento) {
       saida = { texto: texto || CHAMAR_ATENDENTE, kind: "atendente" };
       // Fila da equipe: a atendente responde pelo próprio Instagram. Fica NÃO LIDA até alguém abrir.
       await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "NEEDS_HUMAN", naoLida: true } });
+      await transferida(conversa.id, "Robô não entendeu a dúvida");
     }
   }
 
+  // As etiquetas aplicadas acima (Pediu humano, Pedido atrasado…) podem ter disparado uma regra/fluxo que já respondeu.
+  if (await automacaoJaCuidou(conversa.id, entrada.createdAt, statusInicial)) return;
   await enviarEGravar(account, conversa.id, ev.sender.id, saida);
 }

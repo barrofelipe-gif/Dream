@@ -6,6 +6,11 @@ import InstagramAutomacoes from "@/components/hub/growth/InstagramAutomacoes";
 import InstagramMenu from "@/components/hub/growth/InstagramMenu";
 import SocialPublicador from "@/components/hub/growth/SocialPublicador";
 import InstagramTransmissoes from "@/components/hub/growth/InstagramTransmissoes";
+import InstagramContatos from "@/components/hub/growth/InstagramContatos";
+import InstagramSequencias from "@/components/hub/growth/InstagramSequencias";
+import InstagramRegras from "@/components/hub/growth/InstagramRegras";
+import InstagramRespostasSalvas from "@/components/hub/growth/InstagramRespostasSalvas";
+import InstagramFluxos from "@/components/hub/growth/InstagramFluxos";
 import SocialMetricas from "@/components/hub/growth/SocialMetricas";
 
 /**
@@ -109,7 +114,17 @@ export default async function InstagramPapel() {
 
       <InstagramInbox />
 
+      <InstagramFluxos />
+
+      <InstagramContatos />
+
       <InstagramTransmissoes />
+
+      <InstagramSequencias />
+
+      <InstagramRegras />
+
+      <InstagramRespostasSalvas />
 
       <InstagramAutomacoes />
 

@@ -27,6 +27,17 @@ export async function processarTransmissoes(limite = 40): Promise<number> {
     if (feitas >= limite) break;
     const alvos = await prisma.igTransmissaoAlvo.findMany({ where: { transmissaoId: t.id, status: "PENDENTE" }, take: limite - feitas });
     for (const a of alvos) {
+      // Reserva o alvo antes de enviar: o agendador e o after() da criação podem rodar ao mesmo tempo, e sem
+      // a reserva os dois mandariam a mesma mensagem. Se a função morrer no meio (limite de 60 s), o alvo fica
+      // "ENVIANDO" e não é reenviado (melhor perder um envio do que mandar duas vezes).
+      const reserva = await prisma.igTransmissaoAlvo.updateMany({ where: { id: a.id, status: "PENDENTE" }, data: { status: "ENVIANDO" } });
+      if (reserva.count === 0) continue;
+      // Cancelada no meio da rodada: devolve o alvo e para.
+      const atual = await prisma.igTransmissao.findUnique({ where: { id: t.id }, select: { status: true } });
+      if (atual?.status !== "ENVIANDO") {
+        await prisma.igTransmissaoAlvo.update({ where: { id: a.id }, data: { status: "PENDENTE" } });
+        break;
+      }
       const c = await prisma.igConversation.findUnique({ where: { id: a.conversationId } });
       let status: "ENVIADA" | "FALHOU" | "EXPIRADA" = "ENVIADA";
       let erro: string | null = null;
@@ -54,7 +65,7 @@ export async function processarTransmissoes(limite = 40): Promise<number> {
       feitas++;
     }
     const restam = await prisma.igTransmissaoAlvo.count({ where: { transmissaoId: t.id, status: "PENDENTE" } });
-    if (restam === 0) await prisma.igTransmissao.update({ where: { id: t.id }, data: { status: "CONCLUIDA" } });
+    if (restam === 0) await prisma.igTransmissao.updateMany({ where: { id: t.id, status: "ENVIANDO" }, data: { status: "CONCLUIDA" } });
   }
   return feitas;
 }

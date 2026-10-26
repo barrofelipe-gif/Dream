@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SinoInstagram } from "@/components/hub/growth/InstagramRegras";
 
 type Resumo = {
   id: string;
@@ -160,6 +161,13 @@ export default function InstagramInbox() {
   const [filtro, setFiltro] = useState("todas");
   const [filtroTag, setFiltroTag] = useState<string | null>(null);
   const [novaTag, setNovaTag] = useState("");
+  const [salvas, setSalvas] = useState<{ id: string; atalho: string; titulo: string; texto: string }[]>([]);
+  useEffect(() => {
+    fetch("/api/instagram/respostas-salvas", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => j && setSalvas(j.respostas))
+      .catch(() => {});
+  }, []);
   const [selecionada, setSelecionada] = useState<string | null>(null);
   const [conversa, setConversa] = useState<Conversa | null>(null);
   const [texto, setTexto] = useState("");
@@ -270,7 +278,10 @@ export default function InstagramInbox() {
       <div className={`${selecionada ? "hidden @3xl:flex" : "flex"} min-h-0 flex-col border-r border-[#e3e5ea]`}>
         <div className="border-b border-[#e3e5ea] px-4 py-3">
           <div className="flex items-center justify-between">
-            <p className="text-base font-semibold text-[#1b1f2b]">Mensagens</p>
+            <p className="flex items-center gap-2 text-base font-semibold text-[#1b1f2b]">
+              Mensagens
+              <SinoInstagram onAbrirConversa={(id) => setSelecionada(id)} />
+            </p>
             {naoLidas > 0 && (
               <span className="rounded-full bg-[#6366f1] px-2.5 py-0.5 text-[11px] font-semibold text-white">{naoLidas} não lida{naoLidas > 1 ? "s" : ""}</span>
             )}
@@ -484,6 +495,23 @@ export default function InstagramInbox() {
                 </p>
               )}
               {aviso && <p className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{aviso}</p>}
+              {/^\/\S*$/.test(texto) && (
+                <div className="mb-2 max-h-40 overflow-y-auto rounded-xl border border-[#e3e5ea] bg-white text-xs shadow-sm">
+                  {salvas
+                    .filter((s) => s.atalho.startsWith(texto.slice(1).toLowerCase()))
+                    .map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => setTexto(s.texto.replaceAll("{nome}", (conversa.nome ?? "").split(" ")[0] || ""))}
+                        className="block w-full border-b border-[#f1f2f5] px-3 py-2 text-left hover:bg-[#f7f7ff]"
+                      >
+                        <span className="font-semibold text-[#6366f1]">/{s.atalho}</span> <span className="text-[#1b1f2b]">{s.titulo}</span>
+                        <span className="block truncate text-[#8a8f9c]">{s.texto}</span>
+                      </button>
+                    ))}
+                  {salvas.length === 0 && <p className="px-3 py-2 text-[#8a8f9c]">Nenhuma resposta salva ainda. Crie em &ldquo;Respostas salvas&rdquo;.</p>}
+                </div>
+              )}
               <div className="flex items-end gap-2">
                 <textarea
                   value={texto}
