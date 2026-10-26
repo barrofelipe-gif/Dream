@@ -340,12 +340,24 @@ async function tratarEvento(ev: Evento) {
       saida = { texto: "Claro! Me conta qual é a sua dúvida? 😊", kind: "pedir_duvida" };
     } else if (pedidos === 1) {
       saida = {
-        texto: "Então, primeiro preciso saber qual é a sua dúvida pra eu te direcionar certinho. Me conta aqui que, se eu não conseguir resolver, passo pra uma atendente.",
+        texto: "Então, primeiro preciso saber qual é a sua dúvida pra te direcionar certinho 😊",
+        partes: [
+          "Então, primeiro preciso saber qual é a sua dúvida pra te direcionar certinho 😊",
+          "Me conta aqui que, se eu não conseguir resolver, eu passo pra uma atendente.",
+        ],
         kind: "pedir_duvida",
       };
     } else {
-      // Insistiu pela 3ª vez: não prende a pessoa, transfere (fica não lida para a equipe).
-      saida = { texto: "Tudo bem, vou chamar uma atendente pra te ajudar, já já ela te responde por aqui.", kind: "atendente" };
+      // Insistiu: procura uma atendente (fica não lida). Sem resposta em ~10 min, o robô volta e oferece
+      // continuar o atendimento (igSeguimento, chamado pelo agendador).
+      const jaProcurando = await prisma.igMessage.findFirst({
+        where: { conversationId: conversa.id, matchedKind: "procurando_atendente", createdAt: { gt: HORAS(1) } },
+        select: { id: true },
+      });
+      saida = {
+        texto: jaProcurando ? "Ainda estou tentando localizar uma atendente, já já ela te responde 🙏" : "Tá, vou tentar localizar uma atendente disponível, só um instante 🙏",
+        kind: "procurando_atendente",
+      };
       await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "NEEDS_HUMAN", naoLida: true } });
     }
   } else if (r.tipo === "resposta") {
