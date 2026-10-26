@@ -9,6 +9,15 @@ interface Status {
   storeId?: string | null;
   apiAddress?: string | null;
   lastSyncAt?: string | null;
+  refreshTokenExpiresAt?: string | null;
+}
+
+const DIAS_AVISO_VENCIMENTO = 7;
+
+function diasAteVencer(refreshTokenExpiresAt?: string | null): number | null {
+  if (!refreshTokenExpiresAt) return null;
+  const ms = new Date(refreshTokenExpiresAt).getTime() - Date.now();
+  return Math.floor(ms / (1000 * 60 * 60 * 24));
 }
 
 export default function ConectarTrayClient() {
@@ -63,6 +72,27 @@ export default function ConectarTrayClient() {
               ? ` · última sincronização: ${new Date(status.lastSyncAt).toLocaleString("pt-BR")}`
               : " · ainda sem sincronização"}
           </p>
+          {(() => {
+            const dias = diasAteVencer(status.refreshTokenExpiresAt);
+            if (dias === null) return null;
+            if (dias <= 0) {
+              return (
+                <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                  A autorização da Tray venceu — os dados parados de atualizar. Clica em
+                  &quot;Desconectar&quot; e depois &quot;Conectar com a Tray&quot; de novo pra reautorizar.
+                </p>
+              );
+            }
+            if (dias <= DIAS_AVISO_VENCIMENTO) {
+              return (
+                <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                  A autorização da Tray vence em {dias} dia{dias === 1 ? "" : "s"}. O sync diário (cron) renova ela
+                  sozinha enquanto estiver rodando — só reautoriza manualmente se esse aviso continuar aparecendo.
+                </p>
+              );
+            }
+            return null;
+          })()}
           <button
             onClick={handleDisconnect}
             className="rounded-lg px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50"
