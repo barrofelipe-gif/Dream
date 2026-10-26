@@ -41,10 +41,13 @@ const PAPEIS_AVALIACOES: Record<string, PapelAvaliacoes> = {
 
 export default async function PapelPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ areaId: string; papelId: string }>;
+  searchParams: Promise<{ status?: string; conversa?: string }>;
 }) {
   const { areaId, papelId } = await params;
+  const { status, conversa } = await searchParams;
   const encontrado = getPapel(areaId, papelId);
   if (!encontrado) notFound();
   const { area, papel } = encontrado;
