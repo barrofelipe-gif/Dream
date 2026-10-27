@@ -164,15 +164,26 @@ export async function processarSequencias(limite = 40): Promise<number> {
 
 export const NOME_POS_PITCH = "Pós-pitch BFF";
 
-/** Passos padrão do acompanhamento depois do pitch de atacado. A Meta só deixa falar até ~24h depois da última mensagem do cliente, então o último passo sai por volta de 23h15 (o agendador roda a cada 5 min e a margem de segurança é de 10 min). */
+/**
+ * Passos padrão do acompanhamento depois do pitch de atacado (tempos contados desde o pitch: 3h, 6h e 23h30).
+ * A Meta só deixa falar até ~24h depois da última mensagem do cliente, e o agendador roda a cada 5 min com 10 min de margem:
+ * a última sai entre 23h30 e ~23h45.
+ */
 const PASSOS_POS_PITCH: PassoSequencia[] = [
+  { atrasoMinutos: 180, texto: "Oi, {nome}! Conseguiu fazer o seu pedido? 😊 Se travou em alguma coisa, me conta aqui que eu te ajudo." },
+  { atrasoMinutos: 180, texto: "Ah, {nome}, e segue a gente aqui no Instagram: postamos novidades e ofertas exclusivas só pra quem segue 😉" },
+  { atrasoMinutos: 1050, texto: "Passando pra saber se você conseguiu finalizar o seu pedido 😊 Se ficou alguma dúvida, é só me responder aqui que eu te ajudo." },
+];
+
+/** Versão anterior do padrão (2 passos): se a sequência ainda for exatamente essa, troca pela atual. */
+const PASSOS_POS_PITCH_ANTIGOS = JSON.stringify([
   { atrasoMinutos: 180, texto: "Oi, {nome}! Conseguiu fazer o seu pedido? 😊 Se travou em alguma coisa, me conta aqui que eu te ajudo." },
   {
     atrasoMinutos: 1215,
     texto:
       "Passando pra saber se você conseguiu finalizar o seu pedido 😊 Se ficou alguma dúvida, é só me responder aqui que eu te ajudo. E segue a gente aqui no Instagram: postamos novidades e ofertas exclusivas só pra quem segue 😉",
   },
-];
+]);
 
 /**
  * Coloca a conversa no acompanhamento "Pós-pitch BFF" (cria a sequência na primeira vez; depois ela pode ser editada no painel).
@@ -181,6 +192,9 @@ const PASSOS_POS_PITCH: PassoSequencia[] = [
 export async function inscreverPosPitch(accountId: string, conversationId: string): Promise<void> {
   let seq = await prisma.igSequencia.findFirst({ where: { accountId, nome: NOME_POS_PITCH } });
   if (!seq) seq = await prisma.igSequencia.create({ data: { accountId, nome: NOME_POS_PITCH, passos: PASSOS_POS_PITCH, pararSeResponder: true } });
+  if (JSON.stringify(seq.passos) === PASSOS_POS_PITCH_ANTIGOS) {
+    seq = await prisma.igSequencia.update({ where: { id: seq.id }, data: { passos: PASSOS_POS_PITCH } });
+  }
   if (!seq.ativa) return;
   const anterior = await prisma.igSequenciaInscrito.findUnique({ where: { sequenciaId_conversationId: { sequenciaId: seq.id, conversationId } } });
   const reiniciar = !!anterior && anterior.status !== "ATIVA" && Date.now() - anterior.createdAt.getTime() > 24 * 60 * 60 * 1000;
