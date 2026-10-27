@@ -220,6 +220,43 @@ export const SEM_APP_BFF = {
   ],
 };
 
+/** Peça citada → categoria do app. Quem procura um produto é sempre mandada olhar a categoria, sem dizer que "não tem". */
+const CATEGORIAS_BFF: { regex: RegExp; nome: string }[] = [
+  { regex: /\bmacac(a|ao|oes|aozinho)\b|\bmacaquinh/, nome: "Macacão" },
+  { regex: /\bleg(s|gin|ging|gings)?\b|\blegue?\b|\bfuseau/, nome: "Legging" },
+  { regex: /\bcalca(s)?\b|\bflare\b|\bcanelad/, nome: "Calça" },
+  { regex: /\bshort(s|inho|zinho)?\b|\bbermuda/, nome: "Short" },
+  { regex: /\bcropped\b|\btop(s)?\b|\bsutia/, nome: "Top" },
+  { regex: /\bconjunto(s)?\b|\bkit(s)?\b/, nome: "Conjunto" },
+  { regex: /\bbody(s)?\b|\bbodie/, nome: "Body" },
+  { regex: /\bregata(s)?\b|\bcamiseta(s)?\b|\bblusa(s)?\b|\bt-?shirt/, nome: "Blusa" },
+  { regex: /\bjaqueta(s)?\b|\bcasaco(s)?\b|\bmoletom\b/, nome: "Jaqueta" },
+  { regex: /\bsaia(s)?\b|\bvestido(s)?\b|\bsaiote/, nome: "Saia" },
+  { regex: /\bbiquini(s)?\b|\bmaio(s)?\b|\bmoda praia\b/, nome: "Moda praia" },
+];
+const REGEX_NAO_PRODUTO = /pedido|rastre|entreg|atras|troc|devol|pagament|\bpix\b|frete|cancel|estorn|reembols|nota fiscal|cashback/;
+
+function semAcento(s: string): string {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+
+/** Se a mensagem procura uma peça (macacão, legging, calça…), devolve a resposta que manda olhar a categoria no app. */
+export function respostaCategoriaBff(mensagem: string): Resposta | null {
+  const t = semAcento(mensagem);
+  if (REGEX_NAO_PRODUTO.test(t)) return null;
+  const achadas = CATEGORIAS_BFF.filter((c) => c.regex.test(t)).slice(0, 2).map((c) => c.nome);
+  if (achadas.length === 0) return null;
+  const onde = achadas.length === 1 ? `na categoria ${achadas[0]}` : `nas categorias ${achadas.join(" e ")}`;
+  return {
+    tipo: "resposta",
+    partes: [`Dá uma olhada aqui no app ${onde} pra ver o que tem disponível 😊`, "Às vezes você encontra outro modelo e acaba gostando também 😉"],
+    link: { title: "Abrir o app", url: RASTREIO_APP },
+    kind: "faq",
+    id: 9009,
+    confianca: "alta",
+  };
+}
+
 export const ATACADO_BFF = {
   texto: [
     "Ei, {nome}, vou te explicar como funciona, é bem simples!",
@@ -286,6 +323,11 @@ export async function responder(
   // BFF: quem diz que não consegue baixar o app recebe o argumento do pedido mínimo (site R$ 700 x app R$ 350) e o link do site.
   if (loja === "bff" && REGEX_SEM_APP.test(opts.ultimaMensagem ?? contexto)) {
     return { tipo: "resposta", partes: SEM_APP_BFF.partes, links: SEM_APP_BFF.links, kind: "faq", id: 9007, confianca: "alta" };
+  }
+  // BFF: pediu uma peça (mesmo que a gente não tenha) → manda olhar a categoria no app, nunca diz que não tem.
+  if (loja === "bff") {
+    const cat = respostaCategoriaBff(opts.ultimaMensagem ?? contexto);
+    if (cat) return cat;
   }
   const entradas = await carregarBase(loja);
   if (entradas.length === 0) return { tipo: "humano", motivo: "base vazia" };
