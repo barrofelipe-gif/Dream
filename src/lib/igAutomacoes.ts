@@ -144,19 +144,28 @@ export async function processarComentario(ev: ComentarioEvento): Promise<void> {
   let enviado: string;
   let enviadoId: string | undefined;
   let etapa = "enviado";
-  if (alvo.exigirSeguir && !jaSegue) {
-    enviado = aplicarNome(alvo.seguirTexto || SEGUIR_PADRAO, nome);
-    enviadoId = (
-      await respostaPrivada(token, conta.igUserId, ev.commentId, enviado, {
-        tipo: "postback",
-        titulo: alvo.seguirBotao || "Já segui",
-        payload: `${PREFIXO_POSTBACK}${alvo.id}`,
-      })
-    ).message_id;
-    etapa = "aguardando_seguir";
-  } else {
-    enviado = dm;
-    enviadoId = (await respostaPrivada(token, conta.igUserId, ev.commentId, dm, botaoLink)).message_id;
+  try {
+    if (alvo.exigirSeguir && !jaSegue) {
+      enviado = aplicarNome(alvo.seguirTexto || SEGUIR_PADRAO, nome);
+      enviadoId = (
+        await respostaPrivada(token, conta.igUserId, ev.commentId, enviado, {
+          tipo: "postback",
+          titulo: alvo.seguirBotao || "Já segui",
+          payload: `${PREFIXO_POSTBACK}${alvo.id}`,
+        })
+      ).message_id;
+      etapa = "aguardando_seguir";
+    } else {
+      // Grava o mesmo texto que sai (com o endereço do botão escrito), para o eco da Meta reconhecer a mensagem do robô.
+      enviado = botaoLink?.tipo === "link" ? comLinksNoTexto(dm, [{ url: botaoLink.url }]) : dm;
+      enviadoId = (await respostaPrivada(token, conta.igUserId, ev.commentId, dm, botaoLink)).message_id;
+    }
+  } catch (e) {
+    // A DM não saiu: libera o registro para um próximo comentário da pessoa tentar de novo (senão fica bloqueado 24 h).
+    await prisma.igAutomacaoExec
+      .delete({ where: { automacaoId_commentId: { automacaoId: alvo.id, commentId: ev.commentId } } })
+      .catch(() => {});
+    throw e;
   }
 
   // Grava a linha OUT logo após o envio (o eco da Meta chega rápido e precisa achar a linha do robô).
@@ -209,18 +218,20 @@ export async function processarPostbackAutomacao(contaId: string, userId: string
   }
 
   const dm = aplicarNome(alvo.dmTexto, perfil?.nome ?? null);
+  // O mesmo texto que sai (com o endereço do botão) é o que fica gravado, para o eco da Meta reconhecer o robô.
+  const textoDm = alvo.dmBotaoUrl ? comLinksNoTexto(dm, [{ url: alvo.dmBotaoUrl }]) : dm;
   const sentId = await enviarDm({
     igUserId: conta.igUserId,
     encryptedToken: conta.accessToken,
     recipientId: userId,
-    text: alvo.dmBotaoUrl ? comLinksNoTexto(dm, [{ url: alvo.dmBotaoUrl }]) : dm,
+    text: textoDm,
     link: alvo.dmBotaoUrl ? { title: alvo.dmBotaoTitulo || "Abrir", url: alvo.dmBotaoUrl } : undefined,
   });
   await prisma.igAutomacaoExec.updateMany({
     where: { automacaoId: alvo.id, igUserId: userId, etapa: "aguardando_seguir" },
     data: { etapa: "liberado" },
   });
-  await registrarNaConversa(conta.id, userId, null, dm, "automacao", sentId);
+  await registrarNaConversa(conta.id, userId, null, textoDm, "automacao", sentId);
   // Confirmou que passou a seguir a BFF: entra nas boas-vindas de seguidor (app, cashback e aquecimento).
   if (conta.loja === "bff" && perfil?.seguePagina === true) {
     const conv = await prisma.igConversation.findUnique({

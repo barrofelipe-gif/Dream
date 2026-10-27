@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { publicarAgendados } from "@/lib/social/publicar";
+import { destravarPublicacoes, publicarAgendados } from "@/lib/social/publicar";
 import { seguirSemAtendente } from "@/lib/igSeguimento";
 import { processarTransmissoes } from "@/lib/igTransmissao";
 import { processarSequencias } from "@/lib/igSequencias";
 import { processarFluxos } from "@/lib/igFluxos";
 import { processarEnviosAgendados } from "@/lib/igEnvios";
+import { limparEnviosFantasma, retomarSemResposta } from "@/lib/igWebhook";
 
 // Publicar em várias redes (com vídeo) demora: o plano gratuito da Vercel aceita até 60 segundos.
 export const maxDuration = 60;
@@ -23,6 +24,10 @@ export async function GET(req: NextRequest) {
   const prazo = inicio + 45_000;
   const temTempo = () => Date.now() < prazo;
   // Aproveita o agendador de 5 min: retoma conversas em que ninguém da equipe respondeu.
+  // Mensagem de cliente que ficou sem resposta (a função do webhook morreu no meio): o robô responde agora.
+  await limparEnviosFantasma().catch(() => 0);
+  await destravarPublicacoes().catch(() => 0);
+  const retomadas = temTempo() ? await retomarSemResposta({ prazo: inicio + 25_000 }).catch(() => 0) : 0;
   const agendadas = temTempo() ? await processarEnviosAgendados().catch(() => 0) : 0;
   const seguimentos = temTempo() ? await seguirSemAtendente({ prazo: inicio + 20_000 }).catch(() => 0) : 0;
   const transmitidas = temTempo() ? await processarTransmissoes().catch(() => 0) : 0;
@@ -36,5 +41,5 @@ export async function GET(req: NextRequest) {
       console.error("[cron] falha ao publicar agendados", e);
     }
   }
-  return NextResponse.json({ ok: true, ...r, agendadas, seguimentos, transmitidas, sequenciadas, fluxos, ms: Date.now() - inicio, em: new Date().toISOString() });
+  return NextResponse.json({ ok: true, ...r, retomadas, agendadas, seguimentos, transmitidas, sequenciadas, fluxos, ms: Date.now() - inicio, em: new Date().toISOString() });
 }

@@ -111,3 +111,27 @@ export async function publicarAgendados(opts: { prazo?: number } = {}): Promise<
   }
   return { processados };
 }
+
+/**
+ * Postagem que ficou em PUBLICANDO por mais de 15 min: a função morreu no meio (vídeos longos do TikTok e do Pinterest
+ * esperam a rede processar e passam do limite de 60 s). Marca as redes que não terminaram como ERRO, sem republicar
+ * sozinho (a rede pode ter publicado mesmo assim), para a equipe conferir e tentar de novo pelo painel.
+ */
+export async function destravarPublicacoes(): Promise<number> {
+  const presos = await prisma.socialPost.findMany({
+    where: { status: "PUBLICANDO", updatedAt: { lt: new Date(Date.now() - 15 * 60_000) } },
+    select: { id: true },
+    take: 20,
+  });
+  for (const p of presos) {
+    await prisma.socialPostAlvo.updateMany({
+      where: { postId: p.id, status: "PUBLICANDO" },
+      data: { status: "ERRO", erro: "A publicação foi interrompida no meio. Confira na rede se saiu antes de tentar de novo." },
+    });
+    const finais = await prisma.socialPostAlvo.findMany({ where: { postId: p.id }, select: { status: true } });
+    const ok = finais.filter((a) => a.status === "PUBLICADO").length;
+    const status = finais.length && ok === finais.length ? "PUBLICADO" : ok === 0 ? "ERRO" : "PARCIAL";
+    await prisma.socialPost.updateMany({ where: { id: p.id, status: "PUBLICANDO" }, data: { status } });
+  }
+  return presos.length;
+}
