@@ -9,7 +9,7 @@ import { notificarEquipe } from "@/lib/igNotificacao";
 import { roboPodeFalar, roboPodeFalarConversa } from "@/lib/igEstado";
 import { agendarEnvio } from "@/lib/igEnvios";
 import { declaraCompra, pedeHumano } from "@/lib/igIntencao";
-import { pararPorResposta } from "@/lib/igSequencias";
+import { inscreverPosPitch, pararPorResposta } from "@/lib/igSequencias";
 import { continuarComResposta, tentarGatilhoPorComentario, tentarGatilhoPorMensagem } from "@/lib/igFluxos";
 import { PREFIXO_POSTBACK, processarComentario, processarPostbackAutomacao } from "@/lib/igAutomacoes";
 import {
@@ -625,6 +625,10 @@ async function tratarEvento(ev: Evento) {
   if (!(await roboPodeFalar(conversa.id, { permitirNeedsHuman: true }))) return;
   if (!(await souAUltima())) return;
   await enviarEGravar(account, conversa.id, ev.sender.id, saida);
+  // Pitch de atacado da BFF enviado: acompanha ("conseguiu fazer o pedido?") dentro da janela de 24h.
+  if (loja === "bff" && saida.id === 9004) {
+    await inscreverPosPitch(account.id, conversa.id).catch((err) => console.error("[ig-webhook] pós-pitch", err));
+  }
   if (saida.seguinte) {
     // Segunda mensagem (botões do app, do catálogo e do grupo VIP) alguns minutos depois: o agendador de 5 min envia,
     // e só se ninguém assumiu a conversa nesse meio tempo.
