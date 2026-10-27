@@ -176,6 +176,15 @@ export function dividirTexto(texto: string, max = 4, tamanho = 90): string[] {
 }
 
 const RASTREIO_APP = "https://converta.app/redirectbff.html";
+
+/** Roteiro fixo de "como comprar" da BFF: um recado por mensagem e sempre com o link do app. */
+export const ROTEIRO_COMPRA_BFF = [
+  "Vendemos apenas no atacado 😊",
+  "O pedido mínimo é de R$ 350, e você pode variar os modelos.",
+  "A gente não tem catálogo.",
+  "A compra é feita direto pelo site ou pelo app.",
+  `Baixa o nosso app aqui: ${RASTREIO_APP}`,
+];
 // Palavras que indicam dúvida de compra (atacado, varejo, pedido mínimo, revenda, CNPJ, catálogo, como comprar).
 const REGEX_COMPRA =
   /atacado|varejo|pedido m[ií]nimo|valor m[ií]nimo|compra m[ií]nima|revend|lojista|sacoleir|cnpj|cat[aá]logo|como (eu )?(fa[cç]o|faz|posso|consigo|compro)[^.?!]{0,12}comprar|quero comprar|onde (eu )?compro|como compro/i;
@@ -250,14 +259,7 @@ export async function responder(loja: Loja, contexto: string, historico: Mensage
     const semCnpj = /cnpj|pessoa f[ií]sica|\bcpf\b/i.test(contexto) ? ["Pode comprar sem CNPJ, sim."] : [];
     return {
       tipo: "resposta",
-      partes: [
-        ...semCnpj,
-        "Vendemos apenas no atacado 😊",
-        "O pedido mínimo é de R$ 350, e você pode variar os modelos.",
-        "A gente não tem catálogo.",
-        "A compra é feita direto pelo site ou pelo app.",
-        `Baixa o nosso app aqui: ${RASTREIO_APP}`,
-      ],
+      partes: [...semCnpj, ...ROTEIRO_COMPRA_BFF],
       kind: "faq",
       id: 9004,
       confianca: "alta",

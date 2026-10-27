@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { assinaturaValida, dentroDaJanela, enviarDm } from "@/lib/instagram";
-import { responder, escreverApoio, escreverInfoCompra, type Mensagem } from "@/lib/igBot";
+import { responder, escreverApoio, escreverInfoCompra, ROTEIRO_COMPRA_BFF, type Mensagem } from "@/lib/igBot";
 import { atualizarPerfil } from "@/lib/igPerfil";
 import { etiquetar, TAG } from "@/lib/igTags";
 import { aplicarRegras } from "@/lib/igRegras";
@@ -515,7 +515,12 @@ async function tratarEvento(ev: Evento) {
       await transferida(conversa.id, "Pedido atrasado depois do prazo");
     }
   } else if (r.tipo === "saudacao") {
-    if (primeiroContato && config.ativo) {
+    if (primeiroContato && config.ativo && loja === "bff") {
+      // BFF: quem chega só cumprimentando recebe direto o caminho de compra no atacado (a galera não explica o que quer).
+      const convite = config.pedirSeguir && naoSegue && config.textoSeguir.trim() ? [config.textoSeguir] : [];
+      const partes = [aplicarNome("Ei, {nome}, tudo bem? 😊", perfil?.nome ?? null), "Vou te falar como é fácil comprar 😉", ...ROTEIRO_COMPRA_BFF, ...convite];
+      saida = { texto: partes.join("\n"), partes, kind: "boasvindas" };
+    } else if (primeiroContato && config.ativo) {
       // Boas-vindas com botões (como no ManyChat): convida a receber as informações e a seguir a loja.
       const abertura = aplicarNome(config.mensagem, perfil?.nome ?? null);
       const convite = config.pedirSeguir && naoSegue && config.textoSeguir.trim() ? [config.textoSeguir] : [];
