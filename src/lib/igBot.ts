@@ -240,6 +240,22 @@ function semAcento(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
+const REGEX_PRECO = /\b(valor(es)?|pre[cç]o(s)?|quanto|qto|quantos? reais|tabela)\b/i;
+const REGEX_NAO_PRECO = /m[ií]nim|frete|entreg|pedido|rastre|atras|troc|devol|cashback|parcel|pix|cart[aã]o|pagament|cupom|desconto/i;
+
+/** Pergunta de preço: resposta direta (preço só no app, pedido mínimo R$ 350), sem rodeio. */
+export function respostaPrecoBff(mensagem: string): Resposta | null {
+  if (!REGEX_PRECO.test(mensagem) || REGEX_NAO_PRECO.test(mensagem)) return null;
+  return {
+    tipo: "resposta",
+    partes: ["Os valores ficam direto no app 😊 O pedido mínimo é de R$ 350.", "Se não conseguir baixar, me avisa que te passo o site."],
+    link: { title: "Ver preços no app", url: RASTREIO_APP },
+    kind: "faq",
+    id: 9010,
+    confianca: "alta",
+  };
+}
+
 /** Se a mensagem procura uma peça (macacão, legging, calça…), devolve a resposta que manda olhar a categoria no app. */
 export function respostaCategoriaBff(mensagem: string): Resposta | null {
   const t = semAcento(mensagem);
@@ -326,6 +342,8 @@ export async function responder(
   }
   // BFF: pediu uma peça (mesmo que a gente não tenha) → manda olhar a categoria no app, nunca diz que não tem.
   if (loja === "bff") {
+    const preco = respostaPrecoBff(opts.ultimaMensagem ?? contexto);
+    if (preco) return preco;
     const cat = respostaCategoriaBff(opts.ultimaMensagem ?? contexto);
     if (cat) return cat;
   }
