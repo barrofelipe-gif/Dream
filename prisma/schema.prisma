@@ -736,3 +736,20 @@ model IgFluxoExec {
   @@index([status, retomarEm])
   @@index([conversationId, status])
 }
+
+// Mensagem de DM marcada para sair mais tarde (por exemplo, o convite do grupo VIP ~2 min depois do pitch de atacado).
+// O agendador de 5 min (cron publicar-agendados) envia; a reserva PENDENTE -> ENVIANDO é atômica.
+model IgEnvioAgendado {
+  id             String   @id @default(cuid())
+  conversationId String
+  texto          String
+  links          Json     @default("[]") // [{ title, url }] (até 3 botões de link)
+  kind           String   @default("agendada")
+  enviarEm       DateTime
+  status         String   @default("PENDENTE") // PENDENTE | ENVIANDO | ENVIADA | CANCELADA | EXPIRADA | FALHOU
+  erro           String?
+  createdAt      DateTime @default(now())
+
+  @@index([status, enviarEm])
+  @@index([conversationId, status])
+}

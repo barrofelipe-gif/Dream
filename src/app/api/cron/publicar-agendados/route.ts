@@ -4,6 +4,7 @@ import { seguirSemAtendente } from "@/lib/igSeguimento";
 import { processarTransmissoes } from "@/lib/igTransmissao";
 import { processarSequencias } from "@/lib/igSequencias";
 import { processarFluxos } from "@/lib/igFluxos";
+import { processarEnviosAgendados } from "@/lib/igEnvios";
 
 // Publicar em várias redes (com vídeo) demora: o plano gratuito da Vercel aceita até 60 segundos.
 export const maxDuration = 60;
@@ -22,6 +23,7 @@ export async function GET(req: NextRequest) {
   const prazo = inicio + 45_000;
   const temTempo = () => Date.now() < prazo;
   // Aproveita o agendador de 5 min: retoma conversas em que ninguém da equipe respondeu.
+  const agendadas = temTempo() ? await processarEnviosAgendados().catch(() => 0) : 0;
   const seguimentos = temTempo() ? await seguirSemAtendente().catch(() => 0) : 0;
   const transmitidas = temTempo() ? await processarTransmissoes().catch(() => 0) : 0;
   const sequenciadas = temTempo() ? await processarSequencias().catch(() => 0) : 0;
@@ -34,5 +36,5 @@ export async function GET(req: NextRequest) {
       console.error("[cron] falha ao publicar agendados", e);
     }
   }
-  return NextResponse.json({ ok: true, ...r, seguimentos, transmitidas, sequenciadas, fluxos, ms: Date.now() - inicio, em: new Date().toISOString() });
+  return NextResponse.json({ ok: true, ...r, agendadas, seguimentos, transmitidas, sequenciadas, fluxos, ms: Date.now() - inicio, em: new Date().toISOString() });
 }

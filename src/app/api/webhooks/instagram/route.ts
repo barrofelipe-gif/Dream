@@ -7,6 +7,7 @@ import { etiquetar, TAG } from "@/lib/igTags";
 import { aplicarRegras } from "@/lib/igRegras";
 import { notificarEquipe } from "@/lib/igNotificacao";
 import { roboPodeFalar, roboPodeFalarConversa } from "@/lib/igEstado";
+import { agendarEnvio } from "@/lib/igEnvios";
 import { declaraCompra, pedeHumano } from "@/lib/igIntencao";
 import { pararPorResposta } from "@/lib/igSequencias";
 import { continuarComResposta, tentarGatilhoPorComentario, tentarGatilhoPorMensagem } from "@/lib/igFluxos";
@@ -221,7 +222,7 @@ type Saida = {
   quickReplies?: { title: string; payload: string }[];
   link?: { title: string; url: string };
   /** Segunda mensagem (com botão de link) enviada alguns segundos depois da primeira. */
-  seguinte?: { texto: string; link: { title: string; url: string } };
+  seguinte?: { texto: string; links: { title: string; url: string }[]; depoisMin: number };
 };
 
 /** Envia a mensagem no Instagram e grava na conversa como do robô. */
@@ -623,10 +624,9 @@ async function tratarEvento(ev: Evento) {
   if (!(await souAUltima())) return;
   await enviarEGravar(account, conversa.id, ev.sender.id, saida);
   if (saida.seguinte) {
-    // Segunda mensagem (convite do grupo VIP) um pouco depois, como a equipe faz no WhatsApp; só se ninguém assumiu a conversa.
-    await new Promise((r) => setTimeout(r, 6000));
-    if (await roboPodeFalar(conversa.id)) {
-      await enviarEGravar(account, conversa.id, ev.sender.id, { texto: saida.seguinte.texto, kind: saida.kind, link: saida.seguinte.link });
-    }
-  }
-}
+    // Segunda mensagem (botões do app, do catálogo e do grupo VIP) alguns minutos depois: o agendador de 5 min envia,
+    // e só se ninguém assumiu a conversa nesse meio tempo.
+    await agendarEnvio(conversa.id, saida.seguinte.texto, saida.seguinte.links, saida.kind, saida.seguinte.depoisMin).catch((err) =>
+      console.error("[ig-webhook] não consegui agendar a segunda mensagem", err),
+    );
+  }}

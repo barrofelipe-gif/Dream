@@ -116,7 +116,7 @@ export type Resposta =
       confianca: "alta" | "media";
       /** Botão de link na última parte e, se houver, uma segunda mensagem enviada logo depois. */
       link?: { title: string; url: string };
-      seguinte?: { texto: string; link: { title: string; url: string } };
+      seguinte?: { texto: string; links: { title: string; url: string }[]; depoisMin: number };
     }
   | { tipo: "saudacao"; texto: string }
   | { tipo: "atraso" }
@@ -202,9 +202,15 @@ export const ATACADO_BFF = {
     "📲 Baixe e Compre pelo APP, receba descontos exclusivos:",
   ].join("\n"),
   link: { title: "Ver produtos", url: RASTREIO_APP },
+  // ~2 min depois: quem quer "catálogo" recebe os botões do app e do site, e o convite do grupo VIP.
   seguinte: {
     texto: "Fique por dentro das OFERTAS E PROMOÇÕES 👇👇👇",
-    link: { title: "GRUPO VIP", url: "https://chat.whatsapp.com/BaLrgr074U7BXoN8ShIIxu" },
+    links: [
+      { title: "Baixar o app", url: RASTREIO_APP },
+      { title: "Ver catálogo", url: "https://www.bfffitnessatacado.com.br" },
+      { title: "GRUPO VIP", url: "https://chat.whatsapp.com/BaLrgr074U7BXoN8ShIIxu" },
+    ],
+    depoisMin: 2,
   },
 };
 // Palavras que indicam dúvida de compra (atacado, varejo, pedido mínimo, revenda, CNPJ, catálogo, como comprar).

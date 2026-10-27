@@ -36,15 +36,18 @@ export async function enviarDm(opts: {
   quickReplies?: { title: string; payload: string }[];
   /** Botão com link abaixo do texto (modelo "button template": texto até 640 caracteres). O texto simples vai até 1000 BYTES. */
   link?: { title: string; url: string };
+  /** Até 3 botões de link (mesmo modelo do `link`). */
+  links?: { title: string; url: string }[];
 }): Promise<string> {
-  const message = opts.link
+  const botoes = (opts.links?.length ? opts.links : opts.link ? [opts.link] : []).slice(0, 3);
+  const message = botoes.length
     ? {
         attachment: {
           type: "template",
           payload: {
             template_type: "button",
             text: cortarCaracteres(opts.text, 640),
-            buttons: [{ type: "web_url", url: opts.link.url, title: cortarCaracteres(opts.link.title, 20) }],
+            buttons: botoes.map((b) => ({ type: "web_url", url: b.url, title: cortarCaracteres(b.title, 20) })),
           },
         },
       }
