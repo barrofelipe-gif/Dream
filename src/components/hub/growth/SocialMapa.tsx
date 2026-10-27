@@ -332,7 +332,7 @@ function NumerosInstagram() {
         ))}
       </div>
       <p className="rounded-xl bg-[#fbe7f1] px-3 py-2 text-xs text-[#a01b5c]">{dados.formatos.frase} {dados.horario.frase}</p>
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-2 sm:grid-cols-2">
         {dados.top.slice(0, 6).map((p, i) => (
           <a key={p.externoId} href={p.permalink ?? undefined} target="_blank" rel="noreferrer" className="flex gap-2 rounded-xl border border-[#e3e5ea] p-2 hover:border-[#d02a78]">
             {p.miniatura ? (
