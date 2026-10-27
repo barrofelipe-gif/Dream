@@ -195,9 +195,17 @@ const REGEX_COMPRA =
  */
 export function limparPartes(partes: string[]): string[] {
   const proibida = /(pix|cart[aã]o)[^.!?]*(diferen|mais barato|menor|desconto|econom)|(diferen|desconto|mais barato|econom)[^.!?]*(pix|cart[aã]o)/i;
+  const vistas = new Set<string>();
   return partes
     .map((p) => (p.match(/[^.!?]+[.!?]*\s*/g) ?? [p]).filter((f) => !proibida.test(f)).join("").trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    // Sem partes repetidas (o modelo às vezes manda a mesma mensagem duas vezes).
+    .filter((p) => {
+      const chave = p.toLowerCase().replace(/\s+/g, " ").trim();
+      if (vistas.has(chave)) return false;
+      vistas.add(chave);
+      return true;
+    });
 }
 
 /**
@@ -205,7 +213,12 @@ export function limparPartes(partes: string[]): string[] {
  * passo 2 escreve a resposta em tom de conversa, só com os fatos dessas entradas.
  * Sem base suficiente, devolve "humano" (o chamador decide pedir detalhes ou chamar atendente).
  */
-export async function responder(loja: Loja, contexto: string, historico: Mensagem[]): Promise<Resposta> {
+export async function responder(
+  loja: Loja,
+  contexto: string,
+  historico: Mensagem[],
+  opts: { ultimaMensagem?: string; semRoteiroCompra?: boolean } = {},
+): Promise<Resposta> {
   const entradas = await carregarBase(loja);
   if (entradas.length === 0) return { tipo: "humano", motivo: "base vazia" };
 
@@ -233,8 +246,9 @@ export async function responder(loja: Loja, contexto: string, historico: Mensage
 
   const t = triagem.parsed_output;
   // Palavras de compra valem mesmo que a triagem tenha classificado de outro jeito (menos rastreio e atraso).
+  // Só a ÚLTIMA mensagem conta (o contexto de 30 min fazia toda mensagem nova virar o roteiro); e não repete se já mandou há pouco.
   const forcaCompra =
-    loja === "bff" && REGEX_COMPRA.test(contexto) && t?.tipo !== "rastreio" && t?.tipo !== "atraso" && t?.tipo !== "saudacao";
+    loja === "bff" && !opts.semRoteiroCompra && REGEX_COMPRA.test(opts.ultimaMensagem ?? contexto) && t?.tipo !== "rastreio" && t?.tipo !== "atraso" && t?.tipo !== "saudacao";
   if (!forcaCompra && (!t || t.tipo === "nenhuma" || t.confianca === "baixa")) return { tipo: "humano", motivo: "nenhuma entrada serve" };
   if (!t) return { tipo: "humano", motivo: "nenhuma entrada serve" };
 
@@ -255,7 +269,7 @@ export async function responder(loja: Loja, contexto: string, historico: Mensage
   if (t.tipo === "rastreio") return { tipo: "humano", motivo: "rastreio sem regra para esta loja" };
 
   // Compra: roteiro fixo da BFF, um recado por mensagem e SEMPRE com o link do app.
-  if ((t.tipo === "compra" || forcaCompra) && loja === "bff") {
+  if ((t.tipo === "compra" || forcaCompra) && loja === "bff" && !opts.semRoteiroCompra) {
     const semCnpj = /cnpj|pessoa f[ií]sica|\bcpf\b/i.test(contexto) ? ["Pode comprar sem CNPJ, sim."] : [];
     return {
       tipo: "resposta",
@@ -271,7 +285,7 @@ export async function responder(loja: Loja, contexto: string, historico: Mensage
   if (t.tipo === "saudacao") {
     const texto = await escrever(
       PERSONA(loja),
-      `Conversa até agora:\n${formatarHistorico(historico)}\n\nA pessoa está só conversando (cumprimento, agradecimento, pergunta se você é uma pessoa ou robô, ou avisou que tem uma dúvida). Responda numa ÚNICA mensagem bem curta (uma frase, no máximo duas). Se ela usou um cumprimento (bom dia, boa tarde, boa noite), responda com o MESMO; se só disse oi, use o do horário (fuso de Brasília, agora são ${new Date().toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })}). Quando for só cumprimento, faça UMA pergunta genérica, como "Tudo bem? O que eu posso te ajudar?", e pare: não ofereça nada nem faça várias perguntas. Copie o estilo dela (se usou emoji, use também; se escreveu bem curto, seja curtíssima). Não diga que é assistente virtual a menos que ela tenha perguntado. Escreva só a mensagem.`,
+      `Conversa até agora:\n${formatarHistorico(historico)}\n\nA pessoa está só conversando (cumprimento, agradecimento, pergunta se você é uma pessoa ou robô, ou avisou que tem uma dúvida). Responda numa ÚNICA mensagem bem curta (uma frase, no máximo duas). Se ela usou um cumprimento (bom dia, boa tarde, boa noite), responda com o MESMO; se só disse oi, use o do horário (fuso de Brasília, agora são ${new Date().toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })}). Quando for só cumprimento, faça UMA pergunta genérica e curta (sem repetir frases que a loja já disse na conversa) e pare: não ofereça nada nem faça várias perguntas. Copie o estilo dela (se usou emoji, use também; se escreveu bem curto, seja curtíssima). Não diga que é assistente virtual a menos que ela tenha perguntado. Escreva só a mensagem.`,
       300,
     );
     return { tipo: "saudacao", texto };

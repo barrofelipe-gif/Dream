@@ -104,6 +104,13 @@ export async function processarComentario(ev: ComentarioEvento): Promise<void> {
     .sort((a, b) => (b.midiaId ? 1 : 0) - (a.midiaId ? 1 : 0))[0];
   if (!alvo) return;
 
+  // A mesma pessoa não dispara a mesma automação de novo em 24 h (comentar várias vezes ou em várias mídias).
+  const jaDisparou = await prisma.igAutomacaoExec.findFirst({
+    where: { automacaoId: alvo.id, igUserId: ev.userId, createdAt: { gt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+    select: { id: true },
+  });
+  if (jaDisparou) return;
+
   // Um comentário só dispara uma vez (a Meta reenvia webhooks).
   try {
     await prisma.igAutomacaoExec.create({
@@ -150,12 +157,13 @@ export async function processarComentario(ev: ComentarioEvento): Promise<void> {
     enviadoId = (await respostaPrivada(token, conta.igUserId, ev.commentId, dm, botaoLink)).message_id;
   }
 
+  // Grava a linha OUT logo após o envio (o eco da Meta chega rápido e precisa achar a linha do robô).
+  await registrarNaConversa(conta.id, ev.userId, `[Comentou] ${ev.texto}`, enviado, "automacao", enviadoId);
   await prisma.igAutomacaoExec.update({
     where: { automacaoId_commentId: { automacaoId: alvo.id, commentId: ev.commentId } },
     data: { etapa },
   });
   await prisma.igAutomacao.update({ where: { id: alvo.id }, data: { execucoes: { increment: 1 } } });
-  await registrarNaConversa(conta.id, ev.userId, `[Comentou] ${ev.texto}`, enviado, "automacao", enviadoId);
 }
 
 /** Toque em "Já segui": confere se segue; se sim libera o conteúdo, se não pede de novo. */
@@ -164,12 +172,31 @@ export async function processarPostbackAutomacao(contaId: string, userId: string
   const alvo = await prisma.igAutomacao.findUnique({ where: { id: autoId }, include: { account: true } });
   if (!alvo || alvo.account.igUserId !== contaId) return;
   const conta = alvo.account;
+
+  // Já liberado: toques repetidos em "Já segui" não reenviam o conteúdo.
+  const liberado = await prisma.igAutomacaoExec.findFirst({
+    where: { automacaoId: alvo.id, igUserId: userId, etapa: "liberado" },
+    select: { id: true },
+  });
+  if (liberado) return;
   const token = decrypt(conta.accessToken);
 
   // Falha aberta: se a Meta não informa o status, libera (não prende quem de fato segue).
   const perfil = await buscarPerfil(conta.accessToken, userId).catch(() => null);
   if (perfil?.seguePagina === false) {
     const msg = AINDA_NAO_SEGUE;
+    // Não repete a cobrança se a mesma mensagem acabou de sair.
+    const conv = await prisma.igConversation.findUnique({
+      where: { accountId_igScopedUserId: { accountId: conta.id, igScopedUserId: userId } },
+      select: { id: true },
+    });
+    if (conv) {
+      const repetida = await prisma.igMessage.findFirst({
+        where: { conversationId: conv.id, direction: "OUT", text: msg, createdAt: { gt: new Date(Date.now() - 2 * 60 * 1000) } },
+        select: { id: true },
+      });
+      if (repetida) return;
+    }
     const r = await diretoComBotao(token, conta.igUserId, userId, msg, {
       tipo: "postback",
       titulo: alvo.seguirBotao || "Já segui",

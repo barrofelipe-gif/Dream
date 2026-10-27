@@ -186,11 +186,11 @@ async function tratarEco(ev: Evento) {
   // O eco do envio do robô pode chegar antes de gravarmos o id da Meta: espera um instante e confere de novo.
   await new Promise((r) => setTimeout(r, 2500));
   if (await foiORobo()) return;
-  // Envio do robô sem id gravado: compara o TEXTO EXATO que ele acabou de mandar. Nunca "qualquer mensagem do robô
+  // Envio do robô (com ou sem id gravado): compara o TEXTO EXATO que ele acabou de mandar. Nunca "qualquer mensagem do robô
   // nos últimos 30 s", senão a resposta de uma atendente logo depois do robô seria descartada.
   if (textoEco) {
     const recenteNosso = await prisma.igMessage.findFirst({
-      where: { conversationId: conversa.id, direction: "OUT", source: "BOT", metaMessageId: null, text: textoEco, createdAt: { gt: new Date(Date.now() - 30_000) } },
+      where: { conversationId: conversa.id, direction: "OUT", source: "BOT", text: textoEco, createdAt: { gt: new Date(Date.now() - 30_000) } },
       select: { id: true },
     });
     if (recenteNosso) return;
@@ -228,26 +228,37 @@ async function enviarEGravar(conta: Conta, conversaId: string, destinatario: str
   for (let i = 0; i < partes.length; i++) {
     const ultima = i === partes.length - 1;
     if (i > 0) await new Promise((r) => setTimeout(r, 1200)); // pausa curta: parece digitação, não rajada
-    const sentId = await enviarDm({
-      igUserId: conta.igUserId,
-      encryptedToken: conta.accessToken,
-      recipientId: destinatario,
-      text: partes[i],
-      quickReplies: ultima ? s.quickReplies : undefined,
-      link: ultima ? s.link : undefined,
-    });
-    await prisma.igMessage.create({
+    // Grava a linha ANTES do envio (sem id da Meta) para encolher a janela de duas execuções mandarem o mesmo texto
+    // e para o eco achar a linha por texto; o id da Meta entra depois do envio.
+    const linha = await prisma.igMessage.create({
       data: {
         conversationId: conversaId,
         direction: "OUT",
         source: "BOT",
         text: partes[i],
-        metaMessageId: sentId || null,
+        metaMessageId: null,
         matchedKind: s.kind,
         matchedId: s.id ?? null,
         confidence: s.confianca ?? null,
       },
+      select: { id: true },
     });
+    let sentId: string | null | undefined;
+    try {
+      sentId = await enviarDm({
+        igUserId: conta.igUserId,
+        encryptedToken: conta.accessToken,
+        recipientId: destinatario,
+        text: partes[i],
+        quickReplies: ultima ? s.quickReplies : undefined,
+        link: ultima ? s.link : undefined,
+      });
+    } catch (err) {
+      // Envio falhou: não deixa mensagem fantasma no painel.
+      await prisma.igMessage.delete({ where: { id: linha.id } }).catch(() => {});
+      throw err;
+    }
+    if (sentId) await prisma.igMessage.update({ where: { id: linha.id }, data: { metaMessageId: sentId } }).catch(() => {});
   }
 }
 
@@ -278,7 +289,7 @@ async function tratarEvento(ev: Evento) {
   const agora = new Date(ev.timestamp ?? Date.now());
   const entrada = await prisma.igMessage.create({
     data: { conversationId: conversa.id, direction: "IN", source: "CLIENTE", text, metaMessageId: mid },
-    select: { createdAt: true },
+    select: { id: true, createdAt: true },
   });
   // Conversa encerrada que recebe mensagem nova é REABERTA: volta para o robô (ou para a fila da equipe, se uma atendente
   // falou com ela na última semana) e aparece como não lida. Uma regra "Encerrar" desta mesma mensagem ainda pode fechar de novo.
@@ -418,6 +429,16 @@ async function tratarEvento(ev: Evento) {
   }
 
   // ── Conversa normal ─────────────────────────────────────────────────────────
+  // Só a execução da ÚLTIMA mensagem do cliente responde (duas mensagens seguidas disparam duas execuções).
+  const souAUltima = async () => {
+    const ultimaEntrada = await prisma.igMessage.findFirst({
+      where: { conversationId: conversa.id, direction: "IN" },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
+    return !ultimaEntrada || ultimaEntrada.id === entrada.id;
+  };
+
   // A pessoa costuma explicar em várias mensagens: o robô lê as últimas (30 min) juntas.
   const recentes = await prisma.igMessage.findMany({
     where: { conversationId: conversa.id, direction: "IN", createdAt: { gt: new Date(Date.now() - 30 * 60 * 1000) } },
@@ -443,10 +464,27 @@ async function tratarEvento(ev: Evento) {
     .trim();
   // A pessoa mandou várias mensagens seguidas e outra execução já respondeu a última: não responde de novo.
   if (await jaRespondeuDepoisDaUltimaEntrada(conversa.id)) return;
-  const r = pediuHumano && !contextoSemPedido ? ({ tipo: "pedir_duvida" } as const) : await responder(loja, (pediuHumano ? contextoSemPedido : contexto) || text, historico);
+  if (!(await souAUltima())) return;
+  // Roteiro de compra da BFF já foi mandado nas últimas 12 h: segue o fluxo normal (triagem/FAQ) em vez de repetir.
+  const jaMandouRoteiro =
+    loja === "bff" &&
+    !!(await prisma.igMessage.findFirst({
+      where: {
+        conversationId: conversa.id,
+        direction: "OUT",
+        source: "BOT",
+        createdAt: { gt: HORAS(12) },
+        OR: [{ matchedId: 9004 }, { matchedKind: "boasvindas" }],
+      },
+      select: { id: true },
+    }));
+  const r = pediuHumano && !contextoSemPedido
+    ? ({ tipo: "pedir_duvida" } as const)
+    : await responder(loja, (pediuHumano ? contextoSemPedido : contexto) || text, historico, { ultimaMensagem: text, semRoteiroCompra: jaMandouRoteiro });
 
   // A IA demora: confere de novo antes de qualquer efeito (etiqueta, transferência, envio).
   if (await jaRespondeuDepoisDaUltimaEntrada(conversa.id)) return;
+  if (!(await souAUltima())) return;
 
   if (pediuHumano) await etiquetar(conversa.id, [TAG.pediuHumano]);
 
@@ -515,6 +553,12 @@ async function tratarEvento(ev: Evento) {
       await transferida(conversa.id, "Pedido atrasado depois do prazo");
     }
   } else if (r.tipo === "saudacao") {
+    // Já cumprimentou nas últimas 6 h: não manda outra saudação.
+    const jaSaudou = await prisma.igMessage.findFirst({
+      where: { conversationId: conversa.id, direction: "OUT", matchedKind: { in: ["boasvindas", "saudacao"] }, createdAt: { gt: HORAS(6) } },
+      select: { id: true },
+    });
+    if (jaSaudou) return;
     if (primeiroContato && config.ativo && loja === "bff") {
       // BFF: quem chega só cumprimentando recebe direto o caminho de compra no atacado (a galera não explica o que quer).
       const convite = config.pedirSeguir && naoSegue && config.textoSeguir.trim() ? [config.textoSeguir] : [];
@@ -575,5 +619,6 @@ async function tratarEvento(ev: Evento) {
   if (await automacaoJaCuidou(conversa.id, entrada.createdAt, statusInicial)) return;
   // Uma atendente pode ter respondido enquanto a IA pensava: NEEDS_HUMAN ainda vale (é o próprio "procurando atendente"), HUMAN ativo não.
   if (!(await roboPodeFalar(conversa.id, { permitirNeedsHuman: true }))) return;
+  if (!(await souAUltima())) return;
   await enviarEGravar(account, conversa.id, ev.sender.id, saida);
 }

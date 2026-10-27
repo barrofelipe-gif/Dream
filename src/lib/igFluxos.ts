@@ -420,6 +420,12 @@ export async function tentarGatilhoPorComentario(ev: ComentarioEvento): Promise<
     create: { accountId: conta.id, igScopedUserId: ev.userId, username: ev.username ?? null },
     update: {},
   });
+  // Mesma pessoa, mesmo fluxo, nas últimas 24 h: não dispara de novo.
+  const recente = await prisma.igFluxoExec.findFirst({
+    where: { fluxoId: alvo.id, conversationId: conv.id, createdAt: { gt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+    select: { id: true },
+  });
+  if (recente) return true;
   await prisma.igMessage.create({ data: { conversationId: conv.id, direction: "IN", source: "CLIENTE", text: `[Comentou] ${ev.texto}` } });
   return iniciarFluxo(alvo.id, conv.id, { variaveis: { _commentId: ev.commentId, _ultimoTexto: ev.texto, comentario: ev.texto } });
 }
