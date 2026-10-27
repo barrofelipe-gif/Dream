@@ -18,23 +18,25 @@ export async function seguirSemAtendente(): Promise<number> {
     where: { status: "NEEDS_HUMAN", account: { active: true } },
     include: { account: true },
     orderBy: { updatedAt: "asc" },
-    take: 50,
+    take: 200,
   });
 
   let enviadas = 0;
   for (const conversa of paradas) {
     const conversationId = conversa.id;
-    // Quando foi passada para a equipe: a última mensagem do robô avisando que chamou/procura atendente.
-    const aviso = await prisma.igMessage.findFirst({
-      where: { conversationId, direction: "OUT", source: "BOT", matchedKind: { in: TIPOS_TRANSFERENCIA } },
-      orderBy: { createdAt: "desc" },
-      select: { createdAt: true },
-    });
-    const desde = aviso?.createdAt ?? conversa.updatedAt;
+    // Desde quando está parada com a equipe: o último aviso do robô de que chamou/procura atendente ou a última fala
+    // de uma atendente, o que for mais recente (conversa reaberta ou mandada para a equipe por regra não tem aviso novo).
+    const [aviso, humano] = await Promise.all([
+      prisma.igMessage.findFirst({
+        where: { conversationId, direction: "OUT", source: "BOT", matchedKind: { in: TIPOS_TRANSFERENCIA } },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true },
+      }),
+      prisma.igMessage.findFirst({ where: { conversationId, source: "HUMANO" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+    ]);
+    const marcos = [aviso?.createdAt, humano?.createdAt].filter((d): d is Date => !!d);
+    const desde = marcos.length ? new Date(Math.max(...marcos.map((d) => d.getTime()))) : conversa.updatedAt;
     if (desde > MINUTOS(MINUTOS_SEM_ATENDENTE)) continue;
-    // Uma atendente respondeu depois da transferência: ela está cuidando.
-    const humano = await prisma.igMessage.findFirst({ where: { conversationId, createdAt: { gt: desde }, source: "HUMANO" }, select: { id: true } });
-    if (humano) continue;
     // Reserva a conversa (NEEDS_HUMAN → BOT) antes de enviar: duas rodadas do agendador ao mesmo tempo
     // mandariam o "não achei atendente" duas vezes. Se o envio falhar, devolve para NEEDS_HUMAN.
     const reserva = await prisma.igConversation.updateMany({ where: { id: conversationId, status: "NEEDS_HUMAN" }, data: { status: "BOT" } });

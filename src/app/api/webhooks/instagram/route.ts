@@ -343,7 +343,7 @@ async function tratarEvento(ev: Evento) {
   const aposRegras = await prisma.igConversation.findUnique({ where: { id: conversa.id }, select: { status: true } });
   if (aposRegras) conversa.status = aposRegras.status;
 
-  await atualizarPerfil(conversa.id);
+  await atualizarPerfil(conversa.id, false, { aoPassarASeguir: true });
 
   // "Já segui" de uma automação de comentário: confere o follow e libera o conteúdo.
   if (botao?.startsWith(PREFIXO_POSTBACK)) {

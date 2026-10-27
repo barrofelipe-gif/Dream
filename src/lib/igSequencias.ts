@@ -5,7 +5,7 @@ import { aplicarNome } from "@/lib/igBoasVindas";
 import { etiquetar } from "@/lib/igTags";
 
 /** Um passo da sequência: espera `atrasoMinutos` (desde o passo anterior ou da inscrição) e envia `texto`. */
-export type PassoSequencia = { atrasoMinutos: number; texto: string };
+export type PassoSequencia = { atrasoMinutos: number; texto: string; /** Não envia este passo para quem já segue a loja (ex.: "segue a gente"). */ pularSeSegue?: boolean };
 
 export const MAX_PASSOS = 20;
 const MAX_ATRASO = 60 * 24 * 365; // 1 ano
@@ -19,7 +19,11 @@ export function lerPassos(v: unknown): PassoSequencia[] {
       const o = (p ?? {}) as Record<string, unknown>;
       const atraso = Math.round(Number(o.atrasoMinutos));
       const texto = typeof o.texto === "string" ? o.texto.trim().slice(0, 900) : "";
-      return { atrasoMinutos: Number.isFinite(atraso) ? Math.min(Math.max(atraso, 0), MAX_ATRASO) : 0, texto };
+      return {
+        atrasoMinutos: Number.isFinite(atraso) ? Math.min(Math.max(atraso, 0), MAX_ATRASO) : 0,
+        texto,
+        ...(o.pularSeSegue === true ? { pularSeSegue: true } : {}),
+      };
     })
     .filter((p) => p.texto)
     .slice(0, MAX_PASSOS);
@@ -134,30 +138,36 @@ export async function processarSequencias(limite = 40): Promise<number> {
     // Se ela não aparecer, a janela de 24h acaba parando a sequência.
     if (c.status === "NEEDS_HUMAN") continue;
 
-    const texto = aplicarNome(passos[i.passoAtual].texto, c.nome);
-    try {
-      const sentId = await enviarDm({ igUserId: seq.account.igUserId, encryptedToken: seq.account.accessToken, recipientId: c.igScopedUserId, text: texto });
-      await prisma.igMessage.create({
-        data: { conversationId: c.id, direction: "OUT", source: "BOT", text: texto, metaMessageId: sentId || null, matchedKind: "sequencia" },
-      });
-    } catch (e) {
-      await pararCom(`Falha ao enviar o passo ${i.passoAtual + 1}: ${e instanceof Error ? e.message : "erro"}`);
-      await new Promise((r) => setTimeout(r, 500));
-      continue;
+    const passo = passos[i.passoAtual];
+    // Passo marcado "pular se segue" (ex.: "segue a gente") não sai para quem já segue: avança sem enviar.
+    const pular = passo.pularSeSegue === true && c.seguePagina === true;
+    if (!pular) {
+      const texto = aplicarNome(passo.texto, c.nome);
+      try {
+        const sentId = await enviarDm({ igUserId: seq.account.igUserId, encryptedToken: seq.account.accessToken, recipientId: c.igScopedUserId, text: texto });
+        await prisma.igMessage.create({
+          data: { conversationId: c.id, direction: "OUT", source: "BOT", text: texto, metaMessageId: sentId || null, matchedKind: "sequencia" },
+        });
+      } catch (e) {
+        await pararCom(`Falha ao enviar o passo ${i.passoAtual + 1}: ${e instanceof Error ? e.message : "erro"}`);
+        await new Promise((r) => setTimeout(r, 500));
+        continue;
+      }
     }
 
     const enviadoEm = new Date();
+    const ultimoEnvioEm = pular ? i.ultimoEnvioEm : enviadoEm;
     const proximo = i.passoAtual + 1;
     if (proximo >= passos.length) {
-      await prisma.igSequenciaInscrito.update({ where: { id: i.id }, data: { passoAtual: proximo, status: "CONCLUIDA", motivo: null, ultimoEnvioEm: enviadoEm } });
+      await prisma.igSequenciaInscrito.update({ where: { id: i.id }, data: { passoAtual: proximo, status: "CONCLUIDA", motivo: null, ultimoEnvioEm } });
       if (seq.etiquetaAoConcluir) await etiquetar(c.id, [seq.etiquetaAoConcluir]);
     } else {
       await prisma.igSequenciaInscrito.update({
         where: { id: i.id },
-        data: { passoAtual: proximo, proximoEm: emMin(enviadoEm, passos[proximo].atrasoMinutos), ultimoEnvioEm: enviadoEm },
+        data: { passoAtual: proximo, proximoEm: emMin(enviadoEm, passos[proximo].atrasoMinutos), ultimoEnvioEm },
       });
     }
-    await new Promise((r) => setTimeout(r, 500));
+    if (!pular) await new Promise((r) => setTimeout(r, 500));
   }
   return feitos;
 }
@@ -171,7 +181,7 @@ export const NOME_POS_PITCH = "Pós-pitch BFF";
  */
 const PASSOS_POS_PITCH: PassoSequencia[] = [
   { atrasoMinutos: 180, texto: "Oi, {nome}! Conseguiu fazer o seu pedido? 😊 Se travou em alguma coisa, me conta aqui que eu te ajudo." },
-  { atrasoMinutos: 360, texto: "Ah, {nome}, e segue a gente aqui no Instagram: postamos novidades e ofertas exclusivas só pra quem segue 😉" },
+  { atrasoMinutos: 360, texto: "Ah, {nome}, e segue a gente aqui no Instagram: postamos novidades e ofertas exclusivas só pra quem segue 😉", pularSeSegue: true },
   { atrasoMinutos: 870, texto: "Passando pra saber se você conseguiu finalizar o seu pedido 😊 Se ficou alguma dúvida, é só me responder aqui que eu te ajudo." },
 ];
 
@@ -189,6 +199,11 @@ const PASSOS_POS_PITCH_ANTIGOS = [
     { atrasoMinutos: 180, texto: "Oi, {nome}! Conseguiu fazer o seu pedido? 😊 Se travou em alguma coisa, me conta aqui que eu te ajudo." },
     { atrasoMinutos: 180, texto: "Ah, {nome}, e segue a gente aqui no Instagram: postamos novidades e ofertas exclusivas só pra quem segue 😉" },
     { atrasoMinutos: 1050, texto: "Passando pra saber se você conseguiu finalizar o seu pedido 😊 Se ficou alguma dúvida, é só me responder aqui que eu te ajudo." },
+  ]),
+  JSON.stringify([
+    { atrasoMinutos: 180, texto: "Oi, {nome}! Conseguiu fazer o seu pedido? 😊 Se travou em alguma coisa, me conta aqui que eu te ajudo." },
+    { atrasoMinutos: 360, texto: "Ah, {nome}, e segue a gente aqui no Instagram: postamos novidades e ofertas exclusivas só pra quem segue 😉" },
+    { atrasoMinutos: 870, texto: "Passando pra saber se você conseguiu finalizar o seu pedido 😊 Se ficou alguma dúvida, é só me responder aqui que eu te ajudo." },
   ]),
 ];
 
@@ -217,19 +232,28 @@ const LINK_APP_BFF = "https://converta.app/redirectbff.html";
  * (a pessoa responde e o robô explica); e ~23h30 depois da inscrição, perto do fim da janela de 24h da Meta, o aviso
  * de novidades. Se ela responder no meio, a sequência para e a janela reabre.
  */
+// O link vai já na 1ª mensagem: se a pessoa responder antes da 2ª, a sequência para e a 2ª não sai.
 const PASSOS_SEGUIDOR: PassoSequencia[] = [
-  { atrasoMinutos: 0, texto: "Que bom ter você com a gente, {nome}! 💜 Baixa o nosso app e vê todas as novidades e promoções por lá 📲" },
+  { atrasoMinutos: 0, texto: `Que bom ter você com a gente, {nome}! 💜 Baixa o nosso app e vê todas as novidades e promoções por lá 📲 ${LINK_APP_BFF}` },
   { atrasoMinutos: 1, texto: `Ativa as notificações 🔔 Sempre que tiver promoção, a gente avisa pelo app. Baixa aqui: ${LINK_APP_BFF}` },
   { atrasoMinutos: 180, texto: "Comprando pelo app, você pode ganhar até 50% de cashback pra usar na sua próxima compra 🤑" },
   { atrasoMinutos: 1229, texto: "A gente acabou de postar novidades e promoções no app 🔥 Dá uma olhada lá e aproveita, que acaba rápido!" },
 ];
 
-/** Versão anterior do padrão (sem edição do painel): é trocada pela atual. */
-const PASSOS_SEGUIDOR_ANTIGOS = JSON.stringify([
-  { atrasoMinutos: 0, texto: `Que bom ter você com a gente, {nome}! 💜 Baixa o nosso app e faz o seu pedido por lá: ${LINK_APP_BFF}` },
-  { atrasoMinutos: 20, texto: "E comprando pelo app você ainda ganha cashback de 10% a 30% do valor do pedido pra usar na próxima compra 😉" },
-  { atrasoMinutos: 1300, texto: "Oi, {nome}! Passando pra te lembrar que as novidades e ofertas do atacado estão no app 😊 Se tiver qualquer dúvida, é só me chamar aqui." },
-]);
+/** Versões anteriores do padrão (sem edição do painel): são trocadas pela atual. */
+const PASSOS_SEGUIDOR_ANTIGOS = [
+  JSON.stringify([
+    { atrasoMinutos: 0, texto: `Que bom ter você com a gente, {nome}! 💜 Baixa o nosso app e faz o seu pedido por lá: ${LINK_APP_BFF}` },
+    { atrasoMinutos: 20, texto: "E comprando pelo app você ainda ganha cashback de 10% a 30% do valor do pedido pra usar na próxima compra 😉" },
+    { atrasoMinutos: 1300, texto: "Oi, {nome}! Passando pra te lembrar que as novidades e ofertas do atacado estão no app 😊 Se tiver qualquer dúvida, é só me chamar aqui." },
+  ]),
+  JSON.stringify([
+    { atrasoMinutos: 0, texto: "Que bom ter você com a gente, {nome}! 💜 Baixa o nosso app e vê todas as novidades e promoções por lá 📲" },
+    { atrasoMinutos: 1, texto: `Ativa as notificações 🔔 Sempre que tiver promoção, a gente avisa pelo app. Baixa aqui: ${LINK_APP_BFF}` },
+    { atrasoMinutos: 180, texto: "Comprando pelo app, você pode ganhar até 50% de cashback pra usar na sua próxima compra 🤑" },
+    { atrasoMinutos: 1229, texto: "A gente acabou de postar novidades e promoções no app 🔥 Dá uma olhada lá e aproveita, que acaba rápido!" },
+  ]),
+];
 
 /**
  * Quem acabou de passar a seguir a loja entra nas 3 mensagens de boas-vindas (cria a sequência na primeira vez; depois dá para editar no painel).
@@ -238,7 +262,7 @@ const PASSOS_SEGUIDOR_ANTIGOS = JSON.stringify([
 export async function inscreverSeguidorBff(accountId: string, conversationId: string): Promise<void> {
   let seq = await prisma.igSequencia.findFirst({ where: { accountId, nome: NOME_SEGUIDOR_BFF } });
   if (!seq) seq = await prisma.igSequencia.create({ data: { accountId, nome: NOME_SEGUIDOR_BFF, passos: PASSOS_SEGUIDOR, pararSeResponder: true } });
-  if (JSON.stringify(seq.passos) === PASSOS_SEGUIDOR_ANTIGOS) seq = await prisma.igSequencia.update({ where: { id: seq.id }, data: { passos: PASSOS_SEGUIDOR } });
+  if (PASSOS_SEGUIDOR_ANTIGOS.includes(JSON.stringify(seq.passos))) seq = await prisma.igSequencia.update({ where: { id: seq.id }, data: { passos: PASSOS_SEGUIDOR } });
   if (!seq.ativa) return;
   await inscrever(seq.id, conversationId);
 }

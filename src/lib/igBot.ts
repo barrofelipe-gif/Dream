@@ -226,7 +226,8 @@ const CATEGORIAS_BFF: { regex: RegExp; nome: string }[] = [
   { regex: /\bleg(s|gin|ging|gings)?\b|\blegue?\b|\bfuseau/, nome: "Legging" },
   { regex: /\bcalca(s)?\b|\bflare\b/, nome: "Calça" },
   { regex: /\bshort(s|inho|zinho)?\b|\bbermuda/, nome: "Short" },
-  { regex: /\bcropped\b|\btop(s)?\b|\bsutia/, nome: "Top" },
+  // "top" sozinho é elogio ("ficou top"): só conta como peça com complemento.
+  { regex: /\bcropped\b|\btops\b|\btop (fitness|de academia|de treino|nadador|faixa|cropped)\b|\bsutia/, nome: "Top" },
   { regex: /\bconjunto(s)?\b|\bkit(s)?\b/, nome: "Conjunto" },
   { regex: /\bbody(s)?\b|\bbodie/, nome: "Body" },
   { regex: /\bregata(s)?\b|\bcamiseta(s)?\b|\bblusa(s)?\b|\bt-?shirt/, nome: "Blusa" },
@@ -234,14 +235,18 @@ const CATEGORIAS_BFF: { regex: RegExp; nome: string }[] = [
   { regex: /\bsaia(s)?\b|\bvestido(s)?\b|\bsaiote/, nome: "Saia" },
   { regex: /\bbiquini(s)?\b|\bmaio(s)?\b|\bmoda praia\b/, nome: "Moda praia" },
 ];
-const REGEX_NAO_PRODUTO = /pedido|rastre|entreg|atras|troc|devol|pagament|\bpix\b|frete|cancel|estorn|reembols|nota fiscal|cashback/;
+// Pós-venda e reclamação sobre uma peça não é busca de produto: segue o fluxo normal (triagem, equipe).
+const REGEX_NAO_PRODUTO =
+  /pedido|rastre|entreg|atras|troc|devol|pagament|\bpix\b|frete|cancel|estorn|reembols|nota fiscal|cashback|comprei|recebi|\bveio\b|rasg|defeit|furad|desbot|manch|descost/;
 
 function semAcento(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
 const REGEX_PRECO = /\b(valor(es)?|pre[cç]o(s)?|quanto|qto|quantos? reais|tabela)\b/i;
-const REGEX_NAO_PRECO = /m[ií]nim|frete|entreg|pedido|rastre|atras|troc|devol|cashback|parcel|pix|cart[aã]o|pagament|cupom|desconto/i;
+// "Quanto tempo demora pra chegar?" é prazo, não preço.
+const REGEX_NAO_PRECO =
+  /m[ií]nim|frete|entreg|pedido|rastre|atras|troc|devol|cashback|parcel|pix|cart[aã]o|pagament|cupom|desconto|tempo|demor|cheg|prazo|\bdias?\b|semana/i;
 
 /** Pergunta de preço: resposta direta (preço só no app, pedido mínimo R$ 350), sem rodeio. */
 export function respostaPrecoBff(mensagem: string): Resposta | null {
