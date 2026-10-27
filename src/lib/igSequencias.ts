@@ -207,3 +207,27 @@ export async function inscreverPosPitch(accountId: string, conversationId: strin
   const reiniciar = !!anterior && anterior.status !== "ATIVA" && Date.now() - anterior.createdAt.getTime() > 24 * 60 * 60 * 1000;
   await inscrever(seq.id, conversationId, { reiniciar });
 }
+
+export const NOME_SEGUIDOR_BFF = "Boas-vindas ao seguir BFF";
+const LINK_APP_BFF = "https://converta.app/redirectbff.html";
+
+/**
+ * Passos de quem acabou de seguir a BFF (tempos desde a inscrição): boas-vindas e app na hora, cashback ~20 min depois e,
+ * no fim da janela de 24h da Meta (~23h30), uma mensagem de aquecimento. O agendador roda a cada 5 min.
+ */
+const PASSOS_SEGUIDOR: PassoSequencia[] = [
+  { atrasoMinutos: 0, texto: `Que bom ter você com a gente, {nome}! 💜 Baixa o nosso app e faz o seu pedido por lá: ${LINK_APP_BFF}` },
+  { atrasoMinutos: 20, texto: "E comprando pelo app você ainda ganha cashback de 10% a 30% do valor do pedido pra usar na próxima compra 😉" },
+  { atrasoMinutos: 1300, texto: "Oi, {nome}! Passando pra te lembrar que as novidades e ofertas do atacado estão no app 😊 Se tiver qualquer dúvida, é só me chamar aqui." },
+];
+
+/**
+ * Quem acabou de passar a seguir a loja entra nas 3 mensagens de boas-vindas (cria a sequência na primeira vez; depois dá para editar no painel).
+ * Uma pessoa só passa por ela uma vez.
+ */
+export async function inscreverSeguidorBff(accountId: string, conversationId: string): Promise<void> {
+  let seq = await prisma.igSequencia.findFirst({ where: { accountId, nome: NOME_SEGUIDOR_BFF } });
+  if (!seq) seq = await prisma.igSequencia.create({ data: { accountId, nome: NOME_SEGUIDOR_BFF, passos: PASSOS_SEGUIDOR, pararSeResponder: true } });
+  if (!seq.ativa) return;
+  await inscrever(seq.id, conversationId);
+}

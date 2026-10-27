@@ -4,6 +4,7 @@ import { decrypt } from "@/lib/crypto";
 import { buscarPerfil, enviarDm } from "@/lib/instagram";
 import { aplicarNome } from "@/lib/igBoasVindas";
 import { cortarCaracteres, contemPalavra } from "@/lib/igTexto";
+import { inscreverSeguidorBff } from "@/lib/igSequencias";
 
 const GRAPH = `${process.env.IG_GRAPH_BASE ?? "https://graph.instagram.com"}/${process.env.IG_GRAPH_VERSION ?? "v23.0"}`;
 
@@ -219,6 +220,14 @@ export async function processarPostbackAutomacao(contaId: string, userId: string
     data: { etapa: "liberado" },
   });
   await registrarNaConversa(conta.id, userId, null, dm, "automacao", sentId);
+  // Confirmou que passou a seguir a BFF: entra nas boas-vindas de seguidor (app, cashback e aquecimento).
+  if (conta.loja === "bff" && perfil?.seguePagina === true) {
+    const conv = await prisma.igConversation.findUnique({
+      where: { accountId_igScopedUserId: { accountId: conta.id, igScopedUserId: userId } },
+      select: { id: true },
+    });
+    if (conv) await inscreverSeguidorBff(conta.id, conv.id).catch((e) => console.warn("[ig-auto] boas-vindas seguidor", e));
+  }
 }
 
 export type MidiaIg = {
