@@ -212,14 +212,24 @@ export const NOME_SEGUIDOR_BFF = "Boas-vindas ao seguir BFF";
 const LINK_APP_BFF = "https://converta.app/redirectbff.html";
 
 /**
- * Passos de quem acabou de seguir a BFF (tempos desde a inscrição): boas-vindas e app na hora, cashback ~20 min depois e,
- * no fim da janela de 24h da Meta (~23h30), uma mensagem de aquecimento. O agendador roda a cada 5 min.
+ * Passos de quem acabou de seguir a BFF (tempos desde o passo anterior; o agendador roda a cada 5 min):
+ * na hora, 2 mensagens curtas mandando baixar o app e ativar as notificações (a 2ª com o link); ~3h depois o cashback
+ * (a pessoa responde e o robô explica); e ~23h30 depois da inscrição, perto do fim da janela de 24h da Meta, o aviso
+ * de novidades. Se ela responder no meio, a sequência para e a janela reabre.
  */
 const PASSOS_SEGUIDOR: PassoSequencia[] = [
+  { atrasoMinutos: 0, texto: "Que bom ter você com a gente, {nome}! 💜 Baixa o nosso app e vê todas as novidades e promoções por lá 📲" },
+  { atrasoMinutos: 1, texto: `Ativa as notificações 🔔 Sempre que tiver promoção, a gente avisa pelo app. Baixa aqui: ${LINK_APP_BFF}` },
+  { atrasoMinutos: 180, texto: "Comprando pelo app, você pode ganhar até 50% de cashback pra usar na sua próxima compra 🤑" },
+  { atrasoMinutos: 1229, texto: "A gente acabou de postar novidades e promoções no app 🔥 Dá uma olhada lá e aproveita, que acaba rápido!" },
+];
+
+/** Versão anterior do padrão (sem edição do painel): é trocada pela atual. */
+const PASSOS_SEGUIDOR_ANTIGOS = JSON.stringify([
   { atrasoMinutos: 0, texto: `Que bom ter você com a gente, {nome}! 💜 Baixa o nosso app e faz o seu pedido por lá: ${LINK_APP_BFF}` },
   { atrasoMinutos: 20, texto: "E comprando pelo app você ainda ganha cashback de 10% a 30% do valor do pedido pra usar na próxima compra 😉" },
   { atrasoMinutos: 1300, texto: "Oi, {nome}! Passando pra te lembrar que as novidades e ofertas do atacado estão no app 😊 Se tiver qualquer dúvida, é só me chamar aqui." },
-];
+]);
 
 /**
  * Quem acabou de passar a seguir a loja entra nas 3 mensagens de boas-vindas (cria a sequência na primeira vez; depois dá para editar no painel).
@@ -228,6 +238,7 @@ const PASSOS_SEGUIDOR: PassoSequencia[] = [
 export async function inscreverSeguidorBff(accountId: string, conversationId: string): Promise<void> {
   let seq = await prisma.igSequencia.findFirst({ where: { accountId, nome: NOME_SEGUIDOR_BFF } });
   if (!seq) seq = await prisma.igSequencia.create({ data: { accountId, nome: NOME_SEGUIDOR_BFF, passos: PASSOS_SEGUIDOR, pararSeResponder: true } });
+  if (JSON.stringify(seq.passos) === PASSOS_SEGUIDOR_ANTIGOS) seq = await prisma.igSequencia.update({ where: { id: seq.id }, data: { passos: PASSOS_SEGUIDOR } });
   if (!seq.ativa) return;
   await inscrever(seq.id, conversationId);
 }
