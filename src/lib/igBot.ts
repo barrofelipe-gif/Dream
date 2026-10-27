@@ -108,7 +108,16 @@ const Escolha = z.object({
 });
 
 export type Resposta =
-  | { tipo: "resposta"; partes: string[]; kind: "faq" | "pergunta"; id: number; confianca: "alta" | "media" }
+  | {
+      tipo: "resposta";
+      partes: string[];
+      kind: "faq" | "pergunta";
+      id: number;
+      confianca: "alta" | "media";
+      /** Botão de link na última parte e, se houver, uma segunda mensagem enviada logo depois. */
+      link?: { title: string; url: string };
+      seguinte?: { texto: string; link: { title: string; url: string } };
+    }
   | { tipo: "saudacao"; texto: string }
   | { tipo: "atraso" }
   | { tipo: "humano"; motivo: string };
@@ -177,14 +186,27 @@ export function dividirTexto(texto: string, max = 4, tamanho = 90): string[] {
 
 const RASTREIO_APP = "https://converta.app/redirectbff.html";
 
-/** Roteiro fixo de "como comprar" da BFF: um recado por mensagem e sempre com o link do app. */
-export const ROTEIRO_COMPRA_BFF = [
-  "Vendemos apenas no atacado 😊",
-  "O pedido mínimo é de R$ 350, e você pode variar os modelos.",
-  "A gente não tem catálogo.",
-  "A compra é feita direto pelo site ou pelo app.",
-  `Baixa o nosso app aqui: ${RASTREIO_APP}`,
-];
+/** Mensagem de atacado da BFF, igual à que a equipe manda no WhatsApp: um bloco com botão do app e, em seguida, o convite do grupo VIP. {nome} vira o primeiro nome. */
+export const ATACADO_BFF = {
+  texto: [
+    "Ei, {nome}, vou te explicar como funciona, é bem simples!",
+    "",
+    "SÓ VENDEMOS ATACADO, já está no valor de atacado.",
+    "🎯 Não precisa de CNPJ",
+    "💲 Pedido Mínimo",
+    "De: R$700 Por: R$350",
+    "💳 Parcele em 12x no cartão",
+    "🚚 Envio Rápido para todo Brasil e Exterior",
+    "",
+    "⬇️ NÃO TEMOS CATÁLOGO ⬇️",
+    "📲 Baixe e Compre pelo APP, receba descontos exclusivos:",
+  ].join("\n"),
+  link: { title: "Ver produtos", url: RASTREIO_APP },
+  seguinte: {
+    texto: "Fique por dentro das OFERTAS E PROMOÇÕES 👇👇👇",
+    link: { title: "GRUPO VIP", url: "https://chat.whatsapp.com/BaLrgr074U7BXoN8ShIIxu" },
+  },
+};
 // Palavras que indicam dúvida de compra (atacado, varejo, pedido mínimo, revenda, CNPJ, catálogo, como comprar).
 const REGEX_COMPRA =
   /atacado|varejo|pedido m[ií]nimo|valor m[ií]nimo|compra m[ií]nima|revend|lojista|sacoleir|cnpj|cat[aá]logo|como (eu )?(fa[cç]o|faz|posso|consigo|compro)[^.?!]{0,12}comprar|quero comprar|onde (eu )?compro|como compro/i;
@@ -273,7 +295,9 @@ export async function responder(
     const semCnpj = /cnpj|pessoa f[ií]sica|\bcpf\b/i.test(contexto) ? ["Pode comprar sem CNPJ, sim."] : [];
     return {
       tipo: "resposta",
-      partes: [...semCnpj, ...ROTEIRO_COMPRA_BFF],
+      partes: [...semCnpj, ATACADO_BFF.texto],
+      link: ATACADO_BFF.link,
+      seguinte: ATACADO_BFF.seguinte,
       kind: "faq",
       id: 9004,
       confianca: "alta",
