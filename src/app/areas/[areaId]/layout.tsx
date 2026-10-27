@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { getArea } from "@/lib/orgCatalog";
 import { Icon } from "@/components/hub/Icon";
 import SairButton from "@/components/hub/SairButton";
+import BarraLateralRecolhivel from "@/components/hub/BarraLateralRecolhivel";
 
 /**
  * Casca clara reutilizável de todas as áreas — a linguagem visual da
@@ -54,7 +55,7 @@ export default async function AreaLayout({
       </header>
 
       <div className="mx-auto flex max-w-[1800px] gap-6 px-6 py-6">
-        <aside className="hidden w-56 shrink-0 md:block">
+        <BarraLateralRecolhivel>
           <Link
             href="/hub"
             className="mb-5 inline-flex items-center gap-1.5 text-xs font-medium text-[#8a8f9c] hover:text-[#1b1f2b]"
@@ -96,7 +97,7 @@ export default async function AreaLayout({
               </Link>
             ))}
           </nav>
-        </aside>
+        </BarraLateralRecolhivel>
 
         <main className="min-w-0 flex-1">{children}</main>
       </div>

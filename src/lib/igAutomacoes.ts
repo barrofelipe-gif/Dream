@@ -9,7 +9,7 @@ const GRAPH = `${process.env.IG_GRAPH_BASE ?? "https://graph.instagram.com"}/${p
 
 export const PREFIXO_POSTBACK = "AUT:";
 const SEGUIR_PADRAO = "Para liberar, segue a gente aqui no Instagram e toca em \"Já segui\" que eu te mando agora.";
-const AINDA_NAO_SEGUE = "Ainda não vi o seu follow por aqui. Segue a gente e toca em \"Já segui\" de novo que eu te mando.";
+const AINDA_NAO_SEGUE = "Vi que você ainda não seguiu a gente 😅 Segue o perfil e toca em \"Já segui\" de novo que eu te mando.";
 
 async function post(token: string, path: string, body: unknown): Promise<{ recipient_id?: string; message_id?: string; id?: string }> {
   const res = await fetch(`${GRAPH}/${path}`, {
