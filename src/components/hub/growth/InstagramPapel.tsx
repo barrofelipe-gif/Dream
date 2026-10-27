@@ -12,6 +12,7 @@ import InstagramRegras from "@/components/hub/growth/InstagramRegras";
 import InstagramRespostasSalvas from "@/components/hub/growth/InstagramRespostasSalvas";
 import InstagramFluxos from "@/components/hub/growth/InstagramFluxos";
 import SocialMetricas from "@/components/hub/growth/SocialMetricas";
+import InstagramAbas, { type Aba } from "@/components/hub/growth/InstagramAbas";
 
 /**
  * Growth › Instagram: robô de mensagens da BFF e da Moranga. Conversas, contas conectadas
@@ -66,8 +67,9 @@ export default async function InstagramPapel() {
     ["Chamaram atendente", contagem("atendente")],
   ];
 
-  return (
-    <div className="mt-6 space-y-6 border-t border-[#e3e5ea] pt-6">
+  const abas: Aba[] = [
+    { id: "geral", rotulo: "Visão geral", grupo: "Início", conteudo: (
+      <div className="space-y-6">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {cartoes.map(([t, n]) => (
           <div key={t} className="rounded-xl border border-[#e3e5ea] bg-[#f9fafb] p-3">
@@ -108,30 +110,11 @@ export default async function InstagramPapel() {
         </div>
       </section>
 
-      <SocialPublicador />
-
-      <SocialMetricas />
-
-      <InstagramInbox />
-
-      <InstagramFluxos />
-
-      <InstagramContatos />
-
-      <InstagramTransmissoes />
-
-      <InstagramSequencias />
-
-      <InstagramRegras />
-
-      <InstagramRespostasSalvas />
-
-      <InstagramAutomacoes />
-
-      <InstagramBoasVindas />
-
-      <InstagramMenu />
-
+      </div>
+    ) },
+    { id: "conversas", rotulo: "Conversas", grupo: "Atendimento", conteudo: <InstagramInbox /> },
+    { id: "equipe", rotulo: "Respostas da equipe", grupo: "Atendimento", conteudo: (
+      <div className="space-y-6">
       <section>
         <p className="mb-1 text-xs font-medium uppercase tracking-wide text-[#a1a5b0]">Respostas da equipe (para ensinar o robô)</p>
         <p className="mb-2 text-xs text-[#8a8f9c]">
@@ -159,6 +142,24 @@ export default async function InstagramPapel() {
           ))}
         </div>
       </section>
+      </div>
+    ) },
+    { id: "salvas", rotulo: "Respostas salvas", grupo: "Atendimento", conteudo: <InstagramRespostasSalvas /> },
+    { id: "fluxos", rotulo: "Fluxos", grupo: "Automação", conteudo: <InstagramFluxos /> },
+    { id: "regras", rotulo: "Regras", grupo: "Automação", conteudo: <InstagramRegras /> },
+    { id: "comentarios", rotulo: "Comentários", grupo: "Automação", conteudo: <InstagramAutomacoes /> },
+    { id: "boasvindas", rotulo: "Boas-vindas", grupo: "Automação", conteudo: <InstagramBoasVindas /> },
+    { id: "menu", rotulo: "Menu e perguntas", grupo: "Automação", conteudo: <InstagramMenu /> },
+    { id: "contatos", rotulo: "Contatos", grupo: "Audiência", conteudo: <InstagramContatos /> },
+    { id: "transmissao", rotulo: "Transmissão", grupo: "Audiência", conteudo: <InstagramTransmissoes /> },
+    { id: "sequencias", rotulo: "Sequências", grupo: "Audiência", conteudo: <InstagramSequencias /> },
+    { id: "publicar", rotulo: "Publicar", grupo: "Redes", conteudo: <SocialPublicador /> },
+    { id: "metricas", rotulo: "Métricas", grupo: "Redes", conteudo: <SocialMetricas /> },
+  ];
+
+  return (
+    <div className="mt-6 border-t border-[#e3e5ea] pt-6">
+      <InstagramAbas abas={abas} />
     </div>
   );
 }
