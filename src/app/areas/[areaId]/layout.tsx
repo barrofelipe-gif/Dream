@@ -53,7 +53,7 @@ export default async function AreaLayout({
         </div>
       </header>
 
-      <div className="mx-auto flex max-w-6xl gap-6 px-6 py-6">
+      <div className="mx-auto flex max-w-[1800px] gap-6 px-6 py-6">
         <aside className="hidden w-56 shrink-0 md:block">
           <Link
             href="/hub"

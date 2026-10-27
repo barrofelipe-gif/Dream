@@ -273,7 +273,7 @@ export default function InstagramInbox() {
 
   return (
     <div className="@container">
-    <div className="grid h-[720px] grid-cols-1 overflow-hidden rounded-2xl border border-[#e3e5ea] bg-white shadow-sm @3xl:grid-cols-[290px_minmax(0,1fr)] @5xl:grid-cols-[290px_minmax(0,1fr)_270px]">
+    <div className="grid h-[max(640px,calc(100vh-200px))] grid-cols-1 overflow-hidden rounded-2xl border border-[#e3e5ea] bg-white shadow-sm @3xl:grid-cols-[290px_minmax(0,1fr)] @5xl:grid-cols-[290px_minmax(0,1fr)_270px]">
       {/* Lista */}
       <div className={`${selecionada ? "hidden @3xl:flex" : "flex"} min-h-0 flex-col border-r border-[#e3e5ea]`}>
         <div className="border-b border-[#e3e5ea] px-4 py-3">

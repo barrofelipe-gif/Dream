@@ -57,7 +57,7 @@ export default async function PapelPage({
         : undefined;
 
   return (
-    <div className={`${areaId === "growth" && papelId === "instagram" ? "max-w-6xl" : avaliacoes || conteudoReal ? "max-w-4xl" : "max-w-2xl"} space-y-6 pb-10`}>
+    <div className={`${areaId === "growth" && papelId === "instagram" ? "w-full min-w-0" : avaliacoes || conteudoReal ? "max-w-4xl" : "max-w-2xl"} space-y-6 pb-10`}>
       <Link
         href={`/areas/${area.id}`}
         className="inline-flex items-center gap-1.5 text-xs font-medium text-[#8a8f9c] hover:text-[#1b1f2b]"
