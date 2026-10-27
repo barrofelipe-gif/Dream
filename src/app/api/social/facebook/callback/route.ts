@@ -62,10 +62,12 @@ export async function GET(req: NextRequest) {
     if (paginas.length === 0) return pagina("Nenhuma Página encontrada. Marque as Páginas na tela de permissões do Facebook e tente de novo.", false);
 
     // 4) grava cada Página (token criptografado pelo salvarConta)
+    // Cada Página vai para a sua própria loja (o login traz as duas de uma vez; BFF e Moranga são empresas separadas).
+    const lojaDe = (nome: string) => (/moranga/i.test(nome) ? "moranga" : /bff/i.test(nome) ? "bff" : loja);
     for (const pg of paginas) {
       await salvarConta({
         rede: "facebook",
-        loja,
+        loja: lojaDe(pg.name),
         externoId: pg.id,
         nome: pg.name,
         username: null,
@@ -77,7 +79,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const res = pagina(`${paginas.length} Página(s) conectada(s) à loja ${loja}.`, true, paginas.map((x) => x.name));
+    const res = pagina(`${paginas.length} Página(s) conectada(s).`, true, paginas.map((x) => `${x.name} → loja ${lojaDe(x.name)}`));
     res.cookies.delete("fb_oauth_state");
     return res;
   } catch (err) {
