@@ -224,7 +224,7 @@ export const SEM_APP_BFF = {
 const CATEGORIAS_BFF: { regex: RegExp; nome: string }[] = [
   { regex: /\bmacac(a|ao|oes|aozinho)\b|\bmacaquinh/, nome: "Macacão" },
   { regex: /\bleg(s|gin|ging|gings)?\b|\blegue?\b|\bfuseau/, nome: "Legging" },
-  { regex: /\bcalca(s)?\b|\bflare\b|\bcanelad/, nome: "Calça" },
+  { regex: /\bcalca(s)?\b|\bflare\b/, nome: "Calça" },
   { regex: /\bshort(s|inho|zinho)?\b|\bbermuda/, nome: "Short" },
   { regex: /\bcropped\b|\btop(s)?\b|\bsutia/, nome: "Top" },
   { regex: /\bconjunto(s)?\b|\bkit(s)?\b/, nome: "Conjunto" },
