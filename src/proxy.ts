@@ -74,6 +74,8 @@ export default auth(async (req) => {
   const isPublic =
     pathname === "/" || // home com o cérebro — porta de entrada pública
     pathname.startsWith("/login") ||
+    pathname.startsWith("/legal/") || // privacidade e termos públicos (exigidos pelas redes sociais)
+    /^\/tiktok[A-Za-z0-9]+\.txt$/.test(pathname) || // arquivo de verificação do TikTok
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/.well-known/oauth-");
   const isCron = pathname.startsWith("/api/cron");
