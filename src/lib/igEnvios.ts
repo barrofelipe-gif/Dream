@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { dentroDaJanela, enviarDm, MARGEM_AGENDADO_MS } from "@/lib/instagram";
+import { comLinksNoTexto, dentroDaJanela, enviarDm, MARGEM_AGENDADO_MS } from "@/lib/instagram";
 import { roboPodeFalar } from "@/lib/igEstado";
 
 export type LinkBotao = { title: string; url: string };
@@ -43,9 +43,10 @@ export async function processarEnviosAgendados(limite = 25): Promise<number> {
     }
     try {
       const links = (Array.isArray(e.links) ? e.links : []) as LinkBotao[];
-      const sentId = await enviarDm({ igUserId: c.account.igUserId, encryptedToken: c.account.accessToken, recipientId: c.igScopedUserId, text: e.texto, links });
+      const textoEnvio = comLinksNoTexto(e.texto, links);
+      const sentId = await enviarDm({ igUserId: c.account.igUserId, encryptedToken: c.account.accessToken, recipientId: c.igScopedUserId, text: textoEnvio, links });
       await prisma.igMessage.create({
-        data: { conversationId: c.id, direction: "OUT", source: "BOT", text: e.texto, metaMessageId: sentId || null, matchedKind: e.kind },
+        data: { conversationId: c.id, direction: "OUT", source: "BOT", text: textoEnvio, metaMessageId: sentId || null, matchedKind: e.kind },
       });
       await fim("ENVIADA");
     } catch (err) {

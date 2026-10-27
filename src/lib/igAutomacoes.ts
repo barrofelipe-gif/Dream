@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/crypto";
-import { buscarPerfil, enviarDm } from "@/lib/instagram";
+import { buscarPerfil, comLinksNoTexto, enviarDm } from "@/lib/instagram";
 import { aplicarNome } from "@/lib/igBoasVindas";
 import { cortarCaracteres, contemPalavra } from "@/lib/igTexto";
 import { inscreverSeguidorBff } from "@/lib/igSequencias";
@@ -26,6 +26,7 @@ type Botao = { tipo: "link"; titulo: string; url: string } | { tipo: "postback";
 
 function mensagemComBotao(texto: string, botao?: Botao) {
   if (!botao) return { text: texto };
+  if (botao.tipo === "link") texto = comLinksNoTexto(texto, [{ url: botao.url }]);
   return {
     attachment: {
       type: "template",
@@ -212,7 +213,7 @@ export async function processarPostbackAutomacao(contaId: string, userId: string
     igUserId: conta.igUserId,
     encryptedToken: conta.accessToken,
     recipientId: userId,
-    text: dm,
+    text: alvo.dmBotaoUrl ? comLinksNoTexto(dm, [{ url: alvo.dmBotaoUrl }]) : dm,
     link: alvo.dmBotaoUrl ? { title: alvo.dmBotaoTitulo || "Abrir", url: alvo.dmBotaoUrl } : undefined,
   });
   await prisma.igAutomacaoExec.updateMany({

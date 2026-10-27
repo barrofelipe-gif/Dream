@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { assinaturaValida, dentroDaJanela, enviarDm } from "@/lib/instagram";
+import { assinaturaValida, comLinksNoTexto, dentroDaJanela, enviarDm } from "@/lib/instagram";
 import { responder, escreverApoio, escreverInfoCompra, ATACADO_BFF, type Mensagem } from "@/lib/igBot";
 import { atualizarPerfil } from "@/lib/igPerfil";
 import { etiquetar, TAG } from "@/lib/igTags";
@@ -232,6 +232,8 @@ async function enviarEGravar(conta: Conta, conversaId: string, destinatario: str
   for (let i = 0; i < partes.length; i++) {
     const ultima = i === partes.length - 1;
     if (i > 0) await new Promise((r) => setTimeout(r, 1200)); // pausa curta: parece digitação, não rajada
+    // O endereço dos botões também vai escrito no texto da última mensagem (nem todo aparelho mostra o botão).
+    const textoEnvio = ultima ? comLinksNoTexto(partes[i], s.links?.length ? s.links : s.link ? [s.link] : undefined) : partes[i];
     // Grava a linha ANTES do envio (sem id da Meta) para encolher a janela de duas execuções mandarem o mesmo texto
     // e para o eco achar a linha por texto; o id da Meta entra depois do envio.
     const linha = await prisma.igMessage.create({
@@ -239,7 +241,7 @@ async function enviarEGravar(conta: Conta, conversaId: string, destinatario: str
         conversationId: conversaId,
         direction: "OUT",
         source: "BOT",
-        text: partes[i],
+        text: textoEnvio,
         metaMessageId: null,
         matchedKind: s.kind,
         matchedId: s.id ?? null,
@@ -253,7 +255,7 @@ async function enviarEGravar(conta: Conta, conversaId: string, destinatario: str
         igUserId: conta.igUserId,
         encryptedToken: conta.accessToken,
         recipientId: destinatario,
-        text: partes[i],
+        text: textoEnvio,
         quickReplies: ultima ? s.quickReplies : undefined,
         link: ultima ? s.link : undefined,
         links: ultima ? s.links : undefined,

@@ -15,6 +15,17 @@ export function assinaturaValida(rawBody: string, header: string | null): boolea
   return recebido.length === esperado.length && crypto.timingSafeEqual(recebido, esperado);
 }
 
+/**
+ * Texto com o endereço dos botões também escrito: o botão de link do Instagram não aparece em todo aparelho (versão web,
+ * app antigo), e quem não vê o botão ficava sem o link do app. O texto do botão tem até 640 caracteres.
+ */
+export function comLinksNoTexto(texto: string, botoes: { url: string }[] | undefined): string {
+  const faltam = (botoes ?? []).map((b) => b.url).filter((u, i, a) => !texto.includes(u) && a.indexOf(u) === i);
+  if (faltam.length === 0) return texto;
+  const extra = "\n" + faltam.join("\n");
+  return cortarCaracteres(texto, 640 - extra.length) + extra;
+}
+
 /** Folga para envios agendados (cron, sequências, transmissões): o envio leva segundos e a Meta conta no relógio dela. */
 export const MARGEM_AGENDADO_MS = 10 * 60 * 1000;
 
