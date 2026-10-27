@@ -248,7 +248,7 @@ export function respostaPrecoBff(mensagem: string): Resposta | null {
   if (!REGEX_PRECO.test(mensagem) || REGEX_NAO_PRECO.test(mensagem)) return null;
   return {
     tipo: "resposta",
-    partes: ["Os valores ficam direto no app 😊 O pedido mínimo é de R$ 350.", "Se não conseguir baixar, me avisa que te passo o site."],
+    partes: ["Os valores ficam direto no app 😊 O pedido mínimo é de R$ 350.", "Se não conseguir baixar, me avisa."],
     link: { title: "Ver preços no app", url: RASTREIO_APP },
     kind: "faq",
     id: 9010,
