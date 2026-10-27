@@ -527,8 +527,9 @@ async function tratarEvento(ev: Evento) {
   } else if (r.tipo === "resposta") {
     // Primeira conversa e a pessoa ainda não segue: a resposta já leva o convite para seguir.
     const convite = primeiroContato && config.pedirSeguir && naoSegue && config.textoSeguir.trim() ? [config.textoSeguir] : [];
-    const partes = [...r.partes, ...convite];
-    saida = { texto: partes.join("\n"), partes, kind: r.kind, id: r.id, confianca: r.confianca };
+    // {nome} vira o nome da pessoa (ou some, se não souber); botões e segunda mensagem do roteiro seguem junto.
+    const partes = [...r.partes.map((p) => aplicarNome(p, perfil?.nome ?? null)), ...convite];
+    saida = { texto: partes.join("\n"), partes, kind: r.kind, id: r.id, confianca: r.confianca, link: r.link, links: r.links, seguinte: r.seguinte };
     // O status não muda aqui: conversa NEEDS_HUMAN nem chega até este ponto (o robô fica quieto) e HUMAN vencido já voltou para BOT.
     await etiquetar(conversa.id, [r.id === 9004 ? TAG.querComprar : TAG.resolvidoRobo], [TAG.semDuvida]);
   } else if (r.tipo === "atraso") {
