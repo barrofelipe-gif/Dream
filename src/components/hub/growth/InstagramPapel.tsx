@@ -51,15 +51,23 @@ export default async function InstagramPapel() {
   ]);
 
   const contagem = (k: string) => porTipo.find((p) => p.matchedKind === k)?._count ?? 0;
-  const pares = await Promise.all(
-    humanas.map(async (h) => ({
-      h,
-      pergunta: await prisma.igMessage.findFirst({
-        where: { conversationId: h.conversationId, direction: "IN", createdAt: { lt: h.createdAt } },
+  // Pergunta do cliente que veio antes de cada resposta da equipe: uma consulta só (antes eram 15, e a página demorava ~3 s).
+  const entradas = humanas.length
+    ? await prisma.igMessage.findMany({
+        where: {
+          conversationId: { in: [...new Set(humanas.map((h) => h.conversationId))] },
+          direction: "IN",
+          // Janela: até a resposta mais nova, e no máximo 30 dias antes da mais antiga.
+          createdAt: { lt: humanas[0].createdAt, gte: new Date(humanas[humanas.length - 1].createdAt.getTime() - 30 * 86_400_000) },
+        },
         orderBy: { createdAt: "desc" },
-      }),
-    })),
-  );
+        select: { conversationId: true, createdAt: true, text: true },
+      })
+    : [];
+  const pares = humanas.map((h) => ({
+    h,
+    pergunta: entradas.find((e) => e.conversationId === h.conversationId && e.createdAt < h.createdAt) ?? null,
+  }));
 
   const cartoes: [string, number][] = [
     ["Mensagens recebidas (7 dias)", recebidas],

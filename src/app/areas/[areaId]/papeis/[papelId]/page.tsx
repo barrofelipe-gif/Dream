@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { notFound } from "next/navigation";
 import { getPapel } from "@/lib/orgCatalog";
 import { Icon } from "@/components/hub/Icon";
@@ -53,7 +53,12 @@ export default async function PapelPage({
     areaId === "financas"
       ? CONTEUDO_FINANCAS[papelId]
       : areaId === "growth" && papelId === "instagram"
-        ? () => <InstagramPapel />
+        ? () => (
+            // A ficha aparece na hora; o Instagram (contagens e conversas do banco) chega em seguida.
+            <Suspense fallback={<div className="mt-6 border-t border-[#e3e5ea] pt-6 text-sm text-[#8a8f9c]">Abrindo o Instagram…</div>}>
+              <InstagramPapel />
+            </Suspense>
+          )
         : undefined;
 
   return (
