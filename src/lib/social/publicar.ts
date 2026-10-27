@@ -25,7 +25,8 @@ export async function publicarPost(postId: string): Promise<{ status: string }> 
   const midias = json<Midia[]>(post.midias, []);
   const porRede = json<Record<string, { legenda?: string; titulo?: string; opcoes?: Record<string, unknown> }>>(post.porRede, {});
 
-  const pendentes = post.alvos.filter((a) => a.status !== "PUBLICADO");
+  // PUBLICANDO é de outra execução em andamento: não entra.
+  const pendentes = post.alvos.filter((a) => a.status === "PENDENTE" || a.status === "ERRO");
   await Promise.allSettled(
     pendentes.map(async (alvo) => {
       const rede = alvo.conta.rede;
@@ -63,16 +64,22 @@ export async function publicarPost(postId: string): Promise<{ status: string }> 
         const erros = adaptador.validar(entrada);
         if (erros.length) throw new Error(erros.join(" "));
 
-        await prisma.socialPostAlvo.update({ where: { id: alvo.id }, data: { status: "PUBLICANDO", tentativas: { increment: 1 }, erro: null } });
+        // Reserva atômica: o cron e o botão do painel ao mesmo tempo não publicam a mesma postagem duas vezes.
+        const reserva = await prisma.socialPostAlvo.updateMany({
+          where: { id: alvo.id, status: { in: ["PENDENTE", "ERRO"] } },
+          data: { status: "PUBLICANDO", tentativas: { increment: 1 }, erro: null },
+        });
+        if (reserva.count === 0) return;
         const saida = await adaptador.publicar({ ...entrada, conta });
         await prisma.socialPostAlvo.update({
           where: { id: alvo.id },
           data: { status: "PUBLICADO", externoPostId: saida.externoId, url: saida.url ?? null, publicadoEm: new Date(), erro: null },
         });
       } catch (e) {
-        await prisma.socialPostAlvo.update({
-          where: { id: alvo.id },
-          data: { status: "ERRO", erro: (e as Error).message.slice(0, 500), tentativas: { increment: 0 } },
+        // Só marca ERRO o que esta execução tinha (PENDENTE/PUBLICANDO): não desfaz um PUBLICADO de outra execução.
+        await prisma.socialPostAlvo.updateMany({
+          where: { id: alvo.id, status: { in: ["PENDENTE", "ERRO", "PUBLICANDO"] } },
+          data: { status: "ERRO", erro: (e as Error).message.slice(0, 500) },
         });
       }
     }),
@@ -96,6 +103,9 @@ export async function publicarAgendados(opts: { prazo?: number } = {}): Promise<
   let processados = 0;
   for (const p of devidos) {
     if (opts.prazo && Date.now() > opts.prazo) break; // sem tempo para outra postagem: fica para a próxima rodada
+    // Reserva o post: duas rodadas do agendador ao mesmo tempo não pegam o mesmo agendado.
+    const reserva = await prisma.socialPost.updateMany({ where: { id: p.id, status: "AGENDADO" }, data: { status: "PUBLICANDO" } });
+    if (reserva.count === 0) continue;
     await publicarPost(p.id).catch((e) => console.error("[social] falha ao publicar", p.id, e));
     processados++;
   }

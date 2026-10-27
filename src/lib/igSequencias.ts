@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { dentroDaJanela, enviarDm, MARGEM_AGENDADO_MS } from "@/lib/instagram";
-import { roboPodeFalarConversa } from "@/lib/igEstado";
+import { roboPodeFalar, roboPodeFalarConversa } from "@/lib/igEstado";
 import { aplicarNome } from "@/lib/igBoasVindas";
 import { etiquetar } from "@/lib/igTags";
 
@@ -142,6 +142,9 @@ export async function processarSequencias(limite = 40): Promise<number> {
     // Passo marcado "pular se segue" (ex.: "segue a gente") não sai para quem já segue: avança sem enviar.
     const pular = passo.pularSeSegue === true && c.seguePagina === true;
     if (!pular) {
+      // Confere de novo logo antes de enviar: o cliente pode ter respondido (sequência parada) ou uma atendente assumido.
+      const ainda = await prisma.igSequenciaInscrito.findUnique({ where: { id: i.id }, select: { status: true } });
+      if (ainda?.status !== "ATIVA" || !(await roboPodeFalar(c.id))) continue;
       const texto = aplicarNome(passo.texto, c.nome);
       try {
         const sentId = await enviarDm({ igUserId: seq.account.igUserId, encryptedToken: seq.account.accessToken, recipientId: c.igScopedUserId, text: texto });

@@ -96,7 +96,14 @@ async function jaRespondeuDepoisDaUltimaEntrada(conversaId: string) {
   });
   if (!ultima) return false;
   const resposta = await prisma.igMessage.findFirst({
-    where: { conversationId: conversaId, direction: "OUT", source: "BOT", createdAt: { gt: ultima.createdAt } },
+    // Mensagens que não respondem a pergunta (sequência, transmissão, aviso de sem atendente) não contam como resposta.
+    where: {
+      conversationId: conversaId,
+      direction: "OUT",
+      source: "BOT",
+      createdAt: { gt: ultima.createdAt },
+      NOT: { matchedKind: { in: ["sequencia", "transmissao", "sem_atendente"] } },
+    },
     select: { id: true },
   });
   return !!resposta;

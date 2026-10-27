@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   const temTempo = () => Date.now() < prazo;
   // Aproveita o agendador de 5 min: retoma conversas em que ninguém da equipe respondeu.
   const agendadas = temTempo() ? await processarEnviosAgendados().catch(() => 0) : 0;
-  const seguimentos = temTempo() ? await seguirSemAtendente().catch(() => 0) : 0;
+  const seguimentos = temTempo() ? await seguirSemAtendente({ prazo: inicio + 20_000 }).catch(() => 0) : 0;
   const transmitidas = temTempo() ? await processarTransmissoes().catch(() => 0) : 0;
   const sequenciadas = temTempo() ? await processarSequencias().catch(() => 0) : 0;
   const fluxos = temTempo() ? await processarFluxos().catch(() => 0) : 0;

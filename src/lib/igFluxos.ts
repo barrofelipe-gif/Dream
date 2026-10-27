@@ -452,7 +452,9 @@ export async function continuarComResposta(conversationId: string, texto: string
     });
     if (esperando) {
       const claim = await prisma.igFluxoExec.updateMany({ where: { id: esperando.id, status: "ESPERANDO_RESPOSTA" }, data: { status: "ATIVO" } });
-      if (claim.count === 1) execId = esperando.id;
+      // Outra execução (clique duplo) já pegou esta resposta: consome o evento sem abrir um fluxo novo.
+      if (claim.count !== 1) return true;
+      execId = esperando.id;
     }
     if (!execId) {
       const fluxo = await prisma.igFluxo.findUnique({ where: { id: p.fluxoId }, select: { ativo: true, accountId: true, grafo: true } });

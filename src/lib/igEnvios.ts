@@ -13,6 +13,11 @@ export async function agendarEnvio(conversationId: string, texto: string, links:
 
 /** Envia as DMs agendadas que já venceram. Retorna quantas foram tratadas. */
 export async function processarEnviosAgendados(limite = 25): Promise<number> {
+  // Reserva que ficou presa (a função morreu no meio do envio): marca como falha para aparecer, sem reenviar às cegas
+  // (não dá para saber se a Meta chegou a entregar).
+  await prisma.igEnvioAgendado
+    .updateMany({ where: { status: "ENVIANDO", enviarEm: { lt: new Date(Date.now() - 30 * 60_000) } }, data: { status: "FALHOU", erro: "Envio interrompido" } })
+    .catch(() => {});
   const prontos = await prisma.igEnvioAgendado.findMany({
     where: { status: "PENDENTE", enviarEm: { lte: new Date() } },
     orderBy: { enviarEm: "asc" },

@@ -13,7 +13,7 @@ const TIPOS_TRANSFERENCIA = ["atendente", "procurando_atendente"];
  * não achou ninguém e oferece continuar por ele. Fora da janela só destrava (a próxima mensagem da pessoa já é atendida).
  * Chamado pelo agendador de 5 em 5 minutos.
  */
-export async function seguirSemAtendente(): Promise<number> {
+export async function seguirSemAtendente(opts: { prazo?: number } = {}): Promise<number> {
   const paradas = await prisma.igConversation.findMany({
     where: { status: "NEEDS_HUMAN", account: { active: true } },
     include: { account: true },
@@ -23,18 +23,21 @@ export async function seguirSemAtendente(): Promise<number> {
 
   let enviadas = 0;
   for (const conversa of paradas) {
+    if (opts.prazo && Date.now() > opts.prazo) break; // sem tempo nesta rodada: o resto fica para a próxima
     const conversationId = conversa.id;
-    // Desde quando está parada com a equipe: o último aviso do robô de que chamou/procura atendente ou a última fala
-    // de uma atendente, o que for mais recente (conversa reaberta ou mandada para a equipe por regra não tem aviso novo).
-    const [aviso, humano] = await Promise.all([
+    // Desde quando está parada com a equipe: o último aviso do robô de que chamou/procura atendente, o último alerta no
+    // sino da equipe (toda transferência, inclusive por regra, fluxo ou conversa reaberta, avisa ali) ou a última fala de
+    // uma atendente, o que for mais recente.
+    const [aviso, alerta, humano] = await Promise.all([
       prisma.igMessage.findFirst({
         where: { conversationId, direction: "OUT", source: "BOT", matchedKind: { in: TIPOS_TRANSFERENCIA } },
         orderBy: { createdAt: "desc" },
         select: { createdAt: true },
       }),
+      prisma.igNotificacao.findFirst({ where: { conversationId }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
       prisma.igMessage.findFirst({ where: { conversationId, source: "HUMANO" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
     ]);
-    const marcos = [aviso?.createdAt, humano?.createdAt].filter((d): d is Date => !!d);
+    const marcos = [aviso?.createdAt, alerta?.createdAt, humano?.createdAt].filter((d): d is Date => !!d);
     const desde = marcos.length ? new Date(Math.max(...marcos.map((d) => d.getTime()))) : conversa.updatedAt;
     if (desde > MINUTOS(MINUTOS_SEM_ATENDENTE)) continue;
     // Reserva a conversa (NEEDS_HUMAN → BOT) antes de enviar: duas rodadas do agendador ao mesmo tempo
