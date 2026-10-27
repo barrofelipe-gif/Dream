@@ -12,6 +12,7 @@ import InstagramRegras from "@/components/hub/growth/InstagramRegras";
 import InstagramRespostasSalvas from "@/components/hub/growth/InstagramRespostasSalvas";
 import InstagramFluxos from "@/components/hub/growth/InstagramFluxos";
 import SocialMetricas from "@/components/hub/growth/SocialMetricas";
+import SocialMapa from "@/components/hub/growth/SocialMapa";
 import InstagramAbas, { type Aba } from "@/components/hub/growth/InstagramAbas";
 
 /**
@@ -154,6 +155,7 @@ export default async function InstagramPapel() {
     { id: "transmissao", rotulo: "Transmissão", grupo: "Audiência", conteudo: <InstagramTransmissoes /> },
     { id: "sequencias", rotulo: "Sequências", grupo: "Audiência", conteudo: <InstagramSequencias /> },
     { id: "publicar", rotulo: "Publicar", grupo: "Redes", conteudo: <SocialPublicador /> },
+    { id: "mapa", rotulo: "Mapa das redes", grupo: "Redes", conteudo: <SocialMapa /> },
     { id: "metricas", rotulo: "Métricas", grupo: "Redes", conteudo: <SocialMetricas /> },
   ];
 
