@@ -567,8 +567,8 @@ async function tratarEvento(ev: Evento) {
     if (jaSaudou) return;
     if (primeiroContato && config.ativo && loja === "bff") {
       // BFF: quem chega só cumprimentando recebe direto o caminho de compra no atacado (a galera não explica o que quer).
-      const abertura = aplicarNome(ATACADO_BFF.texto, perfil?.nome ?? null);
-      saida = { texto: abertura, kind: "boasvindas", id: 9004, link: ATACADO_BFF.link, seguinte: ATACADO_BFF.seguinte };
+      const aberturas = ATACADO_BFF.partes.map((p) => aplicarNome(p, perfil?.nome ?? null));
+      saida = { texto: aberturas.join("\n"), partes: aberturas, kind: "boasvindas", id: 9004, link: ATACADO_BFF.link, seguinte: ATACADO_BFF.seguinte };
     } else if (primeiroContato && config.ativo) {
       // Boas-vindas com botões (como no ManyChat): convida a receber as informações e a seguir a loja.
       const abertura = aplicarNome(config.mensagem, perfil?.nome ?? null);

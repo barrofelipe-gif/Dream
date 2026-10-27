@@ -274,19 +274,20 @@ export function respostaCategoriaBff(mensagem: string): Resposta | null {
 }
 
 export const ATACADO_BFF = {
-  texto: [
-    "Ei, {nome}, vou te explicar como funciona, é bem simples!",
-    "",
-    "SÓ VENDEMOS ATACADO, já está no valor de atacado.",
-    "🎯 Não precisa de CNPJ",
-    "💲 Pedido Mínimo",
-    "De: R$700 Por: R$350",
-    "💳 Parcele em 12x no cartão",
-    "🚚 Envio Rápido para todo Brasil e Exterior",
-    "",
-    "⬇️ NÃO TEMOS CATÁLOGO ⬇️",
-    "📲 Baixe e Compre pelo APP, receba descontos exclusivos:",
-  ].join("\n"),
+  // Duas mensagens (como na conversa de WhatsApp da loja): a abertura e, logo depois, as condições com o botão do app.
+  partes: [
+    ["Ei, {nome}, vou te explicar como funciona, é bem simples!", "", "SÓ VENDEMOS ATACADO, já está no valor de atacado."].join("\n"),
+    [
+      "🎯 Não precisa de CNPJ",
+      "💲 Pedido Mínimo",
+      "De: R$700 Por: R$350",
+      "💳 Parcele em 12x no cartão",
+      "🚚 Envio Rápido para todo Brasil e Exterior",
+      "",
+      "⬇️ NÃO TEMOS CATÁLOGO ⬇️",
+      "📲 Baixe e Compre pelo APP, receba descontos exclusivos:",
+    ].join("\n"),
+  ],
   link: { title: "Ver produtos", url: RASTREIO_APP },
   // ~2 min depois: quem quer "catálogo" recebe o botão do app (só o app) e o convite do grupo VIP.
   seguinte: {
@@ -401,7 +402,7 @@ export async function responder(
     const semCnpj = /cnpj|pessoa f[ií]sica|\bcpf\b/i.test(contexto) ? ["Pode comprar sem CNPJ, sim."] : [];
     return {
       tipo: "resposta",
-      partes: [...semCnpj, ATACADO_BFF.texto],
+      partes: [...semCnpj, ...ATACADO_BFF.partes],
       link: ATACADO_BFF.link,
       seguinte: ATACADO_BFF.seguinte,
       kind: "faq",
