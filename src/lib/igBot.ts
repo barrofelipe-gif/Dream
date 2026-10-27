@@ -192,6 +192,17 @@ const RASTREIO_APP = "https://converta.app/redirectbff.html";
 /** Site da BFF com o parâmetro de rastreio de parceiro: é a URL que vai para o cliente. */
 export const SITE_BFF = "https://www.bfffitnessatacado.com.br?parceiro=4273";
 
+/** Problema para entrar na conta (quase sempre senha esquecida). */
+const REGEX_LOGIN =
+  /n[aã]o (consig\w*|conseg\w*|posso|d[aá]|deu|lembro|sei)[^.?!]{0,15}(entrar|acessar|logar|login|senha|minha conta)(?! em contato)|(esqueci|perdi|errad\w*|inv[aá]lid\w*)[^.?!]{0,12}(a |minha )?senha|senha ((é|e|est[aá]|t[aá]) )?(errada|inv[aá]lida|n[aã]o (funciona|vai|entra))|n[aã]o (entra|loga|abre) (na )?(minha )?conta|problema (para|pra|ao) (entrar|logar|acessar)/i;
+
+/** Quem não consegue entrar na conta: é só refazer a senha pelo "Esqueci a senha" (chega um código por e-mail). */
+export const SEM_LOGIN_BFF = [
+  "Isso costuma ser a senha 😊",
+  "Na tela de entrada, toca em “Esqueci a senha” e cria uma nova.",
+  "Você vai receber um e-mail com um código para refazer a senha da sua conta. Depois é só entrar de novo.",
+];
+
 /** A pessoa diz que não consegue/não quer baixar o app (ou pergunta se dá para comprar sem ele). */
 const REGEX_SEM_APP =
   /(n[aã]o|nunca|sem|dif[ií]cil|imposs[ií]vel)[^.?!]{0,25}(consig\w*|conseg\w*|posso|d[aá]|deu|quero|tenho espa[cç]o|baix\w*|instal\w*)[^.?!]{0,25}(baix\w*|instal\w*|app|aplicativo)|(baix\w*|instal\w*|app|aplicativo)[^.?!]{0,25}(n[aã]o (funciona|abre|baixa|instala|vai|carrega)|deu erro|d[aá] erro|travou)|imposs[ií]vel (baix|instal)\w*|n[aã]o (consig\w*|conseg\w*|posso|d[aá])[^.?!]{0,10}(entrar|acessar|logar|abrir|fazer (o )?(login|cadastro))(?! em contato)|n[aã]o tenho (o )?(app|aplicativo)|tem (como|jeito) (comprar|pedir) (pelo|no) site|comprar (pelo|no) site|prefiro (o )?site/i;
@@ -268,6 +279,10 @@ export async function responder(
   historico: Mensagem[],
   opts: { ultimaMensagem?: string; semRoteiroCompra?: boolean } = {},
 ): Promise<Resposta> {
+  // BFF: não consegue entrar na conta = senha esquecida; vem antes do "não consigo baixar" (que fala do site).
+  if (loja === "bff" && REGEX_LOGIN.test(opts.ultimaMensagem ?? contexto)) {
+    return { tipo: "resposta", partes: SEM_LOGIN_BFF, kind: "faq", id: 9008, confianca: "alta" };
+  }
   // BFF: quem diz que não consegue baixar o app recebe o argumento do pedido mínimo (site R$ 700 x app R$ 350) e o link do site.
   if (loja === "bff" && REGEX_SEM_APP.test(opts.ultimaMensagem ?? contexto)) {
     return { tipo: "resposta", partes: SEM_APP_BFF.partes, links: SEM_APP_BFF.links, kind: "faq", id: 9007, confianca: "alta" };
