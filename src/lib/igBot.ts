@@ -116,6 +116,8 @@ export type Resposta =
       confianca: "alta" | "media";
       /** Botão de link na última parte e, se houver, uma segunda mensagem enviada logo depois. */
       link?: { title: string; url: string };
+      /** Vários botões de link (até 3) na última parte; vale no lugar de `link`. */
+      links?: { title: string; url: string }[];
       seguinte?: { texto: string; links: { title: string; url: string }[]; depoisMin: number };
     }
   | { tipo: "saudacao"; texto: string }
@@ -187,6 +189,26 @@ export function dividirTexto(texto: string, max = 4, tamanho = 90): string[] {
 const RASTREIO_APP = "https://converta.app/redirectbff.html";
 
 /** Mensagem de atacado da BFF, igual à que a equipe manda no WhatsApp: um bloco com botão do app e, em seguida, o convite do grupo VIP. {nome} vira o primeiro nome. */
+/** Site da BFF com o parâmetro de rastreio de parceiro: é a URL que vai para o cliente. */
+export const SITE_BFF = "https://www.bfffitnessatacado.com.br?parceiro=4273";
+
+/** A pessoa diz que não consegue/não quer baixar o app (ou pergunta se dá para comprar sem ele). */
+const REGEX_SEM_APP =
+  /(n[aã]o|nunca|sem|dif[ií]cil|imposs[ií]vel)[^.?!]{0,25}(consig\w*|conseg\w*|posso|d[aá]|deu|quero|tenho espa[cç]o|baix\w*|instal\w*)[^.?!]{0,25}(baix\w*|instal\w*|app|aplicativo)|(baix\w*|instal\w*|app|aplicativo)[^.?!]{0,25}(n[aã]o (funciona|abre|baixa|instala|vai|carrega)|deu erro|d[aá] erro|travou)|imposs[ií]vel (baix|instal)\w*|n[aã]o (consig\w*|conseg\w*|posso|d[aá])[^.?!]{0,10}(entrar|acessar|logar|abrir|fazer (o )?(login|cadastro))(?! em contato)|n[aã]o tenho (o )?(app|aplicativo)|tem (como|jeito) (comprar|pedir) (pelo|no) site|comprar (pelo|no) site|prefiro (o )?site/i;
+
+/** Quem não consegue baixar o app: o site existe, mas o pedido mínimo lá é maior, o que reforça baixar o app. */
+export const SEM_APP_BFF = {
+  partes: [
+    "Sem problema 😊 dá pra comprar pelo site também.",
+    "Só que no site o pedido mínimo é de R$ 700. No app é só R$ 350, e ainda tem descontos exclusivos 😉",
+    "Vale tentar baixar de novo pelo botão abaixo. Se não rolar, é pelo site:",
+  ],
+  links: [
+    { title: "Baixar o app", url: RASTREIO_APP },
+    { title: "Comprar pelo site", url: SITE_BFF },
+  ],
+};
+
 export const ATACADO_BFF = {
   texto: [
     "Ei, {nome}, vou te explicar como funciona, é bem simples!",
@@ -202,12 +224,11 @@ export const ATACADO_BFF = {
     "📲 Baixe e Compre pelo APP, receba descontos exclusivos:",
   ].join("\n"),
   link: { title: "Ver produtos", url: RASTREIO_APP },
-  // ~2 min depois: quem quer "catálogo" recebe os botões do app e do site, e o convite do grupo VIP.
+  // ~2 min depois: quem quer "catálogo" recebe o botão do app (só o app) e o convite do grupo VIP.
   seguinte: {
     texto: "Fique por dentro das OFERTAS E PROMOÇÕES 👇👇👇",
     links: [
-      { title: "Baixar o app", url: RASTREIO_APP },
-      { title: "Ver catálogo", url: "https://www.bfffitnessatacado.com.br" },
+      { title: "Ver catálogo no app", url: RASTREIO_APP },
       { title: "GRUPO VIP", url: "https://chat.whatsapp.com/BaLrgr074U7BXoN8ShIIxu" },
     ],
     depoisMin: 2,
@@ -247,6 +268,10 @@ export async function responder(
   historico: Mensagem[],
   opts: { ultimaMensagem?: string; semRoteiroCompra?: boolean } = {},
 ): Promise<Resposta> {
+  // BFF: quem diz que não consegue baixar o app recebe o argumento do pedido mínimo (site R$ 700 x app R$ 350) e o link do site.
+  if (loja === "bff" && REGEX_SEM_APP.test(opts.ultimaMensagem ?? contexto)) {
+    return { tipo: "resposta", partes: SEM_APP_BFF.partes, links: SEM_APP_BFF.links, kind: "faq", id: 9007, confianca: "alta" };
+  }
   const entradas = await carregarBase(loja);
   if (entradas.length === 0) return { tipo: "humano", motivo: "base vazia" };
 

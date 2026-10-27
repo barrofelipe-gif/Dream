@@ -221,6 +221,7 @@ type Saida = {
   confianca?: string | null;
   quickReplies?: { title: string; payload: string }[];
   link?: { title: string; url: string };
+  links?: { title: string; url: string }[];
   /** Segunda mensagem (com botão de link) enviada alguns segundos depois da primeira. */
   seguinte?: { texto: string; links: { title: string; url: string }[]; depoisMin: number };
 };
@@ -255,6 +256,7 @@ async function enviarEGravar(conta: Conta, conversaId: string, destinatario: str
         text: partes[i],
         quickReplies: ultima ? s.quickReplies : undefined,
         link: ultima ? s.link : undefined,
+        links: ultima ? s.links : undefined,
       });
     } catch (err) {
       // Envio falhou: não deixa mensagem fantasma no painel.

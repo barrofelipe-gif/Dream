@@ -26,7 +26,7 @@ export const PADRAO: Record<Loja, BoasVindasConfig> = {
     textoSeguir: "Ah, e segue a gente aqui pra ficar por dentro das novidades 😉",
     infoTexto: "",
     linkTitulo: "Ver o site",
-    linkUrl: "https://www.bfffitnessatacado.com.br",
+    linkUrl: "https://www.bfffitnessatacado.com.br?parceiro=4273",
   },
   moranga: {
     ativo: true,

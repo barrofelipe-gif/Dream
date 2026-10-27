@@ -10,7 +10,7 @@ const lojaValida = (l: unknown): l is Loja => l === "bff" || l === "moranga";
 const PADRAO: Record<Loja, { iniciadores: string; menu: string }> = {
   bff: {
     iniciadores: "Qual o pedido mínimo?\nComo faço para pagar?\nQual o prazo de entrega?\nComo rastreio meu pedido?",
-    menu: "Baixar o app | https://converta.app/redirectbff.html\nVer o site | https://www.bfffitnessatacado.com.br\nRastrear meu pedido",
+    menu: "Baixar o app | https://converta.app/redirectbff.html\nVer o site | https://www.bfffitnessatacado.com.br?parceiro=4273\nRastrear meu pedido",
   },
   moranga: { iniciadores: "", menu: "Ver o site | https://www.usemoranga.com.br" },
 };
