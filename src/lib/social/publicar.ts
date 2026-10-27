@@ -86,13 +86,18 @@ export async function publicarPost(postId: string): Promise<{ status: string }> 
 }
 
 /** Publica o que estava agendado e já passou da hora. Chamado por um agendador externo (a cada ~5 min). */
-export async function publicarAgendados(): Promise<{ processados: number }> {
+export async function publicarAgendados(opts: { prazo?: number } = {}): Promise<{ processados: number }> {
   const devidos = await prisma.socialPost.findMany({
     where: { status: "AGENDADO", agendadoPara: { lte: new Date() } },
     select: { id: true },
     take: 10,
     orderBy: { agendadoPara: "asc" },
   });
-  for (const p of devidos) await publicarPost(p.id).catch((e) => console.error("[social] falha ao publicar", p.id, e));
-  return { processados: devidos.length };
+  let processados = 0;
+  for (const p of devidos) {
+    if (opts.prazo && Date.now() > opts.prazo) break; // sem tempo para outra postagem: fica para a próxima rodada
+    await publicarPost(p.id).catch((e) => console.error("[social] falha ao publicar", p.id, e));
+    processados++;
+  }
+  return { processados };
 }

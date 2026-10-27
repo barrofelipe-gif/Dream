@@ -1,6 +1,7 @@
 import "server-only";
 import crypto from "node:crypto";
 import { decrypt } from "@/lib/crypto";
+import { cortarBytes, cortarCaracteres } from "@/lib/igTexto";
 
 const GRAPH_VERSION = process.env.IG_GRAPH_VERSION ?? "v23.0";
 const GRAPH_BASE = process.env.IG_GRAPH_BASE ?? "https://graph.instagram.com";
@@ -14,9 +15,15 @@ export function assinaturaValida(rawBody: string, header: string | null): boolea
   return recebido.length === esperado.length && crypto.timingSafeEqual(recebido, esperado);
 }
 
-/** Janela de resposta da Meta: 24h depois da última mensagem do cliente. */
-export function dentroDaJanela(lastCustomerMessageAt: Date | null, agora = new Date()): boolean {
-  return !!lastCustomerMessageAt && agora.getTime() - lastCustomerMessageAt.getTime() < 24 * 60 * 60 * 1000;
+/** Folga para envios agendados (cron, sequências, transmissões): o envio leva segundos e a Meta conta no relógio dela. */
+export const MARGEM_AGENDADO_MS = 10 * 60 * 1000;
+
+/**
+ * Janela de resposta da Meta: 24h depois da última mensagem do cliente.
+ * `margemMs` encurta a janela (use MARGEM_AGENDADO_MS em envios que não são resposta imediata).
+ */
+export function dentroDaJanela(lastCustomerMessageAt: Date | null, agora = new Date(), margemMs = 0): boolean {
+  return !!lastCustomerMessageAt && agora.getTime() - lastCustomerMessageAt.getTime() < 24 * 60 * 60 * 1000 - margemMs;
 }
 
 /** Envia um direct. Devolve o id da mensagem na Meta. */
@@ -27,7 +34,7 @@ export async function enviarDm(opts: {
   text: string;
   /** Botões de resposta rápida (até 13; título até 20 caracteres). */
   quickReplies?: { title: string; payload: string }[];
-  /** Botão com link abaixo do texto (modelo "button template": texto até 640 caracteres). */
+  /** Botão com link abaixo do texto (modelo "button template": texto até 640 caracteres). O texto simples vai até 1000 BYTES. */
   link?: { title: string; url: string };
 }): Promise<string> {
   const message = opts.link
@@ -36,18 +43,18 @@ export async function enviarDm(opts: {
           type: "template",
           payload: {
             template_type: "button",
-            text: opts.text.slice(0, 640),
-            buttons: [{ type: "web_url", url: opts.link.url, title: opts.link.title.slice(0, 20) }],
+            text: cortarCaracteres(opts.text, 640),
+            buttons: [{ type: "web_url", url: opts.link.url, title: cortarCaracteres(opts.link.title, 20) }],
           },
         },
       }
     : {
-        text: opts.text,
+        text: cortarBytes(opts.text, 1000), // a Meta conta bytes (emoji e acento pesam mais que 1)
         ...(opts.quickReplies?.length
           ? {
               quick_replies: opts.quickReplies.map((q) => ({
                 content_type: "text",
-                title: q.title.slice(0, 20),
+                title: cortarCaracteres(q.title, 20),
                 payload: q.payload,
               })),
             }

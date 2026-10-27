@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { exigirAdmin } from "@/lib/igAdmin";
 import { encrypt } from "@/lib/crypto";
 import { prisma } from "@/lib/prisma";
 
@@ -7,16 +7,34 @@ const GRAPH = `https://graph.instagram.com/${process.env.IG_GRAPH_VERSION ?? "v2
 // Eventos que o robô usa: DMs e comentários.
 const WEBHOOK_FIELDS = "messages,comments,messaging_postbacks,messaging_seen";
 
+// A mensagem pode trazer texto de fora (error_description vem da URL): escapa o HTML e limita o tamanho.
+const escapar = (t: string) =>
+  t
+    .slice(0, 300)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
 function page(msg: string, ok: boolean) {
   return new NextResponse(
-    `<!doctype html><meta charset="utf-8"><title>Instagram</title><body style="font-family:system-ui;max-width:32rem;margin:4rem auto;padding:0 1rem"><h2>${ok ? "✅" : "⚠️"} ${msg}</h2><p><a href="/">Voltar ao painel</a></p>`,
-    { status: ok ? 200 : 400, headers: { "content-type": "text/html; charset=utf-8" } },
+    `<!doctype html><meta charset="utf-8"><title>Instagram</title><body style="font-family:system-ui;max-width:32rem;margin:4rem auto;padding:0 1rem"><h2>${ok ? "✅" : "⚠️"} ${escapar(msg)}</h2><p><a href="/">Voltar ao painel</a></p>`,
+    {
+      status: ok ? 200 : 400,
+      headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'", "x-content-type-options": "nosniff" },
+    },
   );
 }
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.redirect(new URL("/login", req.nextUrl.origin));
+  // Só administrador liga contas. É um redirecionamento do navegador do admin logado (cookie de sessão vai junto),
+  // então quem não é admin vê a página de aviso em vez de JSON cru.
+  const { erro } = await exigirAdmin();
+  if (erro) {
+    if (erro.status === 401) return NextResponse.redirect(new URL("/login", req.nextUrl.origin));
+    return page("Sem permissão: só administradores conectam contas do Instagram.", false);
+  }
 
   const p = req.nextUrl.searchParams;
   if (p.get("error")) return page(`O Instagram recusou: ${p.get("error_description") ?? p.get("error")}`, false);

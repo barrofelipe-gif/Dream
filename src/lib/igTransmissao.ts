@@ -1,16 +1,17 @@
 import { prisma } from "@/lib/prisma";
-import { dentroDaJanela, enviarDm } from "@/lib/instagram";
+import { dentroDaJanela, enviarDm, MARGEM_AGENDADO_MS } from "@/lib/instagram";
+import { roboPodeFalarConversa } from "@/lib/igEstado";
 import { aplicarNome } from "@/lib/igBoasVindas";
 import { etiquetar } from "@/lib/igTags";
 
 const JANELA = 24 * 60 * 60 * 1000;
 
-/** Conversas que podem receber: falaram nas últimas 24h, não encerradas, com alguma etiqueta de "incluir" (se houver) e nenhuma de "excluir". */
+/** Conversas que podem receber: falaram nas últimas 24h, sem atendente (HUMAN) nem fila da equipe (NEEDS_HUMAN), não encerradas, com alguma etiqueta de "incluir" (se houver) e nenhuma de "excluir". */
 export async function destinatarios(accountId: string, incluir: string[], excluir: string[]) {
   const conversas = await prisma.igConversation.findMany({
     where: {
       accountId,
-      status: { not: "CLOSED" },
+      status: { notIn: ["CLOSED", "HUMAN", "NEEDS_HUMAN"] },
       lastCustomerMessageAt: { gt: new Date(Date.now() - JANELA) },
       ...(incluir.length ? { tags: { hasSome: incluir } } : {}),
     },
@@ -41,7 +42,8 @@ export async function processarTransmissoes(limite = 40): Promise<number> {
       const c = await prisma.igConversation.findUnique({ where: { id: a.conversationId } });
       let status: "ENVIADA" | "FALHOU" | "EXPIRADA" = "ENVIADA";
       let erro: string | null = null;
-      if (!c || !dentroDaJanela(c.lastCustomerMessageAt) || !t.account.active) {
+      // Reconfere na hora de enviar: a equipe pode ter assumido a conversa depois que a lista foi montada.
+      if (!c || !dentroDaJanela(c.lastCustomerMessageAt, new Date(), MARGEM_AGENDADO_MS) || !t.account.active || !(await roboPodeFalarConversa(c))) {
         status = "EXPIRADA";
       } else {
         try {
@@ -50,7 +52,7 @@ export async function processarTransmissoes(limite = 40): Promise<number> {
           await prisma.igMessage.create({
             data: { conversationId: c.id, direction: "OUT", source: "BOT", text: texto, metaMessageId: sentId || null, matchedKind: "transmissao" },
           });
-          await etiquetar(c.id, [`Transmissão: ${t.nome}`.slice(0, 40)]);
+          await etiquetar(c.id, [`Transmissão: ${t.nome}`.slice(0, 40)], [], { automacoes: false }); // só marca: não dispara regras nem fluxos
         } catch (e) {
           status = "FALHOU";
           erro = e instanceof Error ? e.message.slice(0, 200) : "erro";

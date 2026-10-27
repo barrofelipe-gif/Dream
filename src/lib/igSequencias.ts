@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { dentroDaJanela, enviarDm } from "@/lib/instagram";
+import { dentroDaJanela, enviarDm, MARGEM_AGENDADO_MS } from "@/lib/instagram";
+import { roboPodeFalarConversa } from "@/lib/igEstado";
 import { aplicarNome } from "@/lib/igBoasVindas";
 import { etiquetar } from "@/lib/igTags";
 
@@ -114,8 +115,8 @@ export async function processarSequencias(limite = 40): Promise<number> {
       await pararCom("Conversa encerrada");
       continue;
     }
-    // Uma atendente assumiu: a sequência não fala por cima dela.
-    if (c.status === "HUMAN") {
+    // Uma atendente assumiu (e está ativa): a sequência não fala por cima dela.
+    if (c.status === "HUMAN" && !(await roboPodeFalarConversa(c))) {
       await pararCom("Atendente assumiu a conversa");
       continue;
     }
@@ -125,10 +126,13 @@ export async function processarSequencias(limite = 40): Promise<number> {
       continue;
     }
     // Regra da Meta: fora da janela de 24h não se envia nada.
-    if (!dentroDaJanela(c.lastCustomerMessageAt)) {
+    if (!dentroDaJanela(c.lastCustomerMessageAt, agora, MARGEM_AGENDADO_MS)) {
       await pararCom(`Fora da janela de 24h no passo ${i.passoAtual + 1}`);
       continue;
     }
+    // Aguardando atendente: pausa (a reserva acima já empurrou o próximo envio 10 min) em vez de falar por cima dela.
+    // Se ela não aparecer, a janela de 24h acaba parando a sequência.
+    if (c.status === "NEEDS_HUMAN") continue;
 
     const texto = aplicarNome(passos[i.passoAtual].texto, c.nome);
     try {

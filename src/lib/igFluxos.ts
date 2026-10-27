@@ -2,8 +2,10 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/crypto";
-import { dentroDaJanela, enviarDm } from "@/lib/instagram";
+import { dentroDaJanela, enviarDm, MARGEM_AGENDADO_MS } from "@/lib/instagram";
 import { aplicarNome } from "@/lib/igBoasVindas";
+import { cortarBytes, cortarCaracteres } from "@/lib/igTexto";
+import { roboPodeFalar, roboPodeFalarConversa } from "@/lib/igEstado";
 import { etiquetar } from "@/lib/igTags";
 import { notificarEquipe } from "@/lib/igNotificacao";
 import { gravarCampos, normalizarValor } from "@/lib/igContatos";
@@ -47,6 +49,8 @@ type ConversaRow = {
   accountId: string;
   igScopedUserId: string;
   status: string;
+  assumidaEm: Date | null;
+  updatedAt: Date;
   lastCustomerMessageAt: Date | null;
   nome: string | null;
   tags: string[];
@@ -71,6 +75,8 @@ async function carregarConversa(conversationId: string): Promise<ConversaRow | n
       accountId: true,
       igScopedUserId: true,
       status: true,
+      assumidaEm: true,
+      updatedAt: true,
       lastCustomerMessageAt: true,
       nome: true,
       tags: true,
@@ -84,11 +90,11 @@ async function carregarConversa(conversationId: string): Promise<ConversaRow | n
 /** Resposta privada a um comentário (abre o direct sem precisar da janela). Botões viram botões do modelo (máx. 3). */
 async function respostaPrivada(conta: ContaRow, commentId: string, texto: string, quickReplies?: { title: string; payload: string }[], link?: { title: string; url: string }) {
   const botoes = link
-    ? [{ type: "web_url", url: link.url, title: link.title.slice(0, 20) }]
-    : (quickReplies ?? []).slice(0, 3).map((q) => ({ type: "postback", title: q.title.slice(0, 20), payload: q.payload }));
+    ? [{ type: "web_url", url: link.url, title: cortarCaracteres(link.title, 20) }]
+    : (quickReplies ?? []).slice(0, 3).map((q) => ({ type: "postback", title: cortarCaracteres(q.title, 20), payload: q.payload }));
   const message = botoes.length
-    ? { attachment: { type: "template", payload: { template_type: "button", text: texto.slice(0, 640), buttons: botoes } } }
-    : { text: texto };
+    ? { attachment: { type: "template", payload: { template_type: "button", text: cortarCaracteres(texto, 640), buttons: botoes } } }
+    : { text: cortarBytes(texto, 1000) };
   const res = await fetch(`${GRAPH}/${conta.igUserId}/messages`, {
     method: "POST",
     headers: { Authorization: `Bearer ${decrypt(conta.accessToken)}`, "Content-Type": "application/json" },
@@ -107,6 +113,8 @@ type Estado = {
   passos: number;
   conversa: ConversaRow;
   enviouAgora: boolean;
+  /** Retomado pelo agendador (não é resposta imediata): usa a folga de segurança na janela de 24h. */
+  agendado: boolean;
 };
 
 /** Envia uma mensagem do fluxo e grava na conversa como do robô. */
@@ -114,13 +122,16 @@ async function enviar(
   e: Estado,
   textoBruto: string,
   extras: { quickReplies?: { title: string; payload: string }[]; link?: { title: string; url: string } } = {},
-): Promise<"ok" | "vazio" | "fora_janela"> {
+): Promise<"ok" | "vazio" | "fora_janela" | "bloqueado"> {
   const c = e.conversa;
   const vars = { ...objeto(c.campos), ...e.vars };
   const texto = aplicarVariaveis(aplicarNome(textoBruto, c.nome), vars);
   if (!texto) return "vazio";
 
-  const naJanela = dentroDaJanela(c.lastCustomerMessageAt);
+  // Atendente assumiu, conversa na fila da equipe ou encerrada no meio do fluxo: o robô não fala por cima.
+  if (!(await roboPodeFalar(c.id))) return "bloqueado";
+
+  const naJanela = dentroDaJanela(c.lastCustomerMessageAt, new Date(), e.agendado ? MARGEM_AGENDADO_MS : 0);
   const commentId = typeof e.vars._commentId === "string" ? e.vars._commentId : "";
   const usarPrivada = !naJanela && !!commentId && !e.vars._privadaUsada;
   if (!naJanela && !usarPrivada) return "fora_janela";
@@ -184,6 +195,7 @@ async function rodar(e: Estado, inicio: string | null, ultimoNo: string): Promis
           const link = d.botoesTipo === "link" && /^https?:\/\//i.test(d.link.url) ? { title: d.link.titulo || "Abrir", url: d.link.url } : undefined;
           const r = await enviar(e, d.texto, { quickReplies: quickReplies.length ? quickReplies : undefined, link });
           if (r === "fora_janela") return salvar(e, "CANCELADO", no.id, null, "fora_janela");
+          if (r === "bloqueado") return salvar(e, "CANCELADO", no.id, null, "equipe_no_comando");
           if (quickReplies.length && r === "ok") return salvar(e, "ESPERANDO_RESPOSTA", no.id, new Date(Date.now() + DIA));
           noId = proximoNo(e.grafo, no.id, "proximo");
           break;
@@ -194,6 +206,7 @@ async function rodar(e: Estado, inicio: string | null, ultimoNo: string): Promis
           const sugestoes = d.sugestoes.map((s, i) => ({ title: s.titulo.trim(), payload: montarPayload(e.fluxoId, no.id, i) })).filter((q) => q.title);
           const r = await enviar(e, d.texto, { quickReplies: sugestoes.length ? sugestoes : undefined });
           if (r === "fora_janela") return salvar(e, "CANCELADO", no.id, null, "fora_janela");
+          if (r === "bloqueado") return salvar(e, "CANCELADO", no.id, null, "equipe_no_comando");
           if (r === "vazio") {
             noId = proximoNo(e.grafo, no.id, "proximo");
             break;
@@ -265,7 +278,7 @@ async function rodar(e: Estado, inicio: string | null, ultimoNo: string): Promis
   }
 }
 
-async function estadoDe(execId: string, conversa: ConversaRow): Promise<Estado | null> {
+async function estadoDe(execId: string, conversa: ConversaRow, agendado = false): Promise<Estado | null> {
   const exec = await prisma.igFluxoExec.findUnique({ where: { id: execId }, include: { fluxo: { select: { id: true, grafo: true } } } });
   if (!exec) return null;
   const vars = objeto(exec.variaveis);
@@ -277,6 +290,7 @@ async function estadoDe(execId: string, conversa: ConversaRow): Promise<Estado |
     passos: typeof vars._passos === "number" ? vars._passos : 0,
     conversa,
     enviouAgora: false,
+    agendado,
   };
 }
 
@@ -289,9 +303,9 @@ async function cancelarPerguntasPendentes(conversationId: string) {
  * Começa o fluxo para a conversa (ignora se o fluxo está ativo: quem chama decide).
  * Devolve false se o fluxo/conversa não existe, a conta está desligada ou o fluxo não tem gatilho.
  */
-export async function iniciarFluxo(fluxoId: string, conversationId: string, opts: { variaveis?: Record<string, unknown> } = {}): Promise<boolean> {
+export async function iniciarFluxo(fluxoId: string, conversationId: string, opts: { variaveis?: Record<string, unknown>; travarMs?: number } = {}): Promise<boolean> {
   const [fluxo, conversa] = await Promise.all([prisma.igFluxo.findUnique({ where: { id: fluxoId } }), carregarConversa(conversationId)]);
-  if (!fluxo || !conversa || !conversa.account.active || fluxo.accountId !== conversa.accountId || conversa.status === "CLOSED" || conversa.status === "HUMAN") return false;
+  if (!fluxo || !conversa || !conversa.account.active || fluxo.accountId !== conversa.accountId || !(await roboPodeFalarConversa(conversa))) return false;
   const grafo = lerGrafo(fluxo.grafo);
   const g = noGatilho(grafo);
   if (!g) return false;
@@ -300,6 +314,19 @@ export async function iniciarFluxo(fluxoId: string, conversationId: string, opts
   const exec = await prisma.igFluxoExec.create({
     data: { fluxoId, conversationId, noAtual: g.id, status: "ATIVO", variaveis: json({ ...(opts.variaveis ?? {}), _passos: 0 }) },
   });
+  // Trava contra corrida (duas etiquetas ao mesmo tempo): se há uma execução mais antiga do mesmo fluxo na janela,
+  // esta é a duplicada e se desfaz (o desempate por createdAt e id faz sobreviver exatamente uma).
+  if (opts.travarMs) {
+    const primeira = await prisma.igFluxoExec.findFirst({
+      where: { fluxoId, conversationId, createdAt: { gt: new Date(Date.now() - opts.travarMs) } },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { id: true },
+    });
+    if (primeira && primeira.id !== exec.id) {
+      await prisma.igFluxoExec.update({ where: { id: exec.id }, data: { status: "CANCELADO", variaveis: json({ _passos: 0, _motivo: "duplicado" }) } });
+      return false;
+    }
+  }
   const e = await estadoDe(exec.id, conversa);
   if (!e) return false;
   await rodar(e, g.id, g.id);
@@ -368,7 +395,7 @@ export async function tentarGatilhoPorEtiqueta(conversationId: string, etiqueta:
     select: { id: true },
   });
   if (recente) return false;
-  return iniciarFluxo(alvo.id, conversationId);
+  return iniciarFluxo(alvo.id, conversationId, { travarMs: 60_000 });
 }
 
 /**
@@ -403,7 +430,7 @@ export async function tentarGatilhoPorComentario(ev: ComentarioEvento): Promise<
  */
 export async function continuarComResposta(conversationId: string, texto: string, payload?: string | null): Promise<boolean> {
   const conversa = await carregarConversa(conversationId);
-  if (!conversa || !conversa.account.active || conversa.status === "CLOSED") return false;
+  if (!conversa || !conversa.account.active || !(await roboPodeFalarConversa(conversa))) return false;
   const p = lerPayload(payload);
 
   let execId: string | null = null;
@@ -521,14 +548,19 @@ export async function processarFluxos(limite = 40): Promise<number> {
     if (claim.count !== 1) continue;
     feitas++;
     const conversa = await carregarConversa(v.conversationId);
-    if (!conversa || !conversa.account.active || conversa.status === "CLOSED" || conversa.status === "HUMAN") {
+    if (!conversa || !conversa.account.active || conversa.status === "CLOSED" || (conversa.status === "HUMAN" && !(await roboPodeFalarConversa(conversa)))) {
       await prisma.igFluxoExec.update({ where: { id: v.id }, data: { status: "CANCELADO" } });
       continue;
     }
-    const e = await estadoDe(v.id, conversa);
+    const e = await estadoDe(v.id, conversa, true);
     if (!e) continue;
-    if (!dentroDaJanela(conversa.lastCustomerMessageAt)) {
+    if (!dentroDaJanela(conversa.lastCustomerMessageAt, new Date(), MARGEM_AGENDADO_MS)) {
       await salvar(e, "CANCELADO", v.noAtual, null, "fora_janela");
+      continue;
+    }
+    // Aguardando atendente: pausa (tenta de novo em 15 min) em vez de falar por cima; a janela de 24h acaba cancelando.
+    if (conversa.status === "NEEDS_HUMAN") {
+      await prisma.igFluxoExec.update({ where: { id: v.id }, data: { status: "ESPERANDO_TEMPO", retomarEm: new Date(Date.now() + 15 * 60 * 1000) } });
       continue;
     }
     await rodar(e, proximoNo(e.grafo, v.noAtual, "proximo"), v.noAtual);

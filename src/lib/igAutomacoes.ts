@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/crypto";
 import { buscarPerfil, enviarDm } from "@/lib/instagram";
 import { aplicarNome } from "@/lib/igBoasVindas";
+import { cortarCaracteres, contemPalavra } from "@/lib/igTexto";
 
 const GRAPH = `${process.env.IG_GRAPH_BASE ?? "https://graph.instagram.com"}/${process.env.IG_GRAPH_VERSION ?? "v23.0"}`;
 
@@ -29,11 +30,11 @@ function mensagemComBotao(texto: string, botao?: Botao) {
       type: "template",
       payload: {
         template_type: "button",
-        text: texto.slice(0, 640),
+        text: cortarCaracteres(texto, 640),
         buttons: [
           botao.tipo === "link"
-            ? { type: "web_url", url: botao.url, title: botao.titulo.slice(0, 20) }
-            : { type: "postback", title: botao.titulo.slice(0, 20), payload: botao.payload },
+            ? { type: "web_url", url: botao.url, title: cortarCaracteres(botao.titulo, 20) }
+            : { type: "postback", title: cortarCaracteres(botao.titulo, 20), payload: botao.payload },
         ],
       },
     },
@@ -63,7 +64,8 @@ export function casaPalavra(texto: string, palavras: string, modo: string): bool
   if (lista.length === 0) return true; // sem palavras = qualquer comentário
   const t = texto.toLowerCase();
   const limpo = t.replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
-  return lista.some((p) => (modo === "exata" ? limpo === p || t.trim() === p : t.includes(p)));
+  // "contém" casa palavra inteira e ignora acento ("oi" não casa dentro de "hoje").
+  return lista.some((p) => (modo === "exata" ? limpo === p || t.trim() === p : contemPalavra(texto, p)));
 }
 
 export type ComentarioEvento = {
@@ -76,7 +78,7 @@ export type ComentarioEvento = {
   parentId?: string;
 };
 
-async function registrarNaConversa(contaId: string, userId: string, entrada: string | null, saida: string, kind: string) {
+async function registrarNaConversa(contaId: string, userId: string, entrada: string | null, saida: string, kind: string, metaMessageId?: string | null) {
   const conv = await prisma.igConversation.upsert({
     where: { accountId_igScopedUserId: { accountId: contaId, igScopedUserId: userId } },
     create: { accountId: contaId, igScopedUserId: userId },
@@ -86,7 +88,7 @@ async function registrarNaConversa(contaId: string, userId: string, entrada: str
     await prisma.igMessage.create({ data: { conversationId: conv.id, direction: "IN", source: "CLIENTE", text: entrada } });
   }
   await prisma.igMessage.create({
-    data: { conversationId: conv.id, direction: "OUT", source: "BOT", text: saida, matchedKind: kind },
+    data: { conversationId: conv.id, direction: "OUT", source: "BOT", text: saida, matchedKind: kind, metaMessageId: metaMessageId || null },
   });
 }
 
@@ -131,18 +133,21 @@ export async function processarComentario(ev: ComentarioEvento): Promise<void> {
   }
 
   let enviado: string;
+  let enviadoId: string | undefined;
   let etapa = "enviado";
   if (alvo.exigirSeguir && !jaSegue) {
     enviado = aplicarNome(alvo.seguirTexto || SEGUIR_PADRAO, nome);
-    await respostaPrivada(token, conta.igUserId, ev.commentId, enviado, {
-      tipo: "postback",
-      titulo: alvo.seguirBotao || "Já segui",
-      payload: `${PREFIXO_POSTBACK}${alvo.id}`,
-    });
+    enviadoId = (
+      await respostaPrivada(token, conta.igUserId, ev.commentId, enviado, {
+        tipo: "postback",
+        titulo: alvo.seguirBotao || "Já segui",
+        payload: `${PREFIXO_POSTBACK}${alvo.id}`,
+      })
+    ).message_id;
     etapa = "aguardando_seguir";
   } else {
     enviado = dm;
-    await respostaPrivada(token, conta.igUserId, ev.commentId, dm, botaoLink);
+    enviadoId = (await respostaPrivada(token, conta.igUserId, ev.commentId, dm, botaoLink)).message_id;
   }
 
   await prisma.igAutomacaoExec.update({
@@ -150,7 +155,7 @@ export async function processarComentario(ev: ComentarioEvento): Promise<void> {
     data: { etapa },
   });
   await prisma.igAutomacao.update({ where: { id: alvo.id }, data: { execucoes: { increment: 1 } } });
-  await registrarNaConversa(conta.id, ev.userId, `[Comentou] ${ev.texto}`, enviado, "automacao");
+  await registrarNaConversa(conta.id, ev.userId, `[Comentou] ${ev.texto}`, enviado, "automacao", enviadoId);
 }
 
 /** Toque em "Já segui": confere se segue; se sim libera o conteúdo, se não pede de novo. */
@@ -165,17 +170,17 @@ export async function processarPostbackAutomacao(contaId: string, userId: string
   const perfil = await buscarPerfil(conta.accessToken, userId).catch(() => null);
   if (perfil?.seguePagina === false) {
     const msg = AINDA_NAO_SEGUE;
-    await diretoComBotao(token, conta.igUserId, userId, msg, {
+    const r = await diretoComBotao(token, conta.igUserId, userId, msg, {
       tipo: "postback",
       titulo: alvo.seguirBotao || "Já segui",
       payload,
     });
-    await registrarNaConversa(conta.id, userId, null, msg, "automacao_seguir");
+    await registrarNaConversa(conta.id, userId, null, msg, "automacao_seguir", r.message_id);
     return;
   }
 
   const dm = aplicarNome(alvo.dmTexto, perfil?.nome ?? null);
-  await enviarDm({
+  const sentId = await enviarDm({
     igUserId: conta.igUserId,
     encryptedToken: conta.accessToken,
     recipientId: userId,
@@ -186,7 +191,7 @@ export async function processarPostbackAutomacao(contaId: string, userId: string
     where: { automacaoId: alvo.id, igUserId: userId, etapa: "aguardando_seguir" },
     data: { etapa: "liberado" },
   });
-  await registrarNaConversa(conta.id, userId, null, dm, "automacao");
+  await registrarNaConversa(conta.id, userId, null, dm, "automacao", sentId);
 }
 
 export type MidiaIg = {

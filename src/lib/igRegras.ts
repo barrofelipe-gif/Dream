@@ -3,6 +3,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { dentroDaJanela, enviarDm } from "@/lib/instagram";
+import { contemPalavra, normaliza } from "@/lib/igTexto";
+import { roboPodeFalarConversa } from "@/lib/igEstado";
 import { aplicarNome } from "@/lib/igBoasVindas";
 import { notificarEquipe } from "@/lib/igNotificacao";
 
@@ -96,23 +98,8 @@ export function validarRegra(quandoBruto: unknown, fazerBruto: unknown): { ok: t
 
 // ── Casamento do gatilho ─────────────────────────────────────────────────────
 
-const normaliza = (t: string) =>
-  t
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
-
 function palavrasDe(valor: string): string[] {
   return [...new Set(valor.split(/[,\n]/).map((p) => p.trim().replace(/\s+/g, " ")).filter(Boolean))].slice(0, 30);
-}
-
-/** A palavra (ou expressão) aparece como palavra inteira na mensagem, sem ligar para acento ou maiúscula. */
-function contemPalavra(texto: string, palavra: string): boolean {
-  const t = ` ${normaliza(texto).replace(/[^\p{L}\p{N}]+/gu, " ")} `;
-  const p = normaliza(palavra).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-  return !!p && t.includes(` ${p} `);
 }
 
 function casa(quando: Quando, evento: EventoRegra): boolean {
@@ -175,8 +162,18 @@ export async function aplicarRegras(evento: EventoRegra, conversationId: string,
         select: { id: true },
       });
       if (recente) continue;
-      await prisma.igRegraExec.create({ data: { regraId: regra.id, conversationId } });
-      const feitas = await profundidadeAtual.run(profundidade + 1, () => executarAcoes(regra.nome, lerFazer(regra.fazer), conversationId, profundidade + 1));
+      const exec = await prisma.igRegraExec.create({ data: { regraId: regra.id, conversationId } });
+      // Corrida (dois eventos ao mesmo tempo passaram pela checagem acima): só a execução mais antiga da janela vale.
+      const primeira = await prisma.igRegraExec.findFirst({
+        where: { regraId: regra.id, conversationId, createdAt: { gt: new Date(Date.now() - TRAVA_MS) } },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { id: true },
+      });
+      if (primeira && primeira.id !== exec.id) {
+        await prisma.igRegraExec.delete({ where: { id: exec.id } }).catch(() => {});
+        continue;
+      }
+      const feitas = await profundidadeAtual.run(profundidade + 1, () => executarAcoes(regra.nome, lerFazer(regra.fazer), conversationId, profundidade + 1, evento.tipo === "CONVERSA_TRANSFERIDA"));
       resultado.executadas.push({ regraId: regra.id, nome: regra.nome, acoes: feitas });
     }
   } catch (e) {
@@ -212,7 +209,8 @@ async function mudarEtiquetas(conversationId: string, adicionar: string[], remov
   return { antes: c.tags, depois: igual ? c.tags : depois };
 }
 
-async function executarAcoes(nomeRegra: string, acoes: Acao[], conversationId: string, profundidade: number): Promise<string[]> {
+/** `anunciaTransferencia`: a regra roda por causa da transferência para a equipe, então a mensagem de aviso ("já te passo para uma atendente") pode sair mesmo em NEEDS_HUMAN. */
+async function executarAcoes(nomeRegra: string, acoes: Acao[], conversationId: string, profundidade: number, anunciaTransferencia = false): Promise<string[]> {
   const feitas: string[] = [];
   for (const acao of acoes) {
     try {
@@ -238,8 +236,8 @@ async function executarAcoes(nomeRegra: string, acoes: Acao[], conversationId: s
             feitas.push("ENVIAR_MENSAGEM:fora_da_janela");
             break;
           }
-          // Atendente assumiu ou conversa encerrada: o robô não fala por cima da equipe.
-          if (c.status === "HUMAN" || c.status === "CLOSED") {
+          // Atendente assumiu, conversa na fila da equipe ou encerrada: o robô não fala por cima da equipe.
+          if (!(await roboPodeFalarConversa(c, { permitirNeedsHuman: anunciaTransferencia }))) {
             feitas.push("ENVIAR_MENSAGEM:com_atendente");
             break;
           }
@@ -266,7 +264,7 @@ async function executarAcoes(nomeRegra: string, acoes: Acao[], conversationId: s
           feitas.push("ENCERRAR");
           break;
         case "DEVOLVER_AO_ROBO":
-          await prisma.igConversation.update({ where: { id: conversationId }, data: { status: "BOT" } });
+          await prisma.igConversation.update({ where: { id: conversationId }, data: { status: "BOT", assumidaEm: null } });
           feitas.push("DEVOLVER_AO_ROBO");
           break;
         case "NOTIFICAR_EQUIPE":

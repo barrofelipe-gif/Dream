@@ -37,8 +37,10 @@ export async function PUT(req: NextRequest, { params }: Params) {
     data.gatilho = (noGatilho(grafo.grafo)?.dados ?? {}) as Prisma.InputJsonValue;
   }
 
-  if (typeof body.ativo === "boolean") {
-    if (body.ativo) {
+  // Vale também quando o fluxo JÁ está ativo e só o grafo muda: salvar não pode deixar um fluxo incompleto no ar.
+  const ficaAtivo = typeof body.ativo === "boolean" ? body.ativo : atual.ativo;
+  if (typeof body.ativo === "boolean" || (ficaAtivo && body.grafo !== undefined)) {
+    if (ficaAtivo) {
       if ("erro" in grafo) return NextResponse.json({ error: grafo.erro }, { status: 400 });
       const faltando = problemasParaAtivar(grafo.grafo);
       const irPara = grafo.grafo.nos.filter((n) => n.tipo === "irpara").map((n) => (n.dados as { fluxoId: string }).fluxoId).filter(Boolean);
@@ -46,9 +48,9 @@ export async function PUT(req: NextRequest, { params }: Params) {
         const existentes = await prisma.igFluxo.count({ where: { id: { in: irPara }, accountId: atual.accountId } });
         if (existentes < new Set(irPara).size) faltando.push("Um bloco Ir para outro fluxo aponta para um fluxo que não existe (ou é de outra conta)");
       }
-      if (faltando.length) return NextResponse.json({ error: `Não dá para ativar ainda: ${faltando.join("; ")}.`, problemas: faltando }, { status: 400 });
+      if (faltando.length) return NextResponse.json({ error: `${typeof body.ativo === "boolean" ? "Não dá para ativar ainda" : "Este fluxo está ativo e não pode ficar incompleto (desligue-o para editar com calma)"}: ${faltando.join("; ")}.`, problemas: faltando }, { status: 400 });
     }
-    data.ativo = body.ativo;
+    if (typeof body.ativo === "boolean") data.ativo = body.ativo;
   }
 
   await prisma.igFluxo.update({ where: { id }, data });

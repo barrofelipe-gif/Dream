@@ -65,6 +65,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!status || !["BOT", "HUMAN", "CLOSED", "NEEDS_HUMAN"].includes(status)) {
     return NextResponse.json({ error: "Status inválido" }, { status: 400 });
   }
-  await prisma.igConversation.update({ where: { id }, data: { status } });
+  // Assumir grava o momento: o robô fica quieto enquanto a atendente estiver ativa (24h desde a última atividade dela).
+  await prisma.igConversation.update({ where: { id }, data: { status, assumidaEm: status === "HUMAN" ? new Date() : null } });
   return NextResponse.json({ ok: true });
 }

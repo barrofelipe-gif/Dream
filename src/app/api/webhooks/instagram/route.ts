@@ -6,6 +6,8 @@ import { atualizarPerfil } from "@/lib/igPerfil";
 import { etiquetar, TAG } from "@/lib/igTags";
 import { aplicarRegras } from "@/lib/igRegras";
 import { notificarEquipe } from "@/lib/igNotificacao";
+import { roboPodeFalar, roboPodeFalarConversa } from "@/lib/igEstado";
+import { declaraCompra, pedeHumano } from "@/lib/igIntencao";
 import { pararPorResposta } from "@/lib/igSequencias";
 import { continuarComResposta, tentarGatilhoPorComentario, tentarGatilhoPorMensagem } from "@/lib/igFluxos";
 import { PREFIXO_POSTBACK, processarComentario, processarPostbackAutomacao } from "@/lib/igAutomacoes";
@@ -46,6 +48,9 @@ type Mudanca = {
 };
 type Payload = { object?: string; entry?: { id: string; messaging?: Evento[]; changes?: Mudanca[] }[] };
 
+// O robô responde em segundo plano (after) e pode chamar a IA: o plano da Vercel aceita até 60 s.
+export const maxDuration = 60;
+
 const MAX_ESCLARECIMENTOS = 2;
 const ESCLARECER = [
   "Oi! Não consegui entender bem a sua dúvida. Pode me explicar com mais detalhes o que você quer saber?",
@@ -58,15 +63,6 @@ const PEDIR_DUVIDA = [
   "Claro! Me conta qual é a sua dúvida que eu te ajudo.",
   "Pode mandar! Qual é a sua dúvida?",
 ];
-
-const REGEX_HUMANO = /\b(human[oa]s?|atendente|atendimento|pessoa|alguém|alguem|funcion[aá]ri[oa]|vendedor[a]?|gerente|dono|dona|falar com (a )?(gente|equipe|loja))\b/i;
-
-// A pessoa se declara cliente ("já comprei", "fiz um pedido"): vira "Comprador" e sai das cobranças em massa.
-// A negação só anula quando vem logo antes da própria frase de compra ("não comprei", "nunca fiz um pedido");
-// "quero comprar" não anula ("já comprei e quero comprar de novo" continua sendo Comprador).
-// Atenção: escrever \b de verdade (barra + b); um caractere de controle aqui faz a regex nunca casar.
-const REGEX_COMPROU = /\b(comprei|fiz (um |uma |o |a |meu |minha )?(pedido|compra)|j[aá] sou (cliente|revendedora?)|j[aá] (comprava|compro|fui cliente))/i;
-const REGEX_NAO_COMPROU = /\b(n[aã]o|nunca)\s+(\S+\s+)?(comprei|fiz (um |uma |o |a |meu |minha )?(pedido|compra))/i;
 
 /** Conversa foi para a equipe: avisa no sino do painel e dispara as regras de "conversa transferida". */
 async function transferida(conversaId: string, motivo: string) {
@@ -88,6 +84,21 @@ async function automacaoJaCuidou(conversaId: string, desde: Date, statusInicial:
   ]);
   if (enviada) return true;
   return c?.status === "CLOSED" || (c?.status === "HUMAN" && statusInicial !== "HUMAN");
+}
+
+/** O robô (ou uma automação) já respondeu depois da última mensagem do cliente? Evita resposta dupla quando a pessoa manda várias mensagens seguidas. */
+async function jaRespondeuDepoisDaUltimaEntrada(conversaId: string) {
+  const ultima = await prisma.igMessage.findFirst({
+    where: { conversationId: conversaId, direction: "IN" },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true },
+  });
+  if (!ultima) return false;
+  const resposta = await prisma.igMessage.findFirst({
+    where: { conversationId: conversaId, direction: "OUT", source: "BOT", createdAt: { gt: ultima.createdAt } },
+    select: { id: true },
+  });
+  return !!resposta;
 }
 
 const HORAS = (h: number) => new Date(Date.now() - h * 60 * 60 * 1000);
@@ -169,29 +180,33 @@ async function tratarEco(ev: Evento) {
   if (!conversa) return;
 
   const mid = ev.message?.mid;
-  if (mid && (await prisma.igMessage.findUnique({ where: { metaMessageId: mid } }))) return; // foi o robô
-  // O eco do envio do robô pode chegar antes de gravarmos o id: tolerância de 30s.
-  const recenteNosso = await prisma.igMessage.findFirst({
-    where: {
-      conversationId: conversa.id,
-      direction: "OUT",
-      createdAt: { gt: new Date(Date.now() - 30_000) },
-      OR: [{ source: "BOT" }, { text: ev.message?.text?.trim() || "[mídia]" }],
-    },
-  });
-  if (recenteNosso) return;
+  const textoEco = ev.message?.text?.trim() || "";
+  const foiORobo = async () => !!mid && !!(await prisma.igMessage.findUnique({ where: { metaMessageId: mid }, select: { id: true } }));
+  if (await foiORobo()) return;
+  // O eco do envio do robô pode chegar antes de gravarmos o id da Meta: espera um instante e confere de novo.
+  await new Promise((r) => setTimeout(r, 2500));
+  if (await foiORobo()) return;
+  // Envio do robô sem id gravado: compara o TEXTO EXATO que ele acabou de mandar. Nunca "qualquer mensagem do robô
+  // nos últimos 30 s", senão a resposta de uma atendente logo depois do robô seria descartada.
+  if (textoEco) {
+    const recenteNosso = await prisma.igMessage.findFirst({
+      where: { conversationId: conversa.id, direction: "OUT", source: "BOT", metaMessageId: null, text: textoEco, createdAt: { gt: new Date(Date.now() - 30_000) } },
+      select: { id: true },
+    });
+    if (recenteNosso) return;
+  }
 
   await prisma.igMessage.create({
     data: {
       conversationId: conversa.id,
       direction: "OUT",
       source: "HUMANO",
-      text: ev.message?.text?.trim() || "[mídia]",
+      text: textoEco || "[mídia]",
       metaMessageId: mid,
     },
   });
   // Quem respondeu pelo Instagram obviamente leu a conversa.
-  await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "HUMAN", naoLida: false } });
+  await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "HUMAN", naoLida: false, assumidaEm: new Date() } });
   await etiquetar(conversa.id, [TAG.atendidoEquipe], [TAG.naoAtendido]);
 }
 
@@ -242,7 +257,9 @@ async function tratarEvento(ev: Evento) {
   const botao = ev.message?.quick_reply?.payload ?? ev.postback?.payload;
   // Alguém marcou a loja num story: chega como anexo "story_mention", sem texto.
   const mencionou = !!ev.message?.attachments?.some((a) => a.type === "story_mention");
-  const text = ev.message?.text?.trim() || ev.postback?.title?.trim() || (mencionou ? "[Marcou a loja num story]" : undefined);
+  // Foto, vídeo, áudio ou compartilhamento sem texto: grava como "[mídia]" (renova a janela e avisa a equipe), sem o robô responder.
+  const midia = !ev.message?.text?.trim() && !mencionou && !!ev.message?.attachments?.length;
+  const text = ev.message?.text?.trim() || ev.postback?.title?.trim() || (mencionou ? "[Marcou a loja num story]" : undefined) || (midia ? "[mídia]" : undefined);
   if (!text || !ev.sender?.id || !ev.recipient?.id) return;
 
   const account = await prisma.instagramAccount.findUnique({ where: { igUserId: ev.recipient.id } });
@@ -263,6 +280,18 @@ async function tratarEvento(ev: Evento) {
     data: { conversationId: conversa.id, direction: "IN", source: "CLIENTE", text, metaMessageId: mid },
     select: { createdAt: true },
   });
+  // Conversa encerrada que recebe mensagem nova é REABERTA: volta para o robô (ou para a fila da equipe, se uma atendente
+  // falou com ela na última semana) e aparece como não lida. Uma regra "Encerrar" desta mesma mensagem ainda pode fechar de novo.
+  const reabrir = conversa.status === "CLOSED";
+  if (reabrir) {
+    const atendida = await prisma.igMessage.findFirst({
+      where: { conversationId: conversa.id, direction: "OUT", source: "HUMANO", createdAt: { gt: HORAS(24 * 7) } },
+      select: { id: true },
+    });
+    conversa.status = atendida ? "NEEDS_HUMAN" : "BOT";
+    conversa.assumidaEm = null;
+    if (atendida) await notificarEquipe(conversa.id, "Conversa encerrada recebeu mensagem nova").catch(() => {});
+  }
   const statusInicial = conversa.status;
   // Conversa com a equipe envolvida (aguardando ou atendendo): cada mensagem nova do cliente
   // volta a aparecer como NÃO LIDA na caixa de entrada.
@@ -270,8 +299,15 @@ async function tratarEvento(ev: Evento) {
   const comEquipe = conversa.status === "NEEDS_HUMAN" || conversa.status === "HUMAN";
   await prisma.igConversation.update({
     where: { id: conversa.id },
-    data: { lastCustomerMessageAt: agora, ...(comEquipe ? { naoLida: true } : {}) },
+    data: {
+      lastCustomerMessageAt: agora,
+      ...(reabrir ? { status: conversa.status, assumidaEm: null, naoLida: true } : comEquipe ? { naoLida: true } : {}),
+    },
   });
+  if (midia) {
+    await pararPorResposta(conversa.id).catch((err) => console.error("[ig-webhook] pararPorResposta", err));
+    return;
+  }
 
   // Origem da conversa (anúncio ou orgânico) e autodeclaração de comprador, para etiquetar sozinho.
   const ref = ev.message?.referral ?? ev.postback?.referral;
@@ -280,7 +316,7 @@ async function tratarEvento(ev: Evento) {
   const novasTags: string[] = [];
   if (veioDeAnuncio) novasTags.push(TAG.veioAnuncio);
   else if (entradas === 1) novasTags.push(mencionou ? TAG.origemStory : TAG.organico);
-  if (REGEX_COMPROU.test(text) && !REGEX_NAO_COMPROU.test(text)) novasTags.push(TAG.comprador);
+  if (declaraCompra(text)) novasTags.push(TAG.comprador);
   if (novasTags.length) await etiquetar(conversa.id, novasTags, veioDeAnuncio ? [TAG.organico] : []);
   // A pessoa respondeu: sequências em andamento param e as regras de palavra-chave rodam antes do robô responder.
   await pararPorResposta(conversa.id).catch((err) => console.error("[ig-webhook] pararPorResposta", err));
@@ -301,10 +337,17 @@ async function tratarEvento(ev: Evento) {
   if (!dentroDaJanela(agora)) return;
   // Uma regra ou um fluxo (disparado por etiqueta) já respondeu esta mensagem: o robô não responde de novo.
   if (await automacaoJaCuidou(conversa.id, entrada.createdAt, statusInicial)) return;
+  // Decisão central: atendente ativa (HUMAN < 24h) ou conversa aguardando atendente (NEEDS_HUMAN) = o robô fica quieto
+  // (a conversa já foi marcada como não lida acima). HUMAN vencido (atendente sumiu há mais de 24h): o robô volta a atender.
+  if (!(await roboPodeFalarConversa(conversa))) return;
+  if (conversa.status === "HUMAN") {
+    await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "BOT", assumidaEm: null } });
+    conversa.status = "BOT";
+  }
 
   // Fluxos visuais: continuam uma pergunta/botão em andamento ou começam por palavra-chave, story ou botão do menu.
   // Falha num fluxo não pode calar o robô padrão: em erro, segue como se nenhum fluxo tivesse casado.
-  if (conversa.status !== "HUMAN") {
+  {
     const semFluxo = (err: unknown) => {
       console.error("[ig-webhook] falha no fluxo", err);
       return false;
@@ -326,15 +369,6 @@ async function tratarEvento(ev: Evento) {
       });
     }
     return;
-  }
-
-  // Uma atendente assumiu: o robô fica quieto enquanto ela está ativa (24h desde a
-  // última mensagem dela); passado isso, volta a atender.
-  if (conversa.status === "HUMAN") {
-    const ativa = await prisma.igMessage.findFirst({
-      where: { conversationId: conversa.id, direction: "OUT", source: "HUMANO", createdAt: { gt: HORAS(24) } },
-    });
-    if (ativa) return;
   }
 
   const loja = account.loja as Loja;
@@ -390,7 +424,7 @@ async function tratarEvento(ev: Evento) {
     orderBy: { createdAt: "desc" },
     take: 3,
   });
-  const contexto = recentes.map((m) => m.text).reverse().join("\n");
+  const contexto = recentes.map((m) => m.text).filter((t) => t !== "[mídia]").reverse().join("\n");
   const ultimasMsgs = await prisma.igMessage.findMany({
     where: { conversationId: conversa.id },
     orderBy: { createdAt: "desc" },
@@ -401,13 +435,18 @@ async function tratarEvento(ev: Evento) {
     .map((m) => ({ de: m.direction === "IN" ? ("cliente" as const) : ("loja" as const), texto: m.text }));
   // Pedido de humano sem dúvida dita: antes de transferir, o robô descobre a pergunta (quase sempre
   // dá para ele mesmo responder). Só chama a atendente se a pessoa insistir ou se a base não responder.
-  const pediuHumano = text.length <= 90 && REGEX_HUMANO.test(text);
+  const pediuHumano = text.length <= 90 && pedeHumano(text);
   const contextoSemPedido = contexto
     .split("\n")
-    .filter((l) => !(l.length <= 90 && REGEX_HUMANO.test(l)))
+    .filter((l) => !(l.length <= 90 && pedeHumano(l)))
     .join("\n")
     .trim();
+  // A pessoa mandou várias mensagens seguidas e outra execução já respondeu a última: não responde de novo.
+  if (await jaRespondeuDepoisDaUltimaEntrada(conversa.id)) return;
   const r = pediuHumano && !contextoSemPedido ? ({ tipo: "pedir_duvida" } as const) : await responder(loja, (pediuHumano ? contextoSemPedido : contexto) || text, historico);
+
+  // A IA demora: confere de novo antes de qualquer efeito (etiqueta, transferência, envio).
+  if (await jaRespondeuDepoisDaUltimaEntrada(conversa.id)) return;
 
   if (pediuHumano) await etiquetar(conversa.id, [TAG.pediuHumano]);
 
@@ -447,9 +486,7 @@ async function tratarEvento(ev: Evento) {
     const convite = primeiroContato && config.pedirSeguir && naoSegue && config.textoSeguir.trim() ? [config.textoSeguir] : [];
     const partes = [...r.partes, ...convite];
     saida = { texto: partes.join("\n"), partes, kind: r.kind, id: r.id, confianca: r.confianca };
-    if (conversa.status !== "BOT") {
-      await prisma.igConversation.update({ where: { id: conversa.id }, data: { status: "BOT" } });
-    }
+    // O status não muda aqui: conversa NEEDS_HUMAN nem chega até este ponto (o robô fica quieto) e HUMAN vencido já voltou para BOT.
     await etiquetar(conversa.id, [r.id === 9004 ? TAG.querComprar : TAG.resolvidoRobo], [TAG.semDuvida]);
   } else if (r.tipo === "atraso") {
     await etiquetar(conversa.id, [TAG.atraso, TAG.comprador]); // reclamar de pedido = já comprou
@@ -531,5 +568,7 @@ async function tratarEvento(ev: Evento) {
 
   // As etiquetas aplicadas acima (Pediu humano, Pedido atrasado…) podem ter disparado uma regra/fluxo que já respondeu.
   if (await automacaoJaCuidou(conversa.id, entrada.createdAt, statusInicial)) return;
+  // Uma atendente pode ter respondido enquanto a IA pensava: NEEDS_HUMAN ainda vale (é o próprio "procurando atendente"), HUMAN ativo não.
+  if (!(await roboPodeFalar(conversa.id, { permitirNeedsHuman: true }))) return;
   await enviarEGravar(account, conversa.id, ev.sender.id, saida);
 }

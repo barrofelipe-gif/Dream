@@ -1,6 +1,8 @@
 // Modelo dos fluxos visuais do Instagram (Flow Builder do ManyChat).
 // Arquivo puro (sem banco, sem "server-only"): usado pelo editor/simulador no navegador e pelo motor no servidor.
 
+import { contemPalavra } from "@/lib/igTexto";
+
 export type TipoNo = "gatilho" | "mensagem" | "pergunta" | "condicao" | "atraso" | "etiqueta" | "atendente" | "irpara" | "fim";
 
 export type TipoGatilho = "palavra" | "story" | "comentario" | "etiqueta" | "postback";
@@ -391,7 +393,8 @@ export function casaPalavras(texto: string, palavras: string, modo: "contem" | "
   if (lista.length === 0) return true;
   const t = normal(texto);
   const limpo = t.replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
-  return lista.some((p) => (modo === "exata" ? limpo === p || t === p : t.includes(p)));
+  // "contém" casa palavra inteira e ignora acento ("oi" não casa dentro de "hoje").
+  return lista.some((p) => (modo === "exata" ? limpo === p || t === p : contemPalavra(texto, p)));
 }
 
 /** Payload dos botões de resposta rápida: FLX:<fluxoId>:<noId>:<índice>. */

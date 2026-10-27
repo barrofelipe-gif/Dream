@@ -40,6 +40,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   await prisma.igMessage.create({
     data: { conversationId: c.id, direction: "OUT", source: "HUMANO", text: msg, metaMessageId: sentId || null },
   });
-  await prisma.igConversation.update({ where: { id: c.id }, data: { status: "HUMAN" } });
+  await prisma.igConversation.update({ where: { id: c.id }, data: { status: "HUMAN", assumidaEm: new Date() } });
   return NextResponse.json({ ok: true });
 }

@@ -491,8 +491,8 @@ function Painel({
       <div className="space-y-3">
         <div>
           <label className={rotulo}>Texto</label>
-          <textarea value={m.texto} onChange={(e) => set({ texto: e.target.value })} rows={5} className={campo} />
-          <p className="mt-1 text-[11px] text-[#a1a5b0]">Use {"{nome}"} e as variáveis das perguntas, ex.: {"{cidade}"}.</p>
+          <textarea value={m.texto} onChange={(e) => set({ texto: e.target.value })} rows={5} maxLength={m.botoesTipo === "link" ? 640 : 1000} className={campo} />
+          <p className="mt-1 text-[11px] text-[#a1a5b0]">Use {"{nome}"} e as variáveis das perguntas, ex.: {"{cidade}"}. Sem link o limite do Instagram é 1000 bytes (acentos e emojis pesam mais que 1); com link, 640 caracteres. O que passar é cortado.</p>
         </div>
         <div>
           <label className={rotulo}>Botões</label>
@@ -519,7 +519,7 @@ function Painel({
           <div className="grid gap-2">
             <input value={m.link.titulo} maxLength={20} onChange={(e) => set({ link: { ...m.link, titulo: e.target.value } })} placeholder="Texto do botão" className={campo} />
             <input value={m.link.url} onChange={(e) => set({ link: { ...m.link, url: e.target.value } })} placeholder="https://…" className={campo} />
-            <p className="text-[11px] text-[#a1a5b0]">Com link, o texto pode ter até 640 caracteres.</p>
+            <p className="text-[11px] text-[#a1a5b0]">Com link, o texto pode ter até 640 caracteres (o limite do campo acima muda sozinho).</p>
           </div>
         )}
       </div>

@@ -16,11 +16,23 @@ export async function GET(req: NextRequest) {
   if (!ok) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
-  const r = await publicarAgendados();
+  // Os jobs do Instagram (curtos e sensíveis a tempo) rodam primeiro; publicar vídeos demora e não pode derrubar nem atrasar os outros.
+  // Depois de ~45 s não se pega outro lote: a função morre aos 60 s e o que ficou pendente sai na rodada seguinte.
+  const inicio = Date.now();
+  const prazo = inicio + 45_000;
+  const temTempo = () => Date.now() < prazo;
   // Aproveita o agendador de 5 min: retoma conversas em que ninguém da equipe respondeu.
-  const seguimentos = await seguirSemAtendente().catch(() => 0);
-  const transmitidas = await processarTransmissoes().catch(() => 0);
-  const sequenciadas = await processarSequencias().catch(() => 0);
-  const fluxos = await processarFluxos().catch(() => 0);
-  return NextResponse.json({ ok: true, ...r, seguimentos, transmitidas, sequenciadas, fluxos, em: new Date().toISOString() });
+  const seguimentos = temTempo() ? await seguirSemAtendente().catch(() => 0) : 0;
+  const transmitidas = temTempo() ? await processarTransmissoes().catch(() => 0) : 0;
+  const sequenciadas = temTempo() ? await processarSequencias().catch(() => 0) : 0;
+  const fluxos = temTempo() ? await processarFluxos().catch(() => 0) : 0;
+  let r: { processados: number } = { processados: 0 };
+  if (temTempo()) {
+    try {
+      r = await publicarAgendados({ prazo });
+    } catch (e) {
+      console.error("[cron] falha ao publicar agendados", e);
+    }
+  }
+  return NextResponse.json({ ok: true, ...r, seguimentos, transmitidas, sequenciadas, fluxos, ms: Date.now() - inicio, em: new Date().toISOString() });
 }

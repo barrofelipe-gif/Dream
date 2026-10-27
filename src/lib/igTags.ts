@@ -40,7 +40,7 @@ export async function etiquetar(
   opcoes: { automacoes?: boolean } = {},
 ): Promise<string[] | null> {
   try {
-    const c = await prisma.igConversation.findUnique({ where: { id: conversaId }, select: { tags: true, status: true } });
+    const c = await prisma.igConversation.findUnique({ where: { id: conversaId }, select: { tags: true } });
     if (!c) return null;
     const rem = new Set(remover.map(limpa));
     const novas = [...new Set([...c.tags, ...adicionar.map(limpa)])].filter((t) => t && !rem.has(t));
@@ -49,10 +49,11 @@ export async function etiquetar(
     if (opcoes.automacoes === false) return novas;
     await aplicarRegrasEtiquetas(conversaId, c.tags, novas);
     // Fluxos com gatilho "etiqueta aplicada" (import dinâmico: igFluxos também usa etiquetar).
-    // Não dispara com uma atendente na conversa (HUMAN) nem além da profundidade máxima da cadeia.
+    // Quem decide se o robô pode falar (atendente ativa, fila da equipe, encerrada) é o iniciarFluxo (igEstado);
+    // aqui só vale a profundidade máxima da cadeia.
     const nivel = cadeiaFluxos.getStore() ?? 0;
     const aplicadas = novas.filter((x) => !c.tags.includes(x));
-    if (aplicadas.length && c.status !== "HUMAN" && c.status !== "CLOSED") {
+    if (aplicadas.length) {
       if (nivel >= MAX_CADEIA_FLUXOS) {
         console.warn(`[ig-tags] conversa ${conversaId}: cadeia de fluxos por etiqueta passou de ${MAX_CADEIA_FLUXOS}, parado`);
       } else {

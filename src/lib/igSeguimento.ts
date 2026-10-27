@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { dentroDaJanela, enviarDm } from "@/lib/instagram";
+import { dentroDaJanela, enviarDm, MARGEM_AGENDADO_MS } from "@/lib/instagram";
 import { etiquetar, TAG } from "@/lib/igTags";
 
 const MINUTOS = (m: number) => new Date(Date.now() - m * 60 * 1000);
@@ -23,7 +23,7 @@ export async function seguirSemAtendente(): Promise<number> {
   for (const [conversationId, desde] of ultima) {
     const conversa = await prisma.igConversation.findUnique({ where: { id: conversationId }, include: { account: true } });
     if (!conversa || conversa.status !== "NEEDS_HUMAN" || !conversa.account.active) continue;
-    if (!dentroDaJanela(conversa.lastCustomerMessageAt)) continue;
+    if (!dentroDaJanela(conversa.lastCustomerMessageAt, new Date(), MARGEM_AGENDADO_MS)) continue;
     const depois = await prisma.igMessage.findFirst({
       where: {
         conversationId,

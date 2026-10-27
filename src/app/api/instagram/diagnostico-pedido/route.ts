@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
       id = lista.Orders?.[0]?.Order.id ?? null;
     }
     if (!id) return NextResponse.json({ error: "Nenhum pedido encontrado" }, { status: 404 });
+    if (!/^\d+$/.test(id)) return NextResponse.json({ error: "Informe só números no id do pedido" }, { status: 400 });
 
     const cheio = await trayGet<Record<string, unknown>>(`orders/${id}/complete`).catch(() => null);
     const simples = await trayGet<Record<string, unknown>>(`orders/${id}`).catch(() => null);

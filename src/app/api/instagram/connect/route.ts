@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";
-import { auth } from "@/auth";
+import { exigirAdmin } from "@/lib/igAdmin";
 
 // Começa o login do Instagram (Instagram Business Login) para ligar uma conta
 // à loja: /api/instagram/connect?loja=bff  ou  ?loja=moranga
@@ -15,8 +15,8 @@ const SCOPES = [
 ].join(",");
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  const { erro } = await exigirAdmin();
+  if (erro) return erro;
 
   const loja = req.nextUrl.searchParams.get("loja");
   if (loja !== "bff" && loja !== "moranga") {

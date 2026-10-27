@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { exigirAdmin } from "@/lib/igAdmin";
 import { responder, escreverApoio, type Mensagem } from "@/lib/igBot";
 
 // Teste a seco do robô: /api/instagram/teste?loja=bff&q=<mensagem>[&prev=c:oi||l:Oi!&apoio=esclarecer1|esclarecer2|atendente]
 // prev = conversa anterior (c: cliente, l: loja), separada por ||
 // Roda a mesma escolha de resposta do webhook, sem enviar nada ao Instagram.
 export async function GET(req: NextRequest) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  const { erro } = await exigirAdmin();
+  if (erro) return erro;
 
   const loja = req.nextUrl.searchParams.get("loja");
   const q = req.nextUrl.searchParams.get("q")?.trim();
