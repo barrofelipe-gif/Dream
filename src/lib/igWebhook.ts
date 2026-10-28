@@ -294,6 +294,10 @@ export async function tratarEvento(ev: Evento, opts: { retomada?: { id: string; 
     else if (entradas === 1) novasTags.push(mencionou ? TAG.origemStory : TAG.organico);
     if (declaraCompra(text)) novasTags.push(TAG.comprador);
     if (novasTags.length) await etiquetar(conversa.id, novasTags, veioDeAnuncio ? [TAG.organico] : []);
+  }
+  // Marcação da loja num story: fica gravada e etiquetada no painel, mas nada responde (nem robô, nem regra, nem fluxo).
+  if (mencionou) return;
+  if (!retomada) {
     // A pessoa respondeu: sequências em andamento param e as regras de palavra-chave rodam antes do robô responder.
     await pararPorResposta(conversa.id).catch((err) => console.error("[ig-webhook] pararPorResposta", err));
     await aplicarRegras({ tipo: "PALAVRA_NA_MENSAGEM", texto: text }, conversa.id);
@@ -330,22 +334,7 @@ export async function tratarEvento(ev: Evento, opts: { retomada?: { id: string; 
       return false;
     };
     if (await continuarComResposta(conversa.id, text, botao).catch(semFluxo)) return;
-    if (await tentarGatilhoPorMensagem(conversa.id, text, { payload: botao, story: mencionou || !!ev.message?.reply_to?.story }).catch(semFluxo)) return;
-  }
-
-  // Agradece a marcação no story (uma vez por dia por pessoa) e não passa pela triagem.
-  if (mencionou) {
-    const jaAgradeceu = await prisma.igMessage.findFirst({
-      where: { conversationId: conversa.id, matchedKind: "story_mencao", createdAt: { gt: HORAS(24) } },
-      select: { id: true },
-    });
-    if (!jaAgradeceu) {
-      await enviarEGravar(account, conversa.id, ev.sender.id, {
-        texto: "Obrigada por marcar a gente! 💜",
-        kind: "story_mencao",
-      });
-    }
-    return;
+    if (await tentarGatilhoPorMensagem(conversa.id, text, { payload: botao, story: !!ev.message?.reply_to?.story }).catch(semFluxo)) return;
   }
 
   const loja = account.loja as Loja;

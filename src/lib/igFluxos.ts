@@ -353,7 +353,7 @@ function melhor(c: FluxoCandidato[]): FluxoCandidato | undefined {
 /**
  * Mensagem nova na DM: se um fluxo ativo casar, ele assume a conversa (devolve true).
  * - payload (botão do menu / postback que não é de fluxo): gatilho "postback" com o payload exato;
- * - story: resposta/menção em story (gatilho "story"; sem palavras = qualquer uma);
+ * - story: resposta a story (marcação em story não dispara nada) (gatilho "story"; sem palavras = qualquer uma);
  * - senão: gatilho "palavra" (precisa ter ao menos uma palavra).
  */
 export async function tentarGatilhoPorMensagem(

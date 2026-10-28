@@ -414,7 +414,7 @@ function Painel({
           <label className={rotulo}>O fluxo começa quando…</label>
           <select value={g.tipo} onChange={(e) => set({ tipo: e.target.value })} className={campo}>
             <option value="palavra">Mandar uma palavra-chave na DM</option>
-            <option value="story">Responder ou mencionar um story</option>
+            <option value="story">Responder um story</option>
             <option value="comentario">Comentar numa publicação</option>
             <option value="etiqueta">Receber uma etiqueta</option>
             <option value="postback">Tocar num botão do menu (postback)</option>

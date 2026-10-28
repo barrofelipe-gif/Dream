@@ -377,7 +377,7 @@ export function descreverGatilho(d: DadosGatilho): string {
     case "palavra":
       return d.palavras.trim() ? `DM com ${d.modo === "exata" ? "exatamente" : "a palavra"}: ${d.palavras}` : "DM com palavra-chave (defina as palavras)";
     case "story":
-      return d.palavras.trim() ? `Resposta a story com: ${d.palavras}` : "Qualquer resposta ou menção em story";
+      return d.palavras.trim() ? `Resposta a story com: ${d.palavras}` : "Qualquer resposta a story";
     case "comentario":
       return `Comentário ${d.midiaId ? "numa publicação específica" : "em qualquer publicação"}${d.palavras.trim() ? ` com: ${d.palavras}` : ""}`;
     case "etiqueta":
