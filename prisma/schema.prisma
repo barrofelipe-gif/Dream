@@ -753,3 +753,47 @@ model IgEnvioAgendado {
   @@index([status, enviarEm])
   @@index([conversationId, status])
 }
+
+// ── Messenger (mensagens da Página do Facebook) ─────────────────────────────
+// Separado do Instagram: outra API (Messenger Platform), outro token (o da Página, em SocialConta) e outras regras.
+// Cada conversa é de uma Página só, e a Página é de uma loja só (BFF e Moranga nunca se misturam).
+model FbConversa {
+  id                    String   @id @default(cuid())
+  contaId               String   // SocialConta (rede "facebook") da Página
+  loja                  String   // "bff" | "moranga" (copiado da Página)
+  paginaId              String   // id da Página no Facebook
+  psid                  String   // id da pessoa nesta Página (Page-scoped ID)
+  nome                  String?
+  fotoUrl               String?
+  // BOT: robô pode responder (se ligado na Página) · NEEDS_HUMAN: aguardando atendente · HUMAN: atendente assumiu · CLOSED
+  status                String   @default("BOT")
+  naoLida               Boolean  @default(false)
+  lastCustomerMessageAt DateTime? // base da janela de 24h do Messenger
+  mensagens             FbMensagem[]
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([paginaId, psid])
+  @@index([loja, updatedAt])
+}
+
+model FbMensagem {
+  id            String   @id @default(cuid())
+  conversaId    String
+  conversa      FbConversa @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+  direction     String   // "IN" (cliente) | "OUT" (nós)
+  source        String   // "CLIENTE" | "BOT" | "HUMANO"
+  text          String
+  metaMessageId String?  @unique // idempotência (webhook reenviado, sincronização repetida)
+  matchedKind   String?  // só no robô: "faq" | "pergunta" | "saudacao" | "atendente"
+  createdAt     DateTime @default(now())
+
+  @@index([conversaId, createdAt])
+}
+
+// Robô do Messenger ligado/desligado por Página (fica fora do SocialConta.extra, que o reconectar regrava).
+model FbPaginaConfig {
+  paginaId  String   @id
+  roboAtivo Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+}

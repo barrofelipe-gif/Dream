@@ -4,7 +4,8 @@ export const FB_GRAPH_VERSION = process.env.FB_GRAPH_VERSION ?? "v23.0";
 export const FB_GRAPH = `https://graph.facebook.com/${FB_GRAPH_VERSION}`;
 
 /** Permissões pedidas no login. Publicar e ler a Página; engajamento é para a fase 2 (comentários). */
-export const FB_ESCOPOS = ["pages_show_list", "pages_manage_posts", "pages_read_engagement", "pages_manage_engagement"];
+// pages_messaging + pages_manage_metadata: mensagens da Página no painel (Messenger) e ligar o webhook da Página.
+export const FB_ESCOPOS = ["pages_show_list", "pages_manage_posts", "pages_read_engagement", "pages_manage_engagement", "pages_messaging", "pages_manage_metadata"];
 
 type ErroGraph = { message?: string; code?: number; error_subcode?: number; type?: string };
 

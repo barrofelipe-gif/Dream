@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { exigirAdmin } from "@/lib/igAdmin";
 import { salvarConta } from "@/lib/social/contas";
 import { FB_ESCOPOS, FB_GRAPH } from "@/lib/social/facebook";
+import { assinarPagina } from "@/lib/messenger";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
@@ -64,8 +65,9 @@ export async function GET(req: NextRequest) {
     // 4) grava cada Página (token criptografado pelo salvarConta)
     // Cada Página vai para a sua própria loja (o login traz as duas de uma vez; BFF e Moranga são empresas separadas).
     const lojaDe = (nome: string) => (/moranga/i.test(nome) ? "moranga" : /bff/i.test(nome) ? "bff" : loja);
+    const semMensagens: string[] = [];
     for (const pg of paginas) {
-      await salvarConta({
+      const salva = await salvarConta({
         rede: "facebook",
         loja: lojaDe(pg.name),
         externoId: pg.id,
@@ -77,9 +79,14 @@ export async function GET(req: NextRequest) {
           ? { instagramId: pg.instagram_business_account.id, instagramUsername: pg.instagram_business_account.username ?? null }
           : {},
       });
+      // Messenger: liga o webhook da Página (mensagens no painel). Sem a permissão pages_messaging, só avisa.
+      await assinarPagina(salva.id).catch(() => semMensagens.push(pg.name));
     }
 
-    const res = pagina(`${paginas.length} Página(s) conectada(s).`, true, paginas.map((x) => `${x.name} → loja ${lojaDe(x.name)}`));
+    const res = pagina(`${paginas.length} Página(s) conectada(s).`, true, [
+      ...paginas.map((x) => `${x.name} → loja ${lojaDe(x.name)}`),
+      ...semMensagens.map((n) => `${n}: mensagens do Messenger não ligadas (falta a permissão pages_messaging/pages_manage_metadata).`),
+    ]);
     res.cookies.delete("fb_oauth_state");
     return res;
   } catch (err) {

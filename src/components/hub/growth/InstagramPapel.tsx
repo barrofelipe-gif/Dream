@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import InstagramInbox from "@/components/hub/growth/InstagramInbox";
+import MessengerInbox from "@/components/hub/growth/MessengerInbox";
 import InstagramBoasVindas from "@/components/hub/growth/InstagramBoasVindas";
 import InstagramAutomacoes from "@/components/hub/growth/InstagramAutomacoes";
 import InstagramMenu from "@/components/hub/growth/InstagramMenu";
@@ -122,6 +123,7 @@ export default async function InstagramPapel() {
       </div>
     ) },
     { id: "conversas", rotulo: "Conversas", grupo: "Atendimento", conteudo: <InstagramInbox /> },
+    { id: "messenger", rotulo: "Facebook (Messenger)", grupo: "Atendimento", conteudo: <MessengerInbox /> },
     { id: "equipe", rotulo: "Respostas da equipe", grupo: "Atendimento", conteudo: (
       <div className="space-y-6">
       <section>
