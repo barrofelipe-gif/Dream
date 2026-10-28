@@ -191,6 +191,8 @@ const RASTREIO_APP = "https://converta.app/redirectbff.html";
 /** Mensagem de atacado da BFF, igual à que a equipe manda no WhatsApp: um bloco com botão do app e, em seguida, o convite do grupo VIP. {nome} vira o primeiro nome. */
 /** Site da BFF com o parâmetro de rastreio de parceiro: é a URL que vai para o cliente. */
 export const SITE_BFF = "https://www.bfffitnessatacado.com.br?parceiro=4273";
+/** Grupo de ofertas da BFF (por enquanto o do WhatsApp; troca aqui quando o canal do Instagram tiver link). */
+const GRUPO_OFERTAS_BFF = "https://chat.whatsapp.com/BaLrgr074U7BXoN8ShIIxu";
 
 /** Problema para entrar na conta (quase sempre senha esquecida). */
 const REGEX_LOGIN =
@@ -279,22 +281,31 @@ export function respostaCategoriaBff(mensagem: string): Resposta | null {
 }
 
 /**
- * Mensagem padrão da BFF (texto do Felipe, palavra por palavra): vai para oi/olá, valor, como comprar, atacado ou varejo.
- * Uma mensagem só, com os links no próprio texto.
+ * Mensagem padrão da BFF (modelo do Felipe, igual à do WhatsApp da loja): vai para oi/olá, valor, como comprar, atacado ou varejo.
+ * Um bloco com o botão do app e, 1 h depois, o convite das ofertas com o link do grupo.
  */
 export const ATACADO_BFF: { partes: string[]; link?: { title: string; url: string }; seguinte?: { texto: string; links: { title: string; url: string }[]; depoisMin: number } } = {
   partes: [
     [
-      "Olaaaa!!",
-      "Vendemos apenas no atacado. Pedido mínimo de 350,00",
-      "As vendas são feitas diretamente pelo site abaixo, não temos catálogo:",
-      SITE_BFF,
+      "Ei, {nome}, vou te explicar como funciona, é bem simples!",
       "",
+      "SÓ VENDEMOS ATACADO, já está no valor de atacado.",
+      "🎯 Não precisa de CNPJ",
+      "💲 Pedido mínimo",
+      "De: R$ 700 Por: R$ 350",
+      "💳 Parcele em 12x no cartão",
+      "🚚 Envio rápido para todo o Brasil e exterior",
       "",
-      "Ou no nosso APP :",
-      APP_BFF,
+      "⬇️ NÃO TEMOS CATÁLOGO ⬇️",
+      "📲 Baixe e compre pelo APP e receba descontos exclusivos:",
     ].join("\n"),
   ],
+  link: { title: "Abrir o app", url: APP_BFF },
+  seguinte: {
+    texto: "Fique por dentro das OFERTAS E PROMOÇÕES 👇👇👇",
+    links: [{ title: "Entrar no grupo", url: GRUPO_OFERTAS_BFF }],
+    depoisMin: 60,
+  },
 };
 // Palavras que indicam dúvida de compra (atacado, varejo, pedido mínimo, revenda, CNPJ, catálogo, como comprar).
 const REGEX_COMPRA =
