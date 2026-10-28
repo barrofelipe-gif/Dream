@@ -282,15 +282,16 @@ export const ATACADO_BFF = {
   // Duas mensagens (como na conversa de WhatsApp da loja): a abertura e, logo depois, as condições com o botão do app.
   partes: [
     ["Ei, {nome}, vou te explicar como funciona, é bem simples!", "", "SÓ VENDEMOS ATACADO, já está no valor de atacado."].join("\n"),
+    // Blocos com linha em branco entre eles: no Instagram tudo junto fica uma parede de texto.
     [
       "🎯 Não precisa de CNPJ",
-      "💲 Pedido Mínimo",
-      "De: R$700 Por: R$350",
+      "💲 Pedido mínimo: de R$ 700 por R$ 350",
       "💳 Parcele em 12x no cartão",
-      "🚚 Envio Rápido para todo Brasil e Exterior",
+      "🚚 Envio rápido para todo o Brasil e exterior",
       "",
       "⬇️ NÃO TEMOS CATÁLOGO ⬇️",
-      "📲 Baixe e Compre pelo APP, receba descontos exclusivos:",
+      "",
+      "📲 Baixe e compre pelo APP e receba descontos exclusivos:",
     ].join("\n"),
   ],
   link: { title: "Ver produtos", url: RASTREIO_APP },

@@ -22,7 +22,8 @@ export function assinaturaValida(rawBody: string, header: string | null): boolea
 export function comLinksNoTexto(texto: string, botoes: { url: string }[] | undefined): string {
   const faltam = (botoes ?? []).map((b) => b.url).filter((u, i, a) => !texto.includes(u) && a.indexOf(u) === i);
   if (faltam.length === 0) return texto;
-  const extra = "\n" + faltam.join("\n");
+  // Link em bloco próprio, com respiro e a setinha: grudado no texto fica feio e some no meio.
+  const extra = "\n\n" + faltam.map((u) => `👉 ${u}`).join("\n");
   return cortarCaracteres(texto, 640 - extra.length) + extra;
 }
 
