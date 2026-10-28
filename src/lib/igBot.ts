@@ -278,36 +278,39 @@ export function respostaCategoriaBff(mensagem: string): Resposta | null {
   };
 }
 
-export const ATACADO_BFF = {
-  // Duas mensagens (como na conversa de WhatsApp da loja): a abertura e, logo depois, as condições com o botão do app.
+/**
+ * Mensagem padrão da BFF (texto do Felipe, palavra por palavra): vai para oi/olá, valor, como comprar, atacado ou varejo.
+ * Uma mensagem só, com os links no próprio texto.
+ */
+export const ATACADO_BFF: { partes: string[]; link?: { title: string; url: string }; seguinte?: { texto: string; links: { title: string; url: string }[]; depoisMin: number } } = {
   partes: [
-    ["Ei, {nome}, vou te explicar como funciona, é bem simples!", "", "SÓ VENDEMOS ATACADO, já está no valor de atacado."].join("\n"),
-    // Blocos com linha em branco entre eles: no Instagram tudo junto fica uma parede de texto.
     [
-      "🎯 Não precisa de CNPJ",
-      "💲 Pedido mínimo: de R$ 700 por R$ 350",
-      "💳 Parcele em 12x no cartão",
-      "🚚 Envio rápido para todo o Brasil e exterior",
+      "Olaaaa!!",
+      "Vendemos apenas no atacado. Pedido mínimo de 350,00",
+      "As vendas são feitas diretamente pelo site abaixo, não temos catálogo:",
+      SITE_BFF,
       "",
-      "⬇️ NÃO TEMOS CATÁLOGO ⬇️",
       "",
-      "📲 Baixe e compre pelo APP e receba descontos exclusivos:",
+      "Ou no nosso APP :",
+      APP_BFF,
     ].join("\n"),
   ],
-  link: { title: "Ver produtos", url: RASTREIO_APP },
-  // ~2 min depois: quem quer "catálogo" recebe o botão do app (só o app) e o convite do grupo VIP.
-  seguinte: {
-    texto: "Fique por dentro das OFERTAS E PROMOÇÕES 👇👇👇",
-    links: [
-      { title: "Ver catálogo no app", url: RASTREIO_APP },
-      { title: "GRUPO VIP", url: "https://chat.whatsapp.com/BaLrgr074U7BXoN8ShIIxu" },
-    ],
-    depoisMin: 2,
-  },
 };
 // Palavras que indicam dúvida de compra (atacado, varejo, pedido mínimo, revenda, CNPJ, catálogo, como comprar).
 const REGEX_COMPRA =
-  /atacado|varejo|pedido m[ií]nimo|valor m[ií]nimo|compra m[ií]nima|revend|lojista|sacoleir|cnpj|cat[aá]logo|como (eu )?(fa[cç]o|faz|posso|consigo|compro)[^.?!]{0,12}comprar|quero comprar|onde (eu )?compro|como compro/i;
+  /atacado|varejo|pedido m[ií]nimo|valor m[ií]nimo|compra m[ií]nima|revend|lojista|sacoleir|cnpj|cat[aá]logo|como (eu )?(fa[cç]o|faz|posso|consigo|compro)[^.?!]{0,12}comprar|como comprar|quero comprar|onde (eu )?compro|como compro/i;
+
+/** Mensagem que é só um cumprimento (oi, olá, oie, bom dia…), com ou sem pontuação e emoji. */
+export function soCumprimento(mensagem: string): boolean {
+  const t = semAcento(mensagem).replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
+  return !!t && /^((o+i+e*|ola+|opa+|e ai|eai|hey|bom dia|boa tarde|boa noite|tudo bem|td bem|blz)\s?)+$/.test(t);
+}
+
+/** Resposta com a mensagem padrão de atacado da BFF. */
+function respostaAtacadoBff(mensagem: string): Resposta {
+  const semCnpj = /cnpj|pessoa f[ií]sica|\bcpf\b/i.test(mensagem) ? ["Pode comprar sem CNPJ, sim."] : [];
+  return { tipo: "resposta", partes: [...semCnpj, ...ATACADO_BFF.partes], link: ATACADO_BFF.link, seguinte: ATACADO_BFF.seguinte, kind: "faq", id: 9004, confianca: "alta" };
+}
 
 /**
  * Tira das mensagens qualquer frase sobre preço diferente no Pix x cartão (ou desconto no Pix):
@@ -349,7 +352,10 @@ export async function responder(
   }
   // BFF: pediu uma peça (mesmo que a gente não tenha) → manda olhar a categoria no app, nunca diz que não tem.
   if (loja === "bff") {
-    const preco = respostaPrecoBff(opts.ultimaMensagem ?? contexto);
+    const ultima = opts.ultimaMensagem ?? contexto;
+    // Oi/olá ou pergunta de valor: mensagem padrão de atacado (se ela já foi nas últimas 12 h, segue o caminho normal).
+    if (!opts.semRoteiroCompra && (soCumprimento(ultima) || respostaPrecoBff(ultima))) return respostaAtacadoBff(opts.ultimaMensagem ?? contexto);
+    const preco = respostaPrecoBff(ultima);
     if (preco) return preco;
     const cat = respostaCategoriaBff(opts.ultimaMensagem ?? contexto);
     if (cat) return cat;
@@ -404,18 +410,7 @@ export async function responder(
   if (t.tipo === "rastreio") return { tipo: "humano", motivo: "rastreio sem regra para esta loja" };
 
   // Compra: roteiro fixo da BFF, um recado por mensagem e SEMPRE com o link do app.
-  if ((t.tipo === "compra" || forcaCompra) && loja === "bff" && !opts.semRoteiroCompra) {
-    const semCnpj = /cnpj|pessoa f[ií]sica|\bcpf\b/i.test(contexto) ? ["Pode comprar sem CNPJ, sim."] : [];
-    return {
-      tipo: "resposta",
-      partes: [...semCnpj, ...ATACADO_BFF.partes],
-      link: ATACADO_BFF.link,
-      seguinte: ATACADO_BFF.seguinte,
-      kind: "faq",
-      id: 9004,
-      confianca: "alta",
-    };
-  }
+  if ((t.tipo === "compra" || forcaCompra) && loja === "bff" && !opts.semRoteiroCompra) return respostaAtacadoBff(opts.ultimaMensagem ?? contexto);
   // Atraso: o fluxo (orientar pelo app e, se já passou do prazo, chamar atendente) é montado no webhook.
   if (t.tipo === "atraso") return loja === "bff" ? { tipo: "atraso" } : { tipo: "humano", motivo: "atraso sem regra para esta loja" };
 
