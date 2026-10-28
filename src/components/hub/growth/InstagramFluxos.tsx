@@ -1328,7 +1328,7 @@ export default function InstagramFluxos() {
                   const execucoes = emAndamento + (f.stats.CONCLUIDO ?? 0) + (f.stats.CANCELADO ?? 0);
                   return (
                     <tr key={f.id} className="border-b border-[#f1f2f5] last:border-0 hover:bg-[#fafbfc]">
-                      <td className="max-w-0 px-4 py-3">
+                      <td className="min-w-[240px] max-w-[380px] px-4 py-3">
                         <button onClick={() => setAbertoId(f.id)} className="flex w-full min-w-0 items-center gap-2 text-left">
                           <span
                             className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold tracking-wide ${f.ativo ? "bg-[#dcfce7] text-[#15803d]" : "bg-[#eef0f3] text-[#6b6f80]"}`}
