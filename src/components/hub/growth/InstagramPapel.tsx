@@ -99,10 +99,15 @@ export default async function InstagramPapel() {
           className="flex min-h-[44px] flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 hover:border-amber-300"
         >
           <span className="min-w-0 flex-1">
-            <b>{aguardando}</b> conversa{aguardando === 1 ? "" : "s"} aguardando atendente
+            {aguardando > 0 && (
+              <>
+                <b>{aguardando}</b> conversa{aguardando === 1 ? "" : "s"} aguardando atendente
+              </>
+            )}
+            {aguardando > 0 && naoLidas > 0 && " · "}
             {naoLidas > 0 && (
               <>
-                {" "}· <b>{naoLidas}</b> não lida{naoLidas === 1 ? "" : "s"}
+                <b>{naoLidas}</b> conversa{naoLidas === 1 ? "" : "s"} não lida{naoLidas === 1 ? "" : "s"}
               </>
             )}
           </span>
