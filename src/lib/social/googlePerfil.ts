@@ -44,7 +44,10 @@ export async function lerPerfilGoogle(): Promise<PerfilGoogle> {
   for (const m of html.matchAll(/aria-label="\s*(Instagram|Facebook|TikTok|YouTube|X)\s+(.+?)\s+([\d.,]+(?:\s*mil|\s*mi)?)\s+seguidores"/g)) {
     if (!redes.some((r) => r.rede === m[1])) redes.push({ rede: m[1], conta: limpar(m[2]), seguidores: m[3].trim() });
   }
-  const postsRecentes = new Set(html.match(/(?:instagram\.com\/(?:p|reel)|facebook\.com\/[^"'\s]+\/(?:posts|videos)|tiktok\.com\/@[^"'\s]+\/video)\/[A-Za-z0-9_-]+/g) ?? []).size;
+  // Posts de cada rede que o perfil mostra (Instagram, Facebook com Reels, TikTok e YouTube com Shorts).
+  const postsRecentes = new Set(
+    html.match(/(?:instagram\.com\/(?:p|reel)\/|facebook\.com\/(?:reel\/|[^"'\s]+\/(?:posts|videos)\/)|tiktok\.com\/@[^"'\s]+\/video\/|youtube\.com\/(?:shorts\/|watch\?v=)|youtu\.be\/)[A-Za-z0-9_-]+/g) ?? [],
+  ).size;
   const temSite = html.includes("bfffitnessatacado.com.br");
 
   const avisos: string[] = [];
