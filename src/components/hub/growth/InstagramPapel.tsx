@@ -4,7 +4,7 @@ import InstagramInbox from "@/components/hub/growth/InstagramInbox";
 import InstagramBoasVindas from "@/components/hub/growth/InstagramBoasVindas";
 import InstagramAutomacoes from "@/components/hub/growth/InstagramAutomacoes";
 import InstagramMenu from "@/components/hub/growth/InstagramMenu";
-import SocialPublicador from "@/components/hub/growth/SocialPublicador";
+import SocialPublicarAba from "@/components/hub/growth/SocialPublicarAba";
 import InstagramTransmissoes from "@/components/hub/growth/InstagramTransmissoes";
 import InstagramContatos from "@/components/hub/growth/InstagramContatos";
 import InstagramSequencias from "@/components/hub/growth/InstagramSequencias";
@@ -12,7 +12,6 @@ import InstagramRegras from "@/components/hub/growth/InstagramRegras";
 import InstagramRespostasSalvas from "@/components/hub/growth/InstagramRespostasSalvas";
 import InstagramFluxos from "@/components/hub/growth/InstagramFluxos";
 import SocialMetricas from "@/components/hub/growth/SocialMetricas";
-import SocialMapa from "@/components/hub/growth/SocialMapa";
 import InstagramAbas, { type Aba } from "@/components/hub/growth/InstagramAbas";
 
 /**
@@ -162,8 +161,7 @@ export default async function InstagramPapel() {
     { id: "contatos", rotulo: "Contatos", grupo: "Audiência", conteudo: <InstagramContatos /> },
     { id: "transmissao", rotulo: "Transmissão", grupo: "Audiência", conteudo: <InstagramTransmissoes /> },
     { id: "sequencias", rotulo: "Sequências", grupo: "Audiência", conteudo: <InstagramSequencias /> },
-    { id: "publicar", rotulo: "Publicar", grupo: "Redes", conteudo: <SocialPublicador /> },
-    { id: "mapa", rotulo: "Mapa das redes", grupo: "Redes", conteudo: <SocialMapa /> },
+    { id: "publicar", rotulo: "Publicar", grupo: "Redes", conteudo: <SocialPublicarAba /> },
     { id: "metricas", rotulo: "Métricas", grupo: "Redes", conteudo: <SocialMetricas /> },
   ];
 

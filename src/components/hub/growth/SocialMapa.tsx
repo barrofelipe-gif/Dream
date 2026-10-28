@@ -491,6 +491,75 @@ function PaginaRede({ rede }: { rede: Rede }) {
   );
 }
 
+/** Próximo horário da agenda-modelo de uma rede, a partir de agora (com 10 min de folga para dar tempo de agendar). */
+function proximoHorario(rede: Rede, agora = new Date()) {
+  const base = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
+  for (let off = 0; off < 8; off++) {
+    const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + off);
+    const w = (d.getDay() + 6) % 7;
+    const slots = MAPA[rede].agenda.filter((s) => s.dia === w).sort((a, b) => minutos(a.hora) - minutos(b.hora));
+    for (const s of slots) {
+      const quando = new Date(d.getFullYear(), d.getMonth(), d.getDate(), Number(s.hora.slice(0, 2)), Number(s.hora.slice(3, 5)));
+      if (quando.getTime() > agora.getTime() + 10 * 60_000) return { quando, slot: s };
+    }
+  }
+  return null;
+}
+
+/**
+ * Coluna ao lado do publicador: para cada rede escolhida, o próximo horário bom do mapa (botão que preenche
+ * o "Quando"), a dica principal e a medida do formato. O link abre o mapa completo.
+ */
+export function DicasPublicacao({ redes, onUsar, abrirMapa }: { redes: Rede[]; onUsar: (valorDatetimeLocal: string) => void; abrirMapa: () => void }) {
+  const lista = ORDEM.filter((r) => redes.includes(r));
+  const local = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return (
+    <div className="w-full space-y-2 rounded-2xl border border-[#e3e5ea] bg-white p-3 shadow-sm">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-[#1b1f2b]">Mapa de publicação</p>
+        <button type="button" onClick={abrirMapa} className="text-[11px] font-medium text-[#6366f1] hover:underline">
+          Abrir o mapa completo
+        </button>
+      </div>
+      {!lista.length && <p className="text-xs text-[#8a8f9c]">Escolha onde postar para ver o melhor horário e as dicas de cada rede.</p>}
+      {lista.map((rede) => {
+        const r = MAPA[rede];
+        const p = proximoHorario(rede);
+        return (
+          <div key={rede} className="rounded-xl border border-[#e3e5ea] p-2.5" style={{ borderLeft: `4px solid ${r.cor}` }}>
+            <div className="flex items-center justify-between gap-2">
+              <Selo rede={rede} />
+              {p && (
+                <button
+                  type="button"
+                  onClick={() => onUsar(local(p.quando))}
+                  className="rounded-lg border border-[#e3e5ea] px-2 py-0.5 text-[11px] font-semibold text-[#4b5563] hover:border-[#6366f1] hover:text-[#4f46e5]"
+                >
+                  Usar horário
+                </button>
+              )}
+            </div>
+            {p ? (
+              <p className="mt-1.5 text-xs text-[#1b1f2b]">
+                Próximo: <b>{CURTO[(p.quando.getDay() + 6) % 7]} {pad(p.quando.getDate())}/{pad(p.quando.getMonth() + 1)} às {p.slot.hora}</b> · {p.slot.formato}
+              </p>
+            ) : (
+              <p className="mt-1.5 text-xs text-[#8a8f9c]">Sem horário na agenda desta rede.</p>
+            )}
+            <p className="mt-1 text-[11px] leading-snug text-[#6b7280]">{r.repetir[0]}</p>
+            {r.medidas[0] && (
+              <p className="mt-0.5 text-[11px] text-[#9ca3af]">
+                {r.medidas[0][0]}: {r.medidas[0][1]}
+              </p>
+            )}
+          </div>
+        );
+      })}
+      {lista.length > 1 && <p className="text-[10.5px] leading-snug text-[#9ca3af]">Uma postagem tem um horário só para todas as redes escolhidas. Para cada rede sair no seu horário, faça uma postagem por rede.</p>}
+    </div>
+  );
+}
+
 export default function SocialMapa() {
   const [aba, setAba] = useState<AbaId>("geral");
   const abas: { id: AbaId; rotulo: string }[] = [{ id: "geral", rotulo: "Visão geral" }, ...ORDEM.map((r) => ({ id: r, rotulo: MAPA[r].rotulo }))];

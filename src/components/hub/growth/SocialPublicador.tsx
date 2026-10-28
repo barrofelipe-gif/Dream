@@ -2,6 +2,7 @@
 
 import { upload } from "@vercel/blob/client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DicasPublicacao } from "@/components/hub/growth/SocialMapa";
 
 type Rede = "instagram" | "facebook" | "tiktok" | "youtube" | "pinterest";
 type InfoRede = {
@@ -40,7 +41,7 @@ const campo =
 const fmt = (iso: string | null) =>
   iso ? new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }).format(new Date(iso)) : "—";
 
-export default function SocialPublicador() {
+export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void }) {
   const [redes, setRedes] = useState<InfoRede[]>([]);
   const [contas, setContas] = useState<Conta[]>([]);
   const [escolhidas, setEscolhidas] = useState<Set<string>>(new Set());
@@ -367,9 +368,9 @@ export default function SocialPublicador() {
           </div>
         </div>
 
-        {/* Prévia */}
-        <div className="flex justify-center">
-          <div className="w-[280px] self-start rounded-[2rem] border border-[#e3e5ea] bg-[#fafafa] p-3 shadow-sm">
+        {/* Prévia e, embaixo, o mapa de publicação das redes escolhidas */}
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-[280px] self-center rounded-[2rem] border border-[#e3e5ea] bg-[#fafafa] p-3 shadow-sm">
             <div className="rounded-xl bg-white p-3 shadow-sm">
               <div className="mb-2 flex items-center gap-2">
                 <span className="h-7 w-7 rounded-full bg-[#e3e5ea]" />
@@ -392,6 +393,7 @@ export default function SocialPublicador() {
             </div>
             <p className="mt-2 text-center text-[10px] text-[#a1a5b0]">{escolhidas.size} conta{escolhidas.size === 1 ? "" : "s"} escolhida{escolhidas.size === 1 ? "" : "s"}</p>
           </div>
+          <DicasPublicacao redes={[...redesEscolhidas]} onUsar={setQuando} abrirMapa={() => abrirMapa?.()} />
         </div>
       </div>
 
