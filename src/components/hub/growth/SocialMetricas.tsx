@@ -366,14 +366,14 @@ export default function SocialMetricas() {
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {resumo.top.map((p, i) => (
-                  <a key={p.externoId} href={p.permalink ?? undefined} target="_blank" rel="noreferrer" className="flex gap-3 rounded-xl border border-[#e3e5ea] p-2 hover:border-[#6366f1]">
+                  <a key={p.externoId} href={p.permalink ?? undefined} target="_blank" rel="noreferrer" className="flex min-w-0 gap-3 rounded-xl border border-[#e3e5ea] p-2 hover:border-[#6366f1]">
                     {p.miniatura ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={p.miniatura} alt="" className="h-20 w-20 shrink-0 rounded-lg object-cover" />
                     ) : (
                       <div className="h-20 w-20 shrink-0 rounded-lg bg-[#f3f4f6]" />
                     )}
-                    <div className="min-w-0 text-xs">
+                    <div className="min-w-0 flex-1 text-xs">
                       <div className="font-semibold text-[#1b1f2b]">
                         {i + 1}º · {p.tipo} · {dataCurta(p.publicadoEm)}
                       </div>

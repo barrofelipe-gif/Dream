@@ -926,7 +926,7 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
         {posts && posts.length === 0 && <p className="rounded-xl border border-dashed border-[#d5d8e0] p-4 text-center text-xs text-[#8a8f9c]">Nenhuma postagem ainda.</p>}
         <div className="grid gap-2 xl:grid-cols-2">
           {(posts ?? []).map((p) => (
-            <div key={p.id} className="rounded-xl border border-[#e3e5ea] p-3">
+            <div key={p.id} className="min-w-0 rounded-xl border border-[#e3e5ea] p-3">
               <div className="flex items-start gap-3">
                 {p.midias[0] &&
                   (p.midias[0].tipo === "video" ? (
