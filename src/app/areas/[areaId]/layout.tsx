@@ -32,7 +32,7 @@ export default async function AreaLayout({
 
   return (
     <div className="min-h-screen bg-[#f4f5f7] text-[#1b1f2b]">
-      <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-[#e3e5ea] bg-white px-6 py-3">
+      <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-[#e3e5ea] bg-white px-4 py-3 sm:px-6">
         <Link href="/hub" className="flex items-center gap-2 text-sm font-semibold text-[#1b1f2b]">
           <span
             className="flex h-8 w-8 items-center justify-center rounded-lg text-white"
@@ -54,7 +54,7 @@ export default async function AreaLayout({
         </div>
       </header>
 
-      <div className="flex w-full gap-6 px-4 py-6 sm:px-6">
+      <div className="flex w-full gap-6 px-3 py-4 sm:px-6 sm:py-6">
         <BarraLateralRecolhivel>
           <Link
             href="/hub"

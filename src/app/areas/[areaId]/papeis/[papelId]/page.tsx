@@ -49,6 +49,8 @@ export default async function PapelPage({
   if (!encontrado) notFound();
   const { area, papel } = encontrado;
   const avaliacoes = PAPEIS_AVALIACOES[`${areaId}/${papelId}`];
+  // Instagram é uma ferramenta de trabalho (usada no celular também): ficha enxuta e largura toda.
+  const ig = areaId === "growth" && papelId === "instagram";
   const conteudoReal =
     areaId === "financas"
       ? CONTEUDO_FINANCAS[papelId]
@@ -62,7 +64,7 @@ export default async function PapelPage({
         : undefined;
 
   return (
-    <div className={`${areaId === "growth" && papelId === "instagram" ? "w-full min-w-0" : avaliacoes || conteudoReal ? "max-w-4xl" : "max-w-2xl"} space-y-6 pb-10`}>
+    <div className={`${ig ? "w-full min-w-0 space-y-3 sm:space-y-6" : `${avaliacoes || conteudoReal ? "max-w-4xl" : "max-w-2xl"} space-y-6`} pb-10`}>
       <Link
         href={`/areas/${area.id}`}
         className="inline-flex items-center gap-1.5 text-xs font-medium text-[#8a8f9c] hover:text-[#1b1f2b]"
@@ -70,8 +72,8 @@ export default async function PapelPage({
         ← Voltar para {area.name}
       </Link>
 
-      <div className="rounded-2xl border border-[#e3e5ea] bg-white p-6 shadow-sm">
-        <div className="mb-4 flex items-center gap-3">
+      <div className={`rounded-2xl border border-[#e3e5ea] bg-white shadow-sm ${ig ? "p-3 sm:p-6" : "p-6"}`}>
+        <div className={`flex items-center gap-3 ${ig ? "mb-0 sm:mb-4" : "mb-4"}`}>
           <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#eef0f4] text-[#6366f1]">
             <Icon name={papel.icon} size={22} />
           </span>
@@ -83,6 +85,7 @@ export default async function PapelPage({
           </div>
         </div>
 
+        <div className={ig ? "hidden sm:block" : undefined}>
         <p className="text-sm leading-relaxed text-[#5a5f6d]">{papel.desc}</p>
 
         <div className="mt-5">
@@ -97,6 +100,7 @@ export default async function PapelPage({
               </span>
             ))}
           </div>
+        </div>
         </div>
 
         {conteudoReal ? (
