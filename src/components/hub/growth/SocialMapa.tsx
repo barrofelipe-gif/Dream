@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { MAPA, ORDEM, LEVANTADO_EM, type Item, type RedeMapa, type Confianca } from "@/lib/social/mapaRedes";
+import { MAPA, ORDEM, LEVANTADO_EM, proximosHorarios, type Item, type RedeMapa, type Confianca } from "@/lib/social/mapaRedes";
 import type { Rede } from "@/lib/social/types";
 
 type AbaId = "geral" | Rede;
@@ -49,7 +49,7 @@ const ICONES: Record<Rede, string> = {
     "M12 2a10 10 0 0 0-3.6 19.3c-.1-.8-.2-2 0-2.9l1.2-5s-.3-.6-.3-1.5c0-1.4.8-2.4 1.8-2.4.9 0 1.3.6 1.3 1.4 0 .9-.5 2.1-.8 3.3-.2 1 .5 1.8 1.5 1.8 1.8 0 3.1-1.9 3.1-4.6 0-2.4-1.7-4.1-4.2-4.1-2.9 0-4.5 2.1-4.5 4.4 0 .9.3 1.8.8 2.3.1.1.1.2.1.3l-.3 1.2c0 .2-.2.2-.4.1-1.3-.6-2.1-2.5-2.1-4 0-3.3 2.4-6.3 6.9-6.3 3.6 0 6.4 2.6 6.4 6 0 3.6-2.3 6.5-5.4 6.5-1.1 0-2.1-.6-2.4-1.2l-.7 2.5c-.2.9-.9 2.1-1.3 2.8A10 10 0 1 0 12 2z",
 };
 
-function Icone({ rede, tamanho = 14 }: { rede: Rede; tamanho?: number }) {
+export function Icone({ rede, tamanho = 14 }: { rede: Rede; tamanho?: number }) {
   return (
     <svg viewBox="0 0 24 24" width={tamanho} height={tamanho} fill="currentColor" aria-hidden className="shrink-0">
       <path fillRule="evenodd" d={ICONES[rede]} />
@@ -57,7 +57,7 @@ function Icone({ rede, tamanho = 14 }: { rede: Rede; tamanho?: number }) {
   );
 }
 
-function Selo({ rede, curto }: { rede: Rede; curto?: boolean }) {
+export function Selo({ rede, curto }: { rede: Rede; curto?: boolean }) {
   const r = MAPA[rede];
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold" style={estiloMarca(r)}>
@@ -492,25 +492,16 @@ function PaginaRede({ rede }: { rede: Rede }) {
 }
 
 /** Próximo horário da agenda-modelo de uma rede, a partir de agora (com 10 min de folga para dar tempo de agendar). */
-function proximoHorario(rede: Rede, agora = new Date()) {
-  const base = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
-  for (let off = 0; off < 8; off++) {
-    const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() + off);
-    const w = (d.getDay() + 6) % 7;
-    const slots = MAPA[rede].agenda.filter((s) => s.dia === w).sort((a, b) => minutos(a.hora) - minutos(b.hora));
-    for (const s of slots) {
-      const quando = new Date(d.getFullYear(), d.getMonth(), d.getDate(), Number(s.hora.slice(0, 2)), Number(s.hora.slice(3, 5)));
-      if (quando.getTime() > agora.getTime() + 10 * 60_000) return { quando, slot: s };
-    }
-  }
-  return null;
+function proximoHorario(rede: Rede, ocupados: Date[] = []) {
+  const p = proximosHorarios(rede, 1, ocupados)[0];
+  return p ? { quando: p.quando, slot: { hora: p.hora, formato: p.formato } } : null;
 }
 
 /**
  * Coluna ao lado do publicador: para cada rede escolhida, o próximo horário bom do mapa (botão que preenche
  * o "Quando"), a dica principal e a medida do formato. O link abre o mapa completo.
  */
-export function DicasPublicacao({ redes, onUsar, abrirMapa }: { redes: Rede[]; onUsar: (valorDatetimeLocal: string) => void; abrirMapa: () => void }) {
+export function DicasPublicacao({ redes, onUsar, abrirMapa, ocupados = {} }: { redes: Rede[]; onUsar: (valorDatetimeLocal: string) => void; abrirMapa: () => void; ocupados?: Partial<Record<Rede, Date[]>> }) {
   const lista = ORDEM.filter((r) => redes.includes(r));
   const local = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   return (
@@ -524,7 +515,7 @@ export function DicasPublicacao({ redes, onUsar, abrirMapa }: { redes: Rede[]; o
       {!lista.length && <p className="text-xs text-[#8a8f9c]">Escolha onde postar para ver o melhor horário e as dicas de cada rede.</p>}
       {lista.map((rede) => {
         const r = MAPA[rede];
-        const p = proximoHorario(rede);
+        const p = proximoHorario(rede, ocupados[rede]);
         return (
           <div key={rede} className="rounded-xl border border-[#e3e5ea] p-2.5" style={{ borderLeft: `4px solid ${r.cor}` }}>
             <div className="flex items-center justify-between gap-2">

@@ -373,3 +373,38 @@ export const MAPA: Record<Rede, RedeMapa> = {
     ],
   },
 };
+
+const minutosDe = (h: string) => Number(h.slice(0, 2)) * 60 + Number(h.slice(3, 5));
+
+/** Brasil sem horário de verão desde 2019: Brasília é sempre UTC-3. */
+const BRASILIA_MS = -3 * 3600_000;
+
+/**
+ * Os próximos `n` horários bons de uma rede pela agenda-modelo, a partir de agora (10 min de folga), pulando
+ * horários que já têm postagem agendada nessa rede (menos de 45 min de distância). Os dias e horas são de
+ * Brasília, seja qual for o fuso do navegador.
+ */
+export function proximosHorarios(rede: Rede, n: number, ocupados: Date[] = [], agora = new Date()): { quando: Date; hora: string; formato: string }[] {
+  const out: { quando: Date; hora: string; formato: string }[] = [];
+  const livre = (d: Date) => ![...ocupados, ...out.map((o) => o.quando)].some((o) => Math.abs(o.getTime() - d.getTime()) < 45 * 60_000);
+  // Stories ficam de fora: o publicador posta feed, Reels e vídeo, não Stories.
+  const agenda = MAPA[rede].agenda.filter((x) => !/^Stories$/i.test(x.formato));
+  if (!agenda.length) return out;
+  const br = new Date(agora.getTime() + BRASILIA_MS); // campos UTC = relógio de Brasília
+  for (let off = 0; off < 60 && out.length < n; off++) {
+    const dia = new Date(Date.UTC(br.getUTCFullYear(), br.getUTCMonth(), br.getUTCDate() + off));
+    const w = (dia.getUTCDay() + 6) % 7;
+    for (const s of agenda.filter((x) => x.dia === w).sort((a, b) => minutosDe(a.hora) - minutosDe(b.hora))) {
+      const quando = new Date(Date.UTC(dia.getUTCFullYear(), dia.getUTCMonth(), dia.getUTCDate(), Number(s.hora.slice(0, 2)), Number(s.hora.slice(3, 5))) - BRASILIA_MS);
+      if (quando.getTime() > agora.getTime() + 10 * 60_000 && livre(quando)) out.push({ quando, hora: s.hora, formato: s.formato });
+      if (out.length >= n) break;
+    }
+  }
+  return out;
+}
+
+/** Valor para o campo datetime-local (AAAA-MM-DDTHH:MM) no relógio local. */
+export function paraCampoData(d: Date): string {
+  const p = (x: number) => String(x).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}

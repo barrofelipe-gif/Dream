@@ -54,7 +54,7 @@ export default async function AreaLayout({
         </div>
       </header>
 
-      <div className="mx-auto flex max-w-[1800px] gap-6 px-6 py-6">
+      <div className="flex w-full gap-6 px-4 py-6 sm:px-6">
         <BarraLateralRecolhivel>
           <Link
             href="/hub"

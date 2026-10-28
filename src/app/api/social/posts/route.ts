@@ -71,6 +71,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Escolha uma data e hora no futuro" }, { status: 400 });
   }
 
+  // Post trazido do Instagram da BFF: só vai para contas da BFF (nunca misturar com a Moranga) e nunca duas vezes
+  // para a mesma conta (só uma tentativa que deu erro pode ser refeita).
+  const origem = typeof b.porRede?._origem === "string" ? b.porRede._origem : null;
+  if (origem) {
+    if (!/^\d+$/.test(origem)) return NextResponse.json({ error: "Origem inválida" }, { status: 400 });
+    const destinos = await prisma.socialConta.findMany({ where: { id: { in: contaIds } }, select: { id: true, loja: true } });
+    if (destinos.length !== contaIds.length || destinos.some((d) => d.loja !== "bff")) {
+      return NextResponse.json({ error: "Conteúdo do Instagram da BFF só pode ir para contas da BFF." }, { status: 400 });
+    }
+    const repetidos = await prisma.socialPostAlvo.findMany({
+      where: { contaId: { in: contaIds }, status: { not: "ERRO" }, post: { status: { not: "RASCUNHO" }, porRede: { contains: `"_origem":"${origem}"` } } },
+      select: { conta: { select: { rede: true } } },
+    });
+    if (repetidos.length) {
+      return NextResponse.json({ error: `Este post do Instagram já foi (ou está agendado) para ${[...new Set(repetidos.map((r) => r.conta.rede))].join(", ")}.` }, { status: 409 });
+    }
+  }
+
   const tipo = b.tipo ?? (midias.length > 1 ? "carrossel" : midias[0]?.tipo === "video" ? "video" : midias.length ? "imagem" : "texto");
   const post = await prisma.socialPost.create({
     data: {
