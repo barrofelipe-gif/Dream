@@ -53,9 +53,23 @@ export async function salvarConta(d: {
     extra: JSON.stringify(d.extra ?? {}),
     ativo: true,
   };
-  return prisma.socialConta.upsert({
-    where: { rede_externoId: { rede: d.rede, externoId: d.externoId } },
-    create: { rede: d.rede, externoId: d.externoId, ...dados },
-    update: dados,
-  });
+  // BFF e Moranga nunca se misturam (mesma trava do Instagram): logado na rede de uma marca e clicou no botão da outra,
+  // a conta não troca de loja escondido. O nome/@ decide quando diz a marca; sem marca no nome, conta já ligada não muda.
+  const nomeLoja = (l: string) => (l === "bff" ? "BFF" : "Moranga");
+  const texto = `${d.nome ?? ""} ${d.username ?? ""}`;
+  const marca = /bff/i.test(texto) ? "bff" : /moranga/i.test(texto) ? "moranga" : null;
+  if (marca && marca !== d.loja) {
+    throw new Error(`${d.nome || d.username || "esta conta"} é da ${nomeLoja(marca)}. Para conectar a ${nomeLoja(d.loja)}, saia dessa conta e entre com a da ${nomeLoja(d.loja)}. Nada foi alterado.`);
+  }
+  const existente = await prisma.socialConta.findUnique({ where: { rede_externoId: { rede: d.rede, externoId: d.externoId } }, select: { loja: true } });
+  if (existente && existente.loja !== d.loja && !marca) {
+    throw new Error(`Esta conta já está ligada à ${nomeLoja(existente.loja)}. Para conectar a ${nomeLoja(d.loja)}, entre com outra conta. Nada foi alterado.`);
+  }
+  // Sem upsert: o create falha se outro callback criou a conta no meio (rede+externoId é único) e o update só vale se a
+  // loja não mudou desde a conferência — dois pedidos ao mesmo tempo não trocam a loja escondido.
+  const chave = { rede_externoId: { rede: d.rede, externoId: d.externoId } };
+  if (!existente) return prisma.socialConta.create({ data: { rede: d.rede, externoId: d.externoId, ...dados } });
+  const r = await prisma.socialConta.updateMany({ where: { rede: d.rede, externoId: d.externoId, loja: existente.loja }, data: dados });
+  if (r.count === 0) throw new Error("A conta mudou enquanto conectava. Comece de novo.");
+  return prisma.socialConta.findUniqueOrThrow({ where: chave });
 }

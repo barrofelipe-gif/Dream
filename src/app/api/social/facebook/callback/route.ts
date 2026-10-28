@@ -66,7 +66,9 @@ export async function GET(req: NextRequest) {
     // Cada Página vai para a sua própria loja (o login traz as duas de uma vez; BFF e Moranga são empresas separadas).
     const lojaDe = (nome: string) => (/moranga/i.test(nome) ? "moranga" : /bff/i.test(nome) ? "bff" : loja);
     const semMensagens: string[] = [];
+    const recusadas: string[] = [];
     for (const pg of paginas) {
+      // Página que a trava de marca recusa (já é da outra empresa): pula só ela, as outras seguem.
       const salva = await salvarConta({
         rede: "facebook",
         loja: lojaDe(pg.name),
@@ -78,13 +80,15 @@ export async function GET(req: NextRequest) {
         extra: pg.instagram_business_account
           ? { instagramId: pg.instagram_business_account.id, instagramUsername: pg.instagram_business_account.username ?? null }
           : {},
-      });
+      }).catch((e: Error) => (recusadas.push(`${pg.name}: ${e.message}`), null));
+      if (!salva) continue;
       // Messenger: liga o webhook da Página (mensagens no painel). Sem a permissão pages_messaging, só avisa.
       await assinarPagina(salva.id).catch(() => semMensagens.push(pg.name));
     }
 
-    const res = pagina(`${paginas.length} Página(s) conectada(s).`, true, [
-      ...paginas.map((x) => `${x.name} → loja ${lojaDe(x.name)}`),
+    const res = pagina(`${paginas.length - recusadas.length} Página(s) conectada(s).`, true, [
+      ...paginas.filter((x) => !recusadas.some((r) => r.startsWith(`${x.name}:`))).map((x) => `${x.name} → loja ${lojaDe(x.name)}`),
+      ...recusadas,
       ...semMensagens.map((n) => `${n}: mensagens do Messenger não ligadas (falta a permissão pages_messaging/pages_manage_metadata).`),
     ]);
     res.cookies.delete("fb_oauth_state");
