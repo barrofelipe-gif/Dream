@@ -9,8 +9,10 @@ import type { ContaAberta, EntradaPublicar, RedeAdapter, SaidaPublicar } from "@
 export const YT_ESCOPOS = [
   "https://www.googleapis.com/auth/youtube.upload",
   "https://www.googleapis.com/auth/youtube.readonly",
-  // Fase 2 (comentários) pediria também youtube.force-ssl: só adicionar quando for implementar.
+  // Responder comentários (aba Responder comentários). Contas ligadas antes disso precisam reconectar.
+  "https://www.googleapis.com/auth/youtube.force-ssl",
 ];
+export const YT_ESCOPO_COMENTAR = "https://www.googleapis.com/auth/youtube.force-ssl";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const API = "https://www.googleapis.com/youtube/v3";
@@ -97,7 +99,7 @@ async function renovarToken(conta: ContaAberta) {
 }
 
 /** Garante um access token válido antes de publicar (vale 1 hora) e já grava o novo no banco. */
-async function tokenValido(conta: ContaAberta): Promise<string> {
+export async function tokenValido(conta: ContaAberta): Promise<string> {
   const venceEm = conta.expiraEm?.getTime() ?? 0;
   if (venceEm - Date.now() > 2 * 60 * 1000) return conta.accessToken;
   const n = await renovarToken(conta);

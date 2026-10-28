@@ -12,6 +12,7 @@ import InstagramRegras from "@/components/hub/growth/InstagramRegras";
 import InstagramRespostasSalvas from "@/components/hub/growth/InstagramRespostasSalvas";
 import InstagramFluxos from "@/components/hub/growth/InstagramFluxos";
 import SocialMetricas from "@/components/hub/growth/SocialMetricas";
+import InstagramResponderComentarios from "@/components/hub/growth/InstagramResponderComentarios";
 import InstagramAbas, { type Aba } from "@/components/hub/growth/InstagramAbas";
 
 /**
@@ -152,6 +153,7 @@ export default async function InstagramPapel() {
       </section>
       </div>
     ) },
+    { id: "responder-comentarios", rotulo: "Responder comentários", grupo: "Atendimento", conteudo: <InstagramResponderComentarios /> },
     { id: "salvas", rotulo: "Respostas salvas", grupo: "Atendimento", conteudo: <InstagramRespostasSalvas /> },
     { id: "fluxos", rotulo: "Fluxos", grupo: "Automação", conteudo: <InstagramFluxos /> },
     { id: "regras", rotulo: "Regras", grupo: "Automação", conteudo: <InstagramRegras /> },
