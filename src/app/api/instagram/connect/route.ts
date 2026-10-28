@@ -16,6 +16,12 @@ const SCOPES = [
 
 export async function GET(req: NextRequest) {
   const { erro } = await exigirAdmin();
+  // Sem login no painel (ex.: janela anônima): manda para o login e volta para cá, em vez de mostrar JSON cru.
+  if (erro?.status === 401) {
+    const login = new URL("/login", req.nextUrl.origin);
+    login.searchParams.set("callbackUrl", `${req.nextUrl.pathname}${req.nextUrl.search}`);
+    return NextResponse.redirect(login);
+  }
   if (erro) return erro;
 
   const loja = req.nextUrl.searchParams.get("loja");

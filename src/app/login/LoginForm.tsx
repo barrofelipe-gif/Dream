@@ -32,7 +32,13 @@ export default function LoginForm() {
       return;
     }
 
-    router.push(callbackUrl);
+    // Só caminhos do próprio app. Rota de API (ex.: conectar o Instagram) precisa de navegação de verdade, não do roteador.
+    const destino = callbackUrl.startsWith("/") && !callbackUrl.startsWith("//") ? callbackUrl : "/hub";
+    if (destino.startsWith("/api/")) {
+      window.location.assign(destino);
+      return;
+    }
+    router.push(destino);
     router.refresh();
   }
 
