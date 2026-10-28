@@ -76,14 +76,33 @@ export async function GET(req: NextRequest) {
     if (!me.ok) throw new Error(`perfil: ${me.status}`);
     const { user_id, username } = (await me.json()) as { user_id: string; username: string };
 
-    // 4) grava (token criptografado)
-    await prisma.instagramAccount.upsert({
-      where: { igUserId: String(user_id) },
-      create: { igUserId: String(user_id), username, loja, accessToken: encrypt(token), active: true },
-      update: { username, loja, accessToken: encrypt(token), active: true },
-    });
+    // 4) BFF e Moranga nunca se misturam: entrar com o Instagram de uma marca no botão da outra trocava a loja da conta
+    // em silêncio (o robô passava a responder a BFF com as regras da Moranga). O nome do @ decide quando diz a marca;
+    // sem marca no nome, uma conta já ligada não muda de loja por aqui.
+    const nomeLoja = (l: string) => (l === "bff" ? "BFF" : "Moranga");
+    const marcaDoNome = /bff/i.test(username) ? "bff" : /moranga/i.test(username) ? "moranga" : null;
+    if (marcaDoNome && marcaDoNome !== loja) {
+      return page(`@${username} é o Instagram da ${nomeLoja(marcaDoNome)}. Para conectar a ${nomeLoja(loja)}, saia desse Instagram e entre com o da ${nomeLoja(loja)}. Nada foi alterado.`, false);
+    }
+    const existente = await prisma.instagramAccount.findUnique({ where: { igUserId: String(user_id) }, select: { loja: true } });
+    if (existente && existente.loja !== loja && !marcaDoNome) {
+      return page(`@${username} já está ligada à ${nomeLoja(existente.loja)}. Para conectar a ${nomeLoja(loja)}, entre com outro Instagram. Nada foi alterado.`, false);
+    }
 
-    // 5) assina os eventos desta conta no webhook do app
+    // 5) grava (token criptografado)
+    // Sem upsert: create falha se outro callback criou a conta no meio (igUserId é único) e o update só vale se a loja
+    // não mudou desde a conferência acima — dois pedidos ao mesmo tempo não trocam a loja escondido.
+    if (!existente) {
+      await prisma.instagramAccount.create({ data: { igUserId: String(user_id), username, loja, accessToken: encrypt(token), active: true } });
+    } else {
+      const r = await prisma.instagramAccount.updateMany({
+        where: { igUserId: String(user_id), loja: existente.loja },
+        data: { username, loja, accessToken: encrypt(token), active: true },
+      });
+      if (r.count === 0) return page("A conta mudou enquanto conectava. Comece de novo.", false);
+    }
+
+    // 6) assina os eventos desta conta no webhook do app
     const sub = await fetch(`${GRAPH}/me/subscribed_apps?subscribed_fields=${WEBHOOK_FIELDS}&access_token=${encodeURIComponent(token)}`, { method: "POST" });
     const subOk = sub.ok;
 
