@@ -169,6 +169,8 @@ type Saida = {
   quickReplies?: { title: string; payload: string }[];
   link?: { title: string; url: string };
   links?: { title: string; url: string }[];
+  /** Qual das partes leva o botão de link (padrão: a última). O convite para seguir vem depois e não pode roubar o botão. */
+  indiceBotoes?: number;
   /** Segunda mensagem (com botão de link) enviada alguns segundos depois da primeira. */
   seguinte?: { texto: string; links: { title: string; url: string }[]; depoisMin: number };
 };
@@ -178,9 +180,9 @@ async function enviarEGravar(conta: Conta, conversaId: string, destinatario: str
   const partes = s.partes?.length ? s.partes : [s.texto];
   for (let i = 0; i < partes.length; i++) {
     const ultima = i === partes.length - 1;
+    const comBotao = i === Math.min(s.indiceBotoes ?? partes.length - 1, partes.length - 1);
     if (i > 0) await new Promise((r) => setTimeout(r, 1200)); // pausa curta: parece digitação, não rajada
-    // O endereço dos botões também vai escrito no texto da última mensagem (nem todo aparelho mostra o botão).
-    const textoEnvio = ultima ? comLinksNoTexto(partes[i], s.links?.length ? s.links : s.link ? [s.link] : undefined) : partes[i];
+    const textoEnvio = comBotao ? comLinksNoTexto(partes[i], s.links?.length ? s.links : s.link ? [s.link] : undefined) : partes[i];
     // Grava a linha ANTES do envio (sem id da Meta) para encolher a janela de duas execuções mandarem o mesmo texto
     // e para o eco achar a linha por texto; o id da Meta entra depois do envio.
     const linha = await prisma.igMessage.create({
@@ -205,8 +207,8 @@ async function enviarEGravar(conta: Conta, conversaId: string, destinatario: str
         recipientId: destinatario,
         text: textoEnvio,
         quickReplies: ultima ? s.quickReplies : undefined,
-        link: ultima ? s.link : undefined,
-        links: ultima ? s.links : undefined,
+        link: comBotao ? s.link : undefined,
+        links: comBotao ? s.links : undefined,
       });
     } catch (err) {
       // Envio falhou: não deixa mensagem fantasma no painel.
@@ -479,7 +481,7 @@ export async function tratarEvento(ev: Evento, opts: { retomada?: { id: string; 
     const convite = primeiroContato && config.pedirSeguir && naoSegue && config.textoSeguir.trim() ? [config.textoSeguir] : [];
     // {nome} vira o nome da pessoa (ou some, se não souber); botões e segunda mensagem do roteiro seguem junto.
     const partes = [...r.partes.map((p) => aplicarNome(p, perfil?.nome ?? null)), ...convite];
-    saida = { texto: partes.join("\n"), partes, kind: r.kind, id: r.id, confianca: r.confianca, link: r.link, links: r.links, seguinte: r.seguinte };
+    saida = { texto: partes.join("\n"), partes, indiceBotoes: r.partes.length - 1, kind: r.kind, id: r.id, confianca: r.confianca, link: r.link, links: r.links, seguinte: r.seguinte };
     // O status não muda aqui: conversa NEEDS_HUMAN nem chega até este ponto (o robô fica quieto) e HUMAN vencido já voltou para BOT.
     await etiquetar(conversa.id, [r.id === 9004 ? TAG.querComprar : TAG.resolvidoRobo], [TAG.semDuvida]);
   } else if (r.tipo === "atraso") {

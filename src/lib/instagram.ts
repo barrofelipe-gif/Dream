@@ -16,10 +16,19 @@ export function assinaturaValida(rawBody: string, header: string | null): boolea
 }
 
 /**
- * Texto com o endereço dos botões também escrito: o botão de link do Instagram não aparece em todo aparelho (versão web,
- * app antigo), e quem não vê o botão ficava sem o link do app. O texto do botão tem até 640 caracteres.
+ * Instagram: o link vai SÓ no botão, sem o endereço escrito no texto (decisão do Felipe em 28/10/2026: o endereço solto
+ * não é clicável e polui a mensagem). Fica como função para os chamadores gravarem exatamente o texto que sai.
  */
-export function comLinksNoTexto(texto: string, botoes: { url: string }[] | undefined): string {
+export function comLinksNoTexto(texto: string, _botoes: { url: string }[] | undefined): string {
+  void _botoes;
+  return texto;
+}
+
+/**
+ * Messenger: texto com o endereço dos botões também escrito (lá a mensagem sai como texto simples).
+ * O texto do botão tem até 640 caracteres.
+ */
+export function comLinksEscritos(texto: string, botoes: { url: string }[] | undefined): string {
   const faltam = (botoes ?? []).map((b) => b.url).filter((u, i, a) => !texto.includes(u) && a.indexOf(u) === i);
   if (faltam.length === 0) return texto;
   // Link em bloco próprio, com respiro e a setinha: grudado no texto fica feio e some no meio.

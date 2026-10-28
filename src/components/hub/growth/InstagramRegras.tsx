@@ -72,7 +72,8 @@ function descreverAcao(a: Acao) {
 const NOVA = { id: "", accountId: "", nome: "", ativa: true, quando: { tipo: "ETIQUETA_APLICADA" as Gatilho, valor: "" }, fazer: [{ tipo: "ADICIONAR_ETIQUETA" as TipoAcao, valor: "" }] as Acao[] };
 
 /** Sino com contador de conversas que precisam de alguém da equipe. Pode ser usado sozinho no topo do painel. */
-export function SinoInstagram({ onAbrirConversa }: { onAbrirConversa?: (conversationId: string) => void }) {
+/** `abreParaDireita`: o sino está no canto esquerdo (caixa de entrada) e a lista abre para dentro da tela, sem ser cortada. */
+export function SinoInstagram({ onAbrirConversa, abreParaDireita }: { onAbrirConversa?: (conversationId: string) => void; abreParaDireita?: boolean }) {
   const [aberto, setAberto] = useState(false);
   const [naoLidas, setNaoLidas] = useState(0);
   const [itens, setItens] = useState<Notificacao[]>([]);
@@ -113,7 +114,7 @@ export function SinoInstagram({ onAbrirConversa }: { onAbrirConversa?: (conversa
         )}
       </button>
       {aberto && (
-        <div className="absolute right-0 z-20 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-[#e3e5ea] bg-white p-3 shadow-lg">
+        <div className={`absolute ${abreParaDireita ? "left-0" : "right-0"} z-30 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-[#e3e5ea] bg-white p-3 shadow-lg`}>
           <div className="mb-2 flex items-center justify-between">
             <span className="text-xs font-semibold text-[#1b1f2b]">Precisam de atendimento</span>
             {naoLidas > 0 && (

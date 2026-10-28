@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { abrirConta } from "@/lib/social/contas";
 import { FB_GRAPH } from "@/lib/social/facebook";
-import { comLinksNoTexto, dentroDaJanela } from "@/lib/instagram";
+import { comLinksEscritos, dentroDaJanela } from "@/lib/instagram";
 import { responder, type Mensagem } from "@/lib/igBot";
 import { aplicarNome } from "@/lib/igBoasVindas";
 import type { Loja } from "@/lib/avaliacoesLeitura";
@@ -409,8 +409,8 @@ async function responderComRobo(conversaId: string, entradaId: string, token: st
   if (r.tipo === "resposta") {
     // Messenger sem botões aqui: o endereço vai escrito no texto; a "segunda mensagem" do roteiro vai logo em seguida.
     partes = r.partes.map((p) => aplicarNome(p, conversa.nome));
-    partes[partes.length - 1] = comLinksNoTexto(partes[partes.length - 1], r.links?.length ? r.links : r.link ? [r.link] : undefined);
-    if (r.seguinte) partes.push(comLinksNoTexto(r.seguinte.texto, r.seguinte.links));
+    partes[partes.length - 1] = comLinksEscritos(partes[partes.length - 1], r.links?.length ? r.links : r.link ? [r.link] : undefined);
+    if (r.seguinte) partes.push(comLinksEscritos(r.seguinte.texto, r.seguinte.links));
     kind = r.id === 9004 ? "roteiro" : r.kind;
   } else if (r.tipo === "saudacao") {
     const jaSaudou = await prisma.fbMensagem.findFirst({ where: { conversaId, source: "BOT", matchedKind: "saudacao", createdAt: { gt: HORAS(6) } }, select: { id: true } });

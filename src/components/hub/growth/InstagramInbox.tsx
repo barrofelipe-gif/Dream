@@ -312,7 +312,7 @@ export default function InstagramInbox() {
           <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
             <p className="flex items-center gap-2 text-base font-semibold text-[#1b1f2b]">
               Mensagens
-              <SinoInstagram onAbrirConversa={(id) => abrirConversa(id)} />
+              <SinoInstagram abreParaDireita onAbrirConversa={(id) => abrirConversa(id)} />
             </p>
             {naoLidas > 0 && (
               <span className="rounded-full bg-[#6366f1] px-2.5 py-0.5 text-[11px] font-semibold text-white">{naoLidas} não lida{naoLidas > 1 ? "s" : ""}</span>
@@ -561,7 +561,7 @@ export default function InstagramInbox() {
                     return (
                       <div key={m.id} className={`flex items-end gap-2 ${cliente ? "justify-start" : "justify-end"}`}>
                         {cliente && <Avatar c={conversa} tamanho={24} />}
-                        <div className={`max-w-[85%] @3xl:max-w-[78%] rounded-2xl px-3.5 py-2 text-sm shadow-sm ${cor} ${cliente ? "rounded-bl-md" : "rounded-br-md"}`}>
+                        <div className={`max-w-[85%] @3xl:max-w-[min(78%,560px)] rounded-2xl px-3.5 py-2 text-sm shadow-sm ${cor} ${cliente ? "rounded-bl-md" : "rounded-br-md"}`}>
                           <div className="whitespace-pre-wrap break-words">{m.texto}</div>
                           <div className={`mt-1 text-[10px] ${m.de === "equipe" ? "text-white/70" : "text-[#8a8f9c]"}`}>
                             {hora(m.em)}
