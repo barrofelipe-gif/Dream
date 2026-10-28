@@ -20,7 +20,8 @@ const PRAZO_LISTA_MS = 40_000; // a listagem inteira: a rota tem 60 s e precisa 
 export type RedeComentario = "instagram" | "facebook" | "youtube";
 export const REDES_COMENTARIO: RedeComentario[] = ["instagram", "facebook", "youtube"];
 
-export type Resposta = { autor: string; texto: string; em: string; nossa: boolean };
+// autorDesconhecido: o Instagram não informa quem escreveu as respostas (API com login do Instagram).
+export type Resposta = { autor: string; texto: string; em: string; nossa: boolean; autorDesconhecido?: boolean };
 export type Comentario = {
   rede: RedeComentario;
   loja: string;
@@ -185,8 +186,17 @@ async function lerInstagram(c: ContaInterna, porPost: number, ate: number): Prom
   const token = await c.token();
   const midias = await chamar<{ data?: IgMidia[] }>("instagram", `${IG}/me/media?fields=id,caption,media_type,thumbnail_url,media_url,permalink,comments_count&limit=15`, { token, ate });
   const comComentario = (midias.data ?? []).filter((m) => (m.comments_count ?? 0) > 0).slice(0, 12);
+  // O Instagram não diz quem escreveu as respostas; as respostas públicas das automações de comentário
+  // têm texto conhecido, então elas contam como "nossas".
+  const automaticas = new Set(
+    (await prisma.igAutomacao.findMany({ where: { accountId: c.status.contaId }, select: { respostasPublicas: true } }).catch(() => []))
+      .flatMap((a) => a.respostasPublicas.split("\n"))
+      .map((t) => t.trim())
+      .filter(Boolean),
+  );
   const nossa = (x: IgComentario) =>
     !!x.user?.id ||
+    (!x.username && !x.from?.username && !!x.text && automaticas.has(x.text.trim())) ||
     (!!x.from?.id && x.from.id === c.externoId) || (!!c.username && (x.username ?? x.from?.username) === c.username);
   let falhas = 0;
   let parcialRespostas = false;
@@ -230,6 +240,7 @@ async function lerInstagram(c: ContaInterna, porPost: number, ate: number): Prom
         texto: y.text ?? "",
         em: y.timestamp ?? "",
         nossa: nossa(y),
+        autorDesconhecido: !y.username && !y.from?.username && !nossa(y),
       }));
       return {
         rede: "instagram",

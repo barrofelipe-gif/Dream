@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type Rede = "instagram" | "facebook" | "youtube";
-type Resposta = { autor: string; texto: string; em: string; nossa: boolean };
+type Resposta = { autor: string; texto: string; em: string; nossa: boolean; autorDesconhecido?: boolean };
 type Comentario = {
   rede: Rede;
   loja: string;
@@ -251,6 +251,11 @@ export default function InstagramResponderComentarios() {
                       {ROTULO[c.rede]} · {LOJA[c.loja] ?? c.loja}
                     </span>
                     {c.respondido && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">respondido</span>}
+                    {!c.respondido && c.respostas.some((y) => y.autorDesconhecido) && (
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-800" title="O Instagram não informa quem escreveu as respostas. Leia antes de responder.">
+                        tem resposta
+                      </span>
+                    )}
                     {c.oculto && <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-zinc-600">oculto</span>}
                   </div>
                   <p className="mt-1 whitespace-pre-wrap break-words text-sm text-[#1b1f2b]">{c.texto || "(sem texto)"}</p>
@@ -259,7 +264,7 @@ export default function InstagramResponderComentarios() {
                     <div className="mt-2 space-y-1 border-l-2 border-[#e3e5ea] pl-2">
                       {c.respostas.map((y, i) => (
                         <p key={i} className="text-xs text-[#5a5f6d]">
-                          <span className={y.nossa ? "font-medium text-[#4f46e5]" : "font-medium"}>{y.nossa ? "Nós" : y.autor || "alguém"}:</span> {y.texto}
+                          <span className={y.nossa ? "font-medium text-[#4f46e5]" : "font-medium"}>{y.nossa ? "Nós" : y.autor || (y.autorDesconhecido ? "Resposta (autor não informado)" : "alguém")}:</span> {y.texto}
                         </p>
                       ))}
                     </div>
