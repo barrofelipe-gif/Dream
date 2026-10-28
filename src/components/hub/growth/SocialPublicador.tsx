@@ -173,7 +173,7 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
     const d = base?.descricao ?? descricao;
     const l = base?.legenda ?? legenda;
     if (!d.trim() && !l.trim()) {
-      setMsg({ tipo: "erro", texto: "Conte em uma frase o que aparece no vídeo ou na foto (a IA não assiste o vídeo)." });
+      setMsg({ tipo: "erro", texto: "Escreva a legenda principal ou uma observação para a IA ter de onde partir." });
       return;
     }
     // Cada pedido tem um número: se outro conteúdo for carregado antes da resposta chegar, a resposta antiga é descartada.
@@ -446,9 +446,9 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
               className={campo}
-              placeholder="O que aparece no vídeo ou na foto? Ex.: modelo agachando com legging canelada rosa, teste de transparência na luz"
+              placeholder="Observação para a IA (opcional). Ex.: lançamento; manter “Pesquise no APP: Mayla”"
             />
-            <p className="text-[11px] text-[#8a8f9c]">A IA não assiste o vídeo: ela escreve a partir desta frase e da legenda. Gera título, legenda, hashtags, palavras-chave para o Google e frase para ser citada por ChatGPT e Gemini, no jeito de cada rede.</p>
+            <p className="text-[11px] text-[#8a8f9c]">A IA escreve a chamada de atacado de cada rede (sem descrever a peça), a partir da legenda principal e desta observação. Leia e corrija antes de publicar: ela pode errar.</p>
             {dicaGeral && <p className="rounded-lg bg-white px-3 py-2 text-xs text-[#4338ca]">💡 {dicaGeral}</p>}
 
             <div>

@@ -23,12 +23,12 @@ const TextoRede = z.object({
   legenda: z.string().describe("Texto/descrição pronto para colar, já com as hashtags no fim e o chamado para o app."),
   hashtags: z.array(z.string()).describe("As hashtags usadas na legenda, com #. Instagram no máximo 5; TikTok 1 a 3; YouTube 3; Facebook 0 a 3; Pinterest 2 a 4."),
   palavrasChave: z.array(z.string()).describe("3 a 6 termos de busca que o post mira (Google, busca da rede e assistentes de IA)."),
-  textoNaTela: z.string().describe("Frase curta para escrever no vídeo nos 3 primeiros segundos (gancho). Vazio se for foto."),
-  textoAlternativo: z.string().describe("Texto alternativo descritivo da imagem (Instagram e Pinterest); vazio nas outras."),
+  textoNaTela: z.string().describe("Chamada curta de atacado para escrever no vídeo nos 3 primeiros segundos, sem descrever a peça. Vazio se for foto."),
+  textoAlternativo: z.string().describe("Sempre string vazia (a IA não vê a imagem)."),
   perguntaIa: z.string().describe("Pergunta que alguém faria ao ChatGPT, Gemini ou Google e que este post ajuda a responder."),
   porQue: z.string().describe("Uma frase: por que esse texto deve crescer nessa rede."),
 });
-const Saida = z.object({ redes: z.array(TextoRede), dicaGeral: z.string().describe("Uma dica prática para gravar ou editar este conteúdo.") });
+const Saida = z.object({ redes: z.array(TextoRede), dicaGeral: z.string().describe("Uma dica prática de chamada ou de horário para este post (nunca sobre a peça).") });
 export type Sugestao = z.infer<typeof Saida>;
 
 const REGRAS_BFF = `Marca: BFF Fitness Atacado, moda fitness no atacado direto da fábrica, de Vila Velha (ES), com envio para todo o Brasil.
@@ -37,16 +37,19 @@ Proibido: falar em porcentagem de cashback, inventar preço ou promoção, citar
 Público: revendedoras e lojistas (B2B). Tom brasileiro, direto, com no máximo 2 emojis.
 Link: no Instagram e no TikTok o link não é clicável na legenda, então escreva "link na bio"; no Facebook, YouTube (vídeo longo) e Pinterest use o link do app.
 Termos de busca que a BFF já mira: moda fitness atacado, roupa fitness atacado, fornecedor de roupa fitness, conjunto fitness canelado, legging atacado, roupa fitness para revender, fábrica de roupa fitness.
-Para ser citada por assistentes de IA (ChatGPT, Gemini, AI Overview): em algum ponto do texto diga, com palavras naturais, quem é a BFF, o que vende e para quem, use o nome da peça por extenso e responda a uma pergunta real. Não copie uma frase pronta; varie a cada post.
+O texto é uma CHAMADA DE ATACADO, nunca descrição de produto (regra do Felipe, a mais importante):
+- Não descreva a peça: nada de tipo de peça (camiseta, legging, conjunto…), cor, tecido, modelo ou detalhe. A IA não vê o vídeo e erra.
+- Se a legenda que já existe trouxer "Pesquise no APP: <nome>", mantenha exatamente essa linha; não invente outro nome.
+- O conteúdo do texto é: direto da fábrica, atacado facilitado, pedido mínimo de R$ 350, sem CNPJ, peças a partir de R$ 49,00, envio para todo o Brasil, compre pelo app. Só use o que estiver nesta lista ou na legenda que já existe.
+- Para busca (Google, rede e IA), use termos de atacado e revenda (moda fitness atacado, fornecedor de roupa fitness, roupa fitness para revender), nunca termos de produto. Diga com palavras naturais quem é a BFF e para quem vende, variando a frase.
 
-Jeito de escrever (o mais importante): escreva como a dona da loja falaria com uma revendedora, não como robô de SEO.
-- Nunca comece com a palavra-chave seguida de dois pontos ("Moda fitness atacado: …") nem repita a mesma palavra-chave mais de 2 vezes.
-- Nada de frases vazias de marketing ("Pronta para transformar sua vida?", "Inscreva-se para ver os bastidores", "chama atenção", "não perca").
-- Frases curtas, parágrafos de 1 a 2 linhas, linha em branco entre eles. Condições de compra em lista com ✅ quando couber.
-- A primeira linha é o que mais pesa: diga o que a pessoa vai ver ou ganhar, com a peça por extenso, de forma que dê vontade de clicar.
-- Use a fala do próprio vídeo (texto na tela) como gancho quando fizer sentido.
+Jeito de escrever: como a dona da loja falaria com uma revendedora, não como robô de SEO.
+- Nunca comece com a palavra-chave seguida de dois pontos nem repita a mesma palavra-chave mais de 2 vezes.
+- Nada de frases vazias de marketing ("Pronta para transformar sua vida?", "Inscreva-se para ver os bastidores", "não perca").
+- Frases curtas, linha em branco entre os blocos, condições em lista com ✅.
+- A primeira linha é a chamada: o motivo para a revendedora comprar no atacado da BFF.
 
-YouTube (descrição): linha 1 = o que o vídeo mostra, natural e com a busca principal no meio da frase; linha 2 = "👉 Compre pelo app: <link>"; depois uma lista curta com ✅ das condições; depois 1 frase sobre a BFF; por fim 3 hashtags. Máximo de 600 caracteres em Short. Título: a busca exata no começo, mas soando como título de vídeo de verdade (ex.: "Camiseta fitness com listras no atacado | lançamento BFF"), sem dois pontos depois da palavra-chave.`;
+YouTube (descrição): linha 1 = chamada de atacado; linha 2 = "👉 Compre pelo app: <link>"; lista com ✅ das condições; 1 frase sobre a BFF; 3 hashtags. Máximo de 600 caracteres em Short. Título: chamada de atacado com a busca no começo, sem citar peça nem cor (ex.: "Moda fitness no atacado direto da fábrica | pedido mínimo R$ 350"), sem dois pontos depois da palavra-chave.`;
 
 function regrasDaRede(rede: Rede) {
   const r = MAPA[rede];
@@ -63,7 +66,7 @@ export async function sugerirTextos(entrada: { descricao: string; legenda?: stri
     messages: [
       {
         role: "user",
-        content: `Tipo do conteúdo: ${entrada.tipo}.\nO que aparece no conteúdo: ${entrada.descricao || "(não informado)"}\n${entrada.legenda ? `Legenda que já existe (pode reaproveitar e melhorar): ${entrada.legenda}\n` : ""}Escreva um item para cada uma destas redes, nesta ordem: ${redes.join(", ")}. Cada rede tem texto próprio, adaptado ao jeito dela; não repita a mesma legenda.`,
+        content: `Tipo do conteúdo: ${entrada.tipo}.\nObservação de quem publica (use só para entender o assunto; não descreva produto): ${entrada.descricao || "(nenhuma)"}\n${entrada.legenda ? `Legenda que já existe (pode reaproveitar e melhorar): ${entrada.legenda}\n` : ""}Escreva um item para cada uma destas redes, nesta ordem: ${redes.join(", ")}. Cada rede tem texto próprio, adaptado ao jeito dela; não repita a mesma legenda.`,
       },
     ],
     output_config: { format: zodOutputFormat(Saida) },

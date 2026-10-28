@@ -23,9 +23,22 @@ type Item = {
   jaFoi: Record<string, string>;
 };
 export type Preparado = { externoId: string; midias: Midia[]; legenda: string; tipo: "video" | "imagem" | "carrossel"; contaIds: string[] };
+/** Post preparado pelo automático esperando o Felipe aprovar: nada sai sem aprovação no sistema. */
+type Revisao = {
+  chave: string;
+  item: Item;
+  midias: Midia[];
+  legendaBase: string;
+  textos: Partial<Record<Rede, TextoRede>>;
+  horarios: Partial<Record<Rede, Date>>;
+  estado: "revisar" | "agendando" | "feito";
+  msg?: string;
+};
 type Opcoes = { ytPriv: string; ytShorts: boolean; ttPriv: string; pinBoard: string; pinLink: string };
 
 const TIPO_PUBLICAR: Record<string, "video" | "imagem" | "carrossel"> = { reel: "video", foto: "imagem", carrossel: "carrossel" };
+/** Relógio fora do componente (a regra do React reclama de Date.now dentro dele). */
+const agoraMs = () => Date.now();
 const n0 = (n: number) => n.toLocaleString("pt-BR", { maximumFractionDigits: 0 });
 const dataCurta = (d: Date) => `${["dom", "seg", "ter", "qua", "qui", "sex", "sáb"][d.getDay()]} ${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 
@@ -61,6 +74,7 @@ export default function SocialReaproveitar({
   const [qtd, setQtd] = useState(3);
   const [confirmar, setConfirmar] = useState(false);
   const [log, setLog] = useState<string[]>([]);
+  const [revisao, setRevisao] = useState<Revisao[]>([]);
 
   const carregar = useCallback(async () => {
     const r = await fetch("/api/social/reaproveitar", { cache: "no-store" });
@@ -112,8 +126,9 @@ export default function SocialReaproveitar({
     }
   }
 
-  // Automático (depois de confirmar): para cada um dos melhores, traz os arquivos, a IA escreve o texto de cada
-  // rede e agenda cada rede no próximo horário livre dela. Pinterest fica de fora porque precisa escolher o quadro.
+  // Automático (depois de confirmar): para cada um dos melhores, traz os arquivos e a IA escreve o texto de cada
+  // rede, com o próximo horário livre de cada uma. NADA é agendado aqui: vai para a fila de revisão, e só sai
+  // o que o Felipe aprovar (a IA erra; a copy é validada no sistema). Pinterest fica de fora (precisa do quadro).
   async function automatico() {
     setConfirmar(false);
     setOcupado("auto");
@@ -123,8 +138,9 @@ export default function SocialReaproveitar({
       linhas.push(t);
       setLog([...linhas]);
     };
-    // Horários ocupados lidos agora (não os da hora que a tela abriu), para não agendar em cima de outro post.
+    // Horários ocupados lidos agora (não os da hora que a tela abriu), mais os já reservados na fila de revisão.
     const agenda: Partial<Record<Rede, Date[]>> = Object.fromEntries(ORDEM.map((r) => [r, [...(ocupados[r] ?? [])]]));
+    for (const rv of revisao) for (const [r, q] of Object.entries(rv.horarios)) if (q && rv.estado !== "feito") (agenda[r as Rede] ??= []).push(q);
     try {
       const pr = await fetch("/api/social/posts", { cache: "no-store" });
       if (pr.ok)
@@ -133,7 +149,8 @@ export default function SocialReaproveitar({
     } catch {
       /* fica com os ocupados da tela */
     }
-    for (const it of pendentes.slice(0, qtd)) {
+    const naFila = new Set(revisao.filter((r) => r.estado !== "feito").map((r) => r.item.externoId));
+    for (const it of pendentes.filter((p) => !naFila.has(p.externoId)).slice(0, qtd)) {
       const alvo = faltam(it, true);
       const nome = (it.legenda.split("\n")[0] || "post sem legenda").slice(0, 50);
       try {
@@ -143,46 +160,84 @@ export default function SocialReaproveitar({
         const s = await fetch("/api/social/sugerir", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ descricao: d.legenda.slice(0, 600), legenda: d.legenda, redes: alvo, tipo: d.tipo }),
+          body: JSON.stringify({ descricao: "", legenda: d.legenda, redes: alvo, tipo: d.tipo }),
         });
         const sj = await s.json();
         if (!s.ok) throw new Error(sj.error ?? "Falha na IA");
         const textos: Partial<Record<Rede, TextoRede>> = {};
         for (const t of sj.redes as (TextoRede & { rede: Rede })[]) textos[t.rede] = t;
+        const horarios: Partial<Record<Rede, Date>> = {};
         for (const r of alvo) {
           const slot = proximosHorarios(r, 1, agenda[r])[0];
-          const conta = contaBff(r);
-          if (!slot || !conta) continue;
-          const p = await fetch("/api/social/posts", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              legenda: textos[r]?.legenda || d.legenda,
-              midias: d.midias,
-              contaIds: [conta],
-              acao: "agendar",
-              agendadoPara: slot.quando.toISOString(),
-              porRede: montarPorRede([r], textos, opcoes, it.externoId, d.legenda),
-            }),
-          });
-          const pj = await p.json().catch(() => ({}));
-          if (!p.ok) {
-            anota(`⚠️ ${nome} · ${MAPA[r].rotulo}: ${pj.error ?? "não agendou"}`);
-            continue;
-          }
+          if (!slot || !contaBff(r)) continue;
+          horarios[r] = slot.quando;
           (agenda[r] ??= []).push(slot.quando);
-          anota(`✅ ${nome} · ${MAPA[r].rotulo}: agendado para ${dataCurta(slot.quando)}`);
         }
+        setRevisao((l) => [...l, { chave: `${it.externoId}-${Date.now()}`, item: it, midias: d.midias, legendaBase: d.legenda, textos, horarios, estado: "revisar" }]);
+        anota(`👀 ${nome}: pronto para você revisar abaixo.`);
       } catch (e) {
         anota(`⚠️ ${nome}: ${(e as Error).message}`);
       }
     }
     setOcupado(null);
+  }
+
+  function editar(chave: string, rede: Rede, campo: "titulo" | "legenda", valor: string) {
+    setRevisao((l) => l.map((r) => (r.chave === chave ? { ...r, textos: { ...r.textos, [rede]: { ...(r.textos[rede] ?? { titulo: "", legenda: "" }), [campo]: valor } } } : r)));
+  }
+
+  // Aprovado pelo Felipe: agenda cada rede no horário da fila (ou no próximo livre, se ele já passou).
+  // A rede que agendou sai da fila do item (aprovar de novo após falha parcial não duplica).
+  async function aprovar(rv: Revisao) {
+    setRevisao((l) => l.map((r) => (r.chave === rv.chave ? { ...r, estado: "agendando", msg: undefined } : r)));
+    const feitos: string[] = [];
+    const falhas: string[] = [];
+    const restantes: Partial<Record<Rede, Date>> = { ...rv.horarios };
+    // Horários já tomados: agendados, outros itens da fila e o que esta aprovação acabou de usar.
+    const tomados = (r: Rede) => [...(ocupados[r] ?? []), ...revisao.filter((x) => x.chave !== rv.chave && x.estado !== "feito").flatMap((x) => (x.horarios[r] ? [x.horarios[r]!] : []))];
+    for (const [r, q] of Object.entries(rv.horarios) as [Rede, Date][]) {
+      const conta = contaBff(r);
+      const texto = rv.textos[r]?.legenda ?? "";
+      if (!conta) continue;
+      if (!texto.trim()) {
+        falhas.push(`${MAPA[r].rotulo}: o texto está vazio`);
+        continue;
+      }
+      const quando = q.getTime() > agoraMs() + 5 * 60_000 ? q : (proximosHorarios(r, 1, tomados(r))[0]?.quando ?? null);
+      if (!quando) {
+        falhas.push(`${MAPA[r].rotulo}: sem horário`);
+        continue;
+      }
+      try {
+        const p = await fetch("/api/social/posts", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            legenda: texto,
+            midias: rv.midias,
+            contaIds: [conta],
+            acao: "agendar",
+            agendadoPara: quando.toISOString(),
+            porRede: montarPorRede([r], rv.textos, opcoes, rv.item.externoId, texto),
+          }),
+        });
+        const pj = await p.json().catch(() => ({}));
+        if (p.ok) {
+          feitos.push(`${MAPA[r].rotulo} ${dataCurta(quando)}`);
+          delete restantes[r];
+        } else falhas.push(`${MAPA[r].rotulo}: ${pj.error ?? "não agendou"}`);
+      } catch (e) {
+        falhas.push(`${MAPA[r].rotulo}: ${(e as Error).message}`);
+      }
+    }
+    const msg = `${feitos.length ? `Agendado: ${feitos.join(" · ")}.` : ""}${falhas.length ? ` Não agendou: ${falhas.join(" · ")}.` : ""}`;
+    setRevisao((l) => l.map((r) => (r.chave === rv.chave ? { ...r, horarios: restantes, estado: Object.keys(restantes).length ? "revisar" : "feito", msg } : r)));
     onAgendado();
     carregar();
   }
 
-  const planoAuto = pendentes.slice(0, qtd).reduce((s, it) => s + faltam(it, true).length, 0);
+  const pendentesFila = pendentes.filter((p) => !revisao.some((r) => r.estado !== "feito" && r.item.externoId === p.externoId));
+  const planoAuto = pendentesFila.slice(0, qtd).reduce((s, it) => s + faltam(it, true).length, 0);
 
   return (
     <div className="rounded-2xl border border-[#f3c6dc] bg-[#fff7fb] p-4">
@@ -201,11 +256,11 @@ export default function SocialReaproveitar({
           </select>
           <button
             type="button"
-            disabled={!!ocupado || bloqueado || !pendentes.length}
+            disabled={!!ocupado || bloqueado || !pendentesFila.length}
             onClick={() => setConfirmar(true)}
             className="rounded-xl bg-[#c72a7a] px-4 py-2 text-sm font-semibold text-white hover:bg-[#a01b5c] disabled:opacity-40"
           >
-            {ocupado === "auto" ? "Trabalhando…" : "Preparar e agendar automático"}
+            {ocupado === "auto" ? "Preparando…" : "Preparar para revisar"}
           </button>
         </div>
       </div>
@@ -213,12 +268,11 @@ export default function SocialReaproveitar({
       {confirmar && (
         <div className="mt-3 rounded-xl border border-[#c72a7a] bg-white p-3 text-sm">
           <p>
-            Vai trazer os {Math.min(qtd, pendentes.length)} melhores posts, a IA escreve o texto de cada rede e agenda <b>{planoAuto}</b> postagens, cada rede no próximo horário livre dela.
-            TikTok sai como “{opcoes.ttPriv === "SELF_ONLY" ? "só eu" : "público escolhido"}” e YouTube como “{opcoes.ytPriv === "private" ? "privado" : opcoes.ytPriv === "unlisted" ? "não listado" : "público"}” (mude nos Ajustes por rede acima). Pinterest fica de fora. Tudo aparece em Postagens recentes e dá para excluir antes da hora.
+            Vai trazer os {Math.min(qtd, pendentesFila.length)} melhores posts e a IA escreve o texto de {planoAuto} postagens, cada rede com o próximo horário livre dela. <b>Nada é agendado agora</b>: tudo aparece abaixo para você ler, corrigir e aprovar.
           </p>
           <div className="mt-2 flex gap-2">
             <button type="button" onClick={automatico} className="rounded-lg bg-[#c72a7a] px-4 py-1.5 text-sm font-semibold text-white">
-              Confirmar
+              Preparar
             </button>
             <button type="button" onClick={() => setConfirmar(false)} className="rounded-lg border border-[#e3e5ea] px-4 py-1.5 text-sm">
               Cancelar
@@ -227,11 +281,74 @@ export default function SocialReaproveitar({
         </div>
       )}
       {log.length > 0 && (
-        <ul className="mt-3 max-h-48 space-y-0.5 overflow-y-auto rounded-xl bg-white p-3 text-xs text-[#374151]">
+        <ul className="mt-3 max-h-40 space-y-0.5 overflow-y-auto rounded-xl bg-white p-3 text-xs text-[#374151]">
           {log.map((l, i) => (
             <li key={i}>{l}</li>
           ))}
         </ul>
+      )}
+
+      {revisao.length > 0 && (
+        <div className="mt-4 space-y-3">
+          <p className="text-sm font-semibold text-[#1b1f2b]">Para revisar e aprovar ({revisao.filter((r) => r.estado !== "feito").length})</p>
+          {revisao.map((rv) => (
+            <div key={rv.chave} className={`rounded-xl border bg-white p-3 ${rv.estado === "feito" ? "border-emerald-300 opacity-70" : "border-[#c72a7a]"}`}>
+              <div className="flex flex-wrap items-center gap-3">
+                {rv.item.miniatura && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={rv.item.miniatura} alt="" className="h-16 w-12 rounded-lg object-cover" />
+                )}
+                <p className="min-w-0 flex-1 truncate text-xs text-[#4b5563]">{rv.legendaBase.split("\n")[0] || "(sem legenda)"}</p>
+                {rv.estado !== "feito" && (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={rv.estado === "agendando"}
+                      onClick={() => aprovar(rv)}
+                      className="rounded-lg bg-[#0f8f74] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+                    >
+                      {rv.estado === "agendando" ? "Agendando…" : "Aprovar e agendar"}
+                    </button>
+                    <button type="button" disabled={rv.estado === "agendando"} onClick={() => setRevisao((l) => l.filter((r) => r.chave !== rv.chave))} className="rounded-lg border border-[#e3e5ea] px-3 py-1.5 text-xs disabled:opacity-40">
+                      Descartar
+                    </button>
+                  </div>
+                )}
+              </div>
+              {rv.msg && <p className={`mt-2 text-xs ${rv.estado === "feito" ? "text-emerald-700" : "text-red-700"}`}>{rv.msg}</p>}
+              <div className="mt-2 grid gap-2 lg:grid-cols-3">
+                {(Object.keys(rv.horarios) as Rede[]).map((r) => (
+                  <div key={r} className="space-y-1 rounded-lg border border-[#e3e5ea] p-2" style={{ borderTop: `3px solid ${MAPA[r].cor}` }}>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="inline-flex items-center gap-1 font-semibold">
+                        <Icone rede={r} tamanho={12} />
+                        {MAPA[r].rotulo}
+                      </span>
+                      <span className="text-[#6b7280]">{rv.horarios[r] ? dataCurta(rv.horarios[r]!) : ""}</span>
+                    </div>
+                    {(r === "youtube" || r === "tiktok") && (
+                      <input
+                        value={rv.textos[r]?.titulo ?? ""}
+                        disabled={rv.estado !== "revisar"}
+                        maxLength={r === "tiktok" ? 90 : 100}
+                        onChange={(e) => editar(rv.chave, r, "titulo", e.target.value)}
+                        placeholder="Título"
+                        className="w-full rounded-lg border border-[#e3e5ea] px-2 py-1 text-xs"
+                      />
+                    )}
+                    <textarea
+                      value={rv.textos[r]?.legenda ?? ""}
+                      disabled={rv.estado !== "revisar"}
+                      onChange={(e) => editar(rv.chave, r, "legenda", e.target.value)}
+                      rows={7}
+                      className="w-full rounded-lg border border-[#e3e5ea] px-2 py-1 text-xs"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
       {erro && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{erro}</p>}
       {itens === null && <p className="mt-3 text-xs text-[#8a8f9c]">Carregando os posts do Instagram…</p>}
