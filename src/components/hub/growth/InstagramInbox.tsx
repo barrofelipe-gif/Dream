@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SinoInstagram } from "@/components/hub/growth/InstagramRegras";
+import { useEstreito, useTelaCheiaCelular } from "@/components/hub/growth/useTelaCheiaCelular";
 
 type Resumo = {
   id: string;
@@ -173,7 +174,10 @@ export default function InstagramInbox() {
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [busca, setBusca] = useState("");
+  const [mais, setMais] = useState(false); // celular: ações extras, etiquetas e perfil ficam recolhidos
   const fim = useRef<HTMLDivElement>(null);
+  const caixa = useRef<HTMLDivElement>(null);
 
   const carregarLista = useCallback(async () => {
     const r = await fetch("/api/instagram/conversas", { cache: "no-store" });
@@ -201,9 +205,25 @@ export default function InstagramInbox() {
     fim.current?.scrollIntoView({ block: "end" });
   }, [conversa?.mensagens.length, selecionada]);
 
+  // Celular (caixa mais estreita que 48rem, o mesmo corte do @3xl): a conversa aberta cobre a tela inteira.
+  const estreita = useEstreito(768, caixa);
+  const abrirConversa = useCallback((id: string | null) => {
+    setMais(false);
+    setSelecionada(id);
+  }, []);
+  const fecharConversa = useCallback(() => abrirConversa(null), [abrirConversa]);
+  const estiloTela = useTelaCheiaCelular(!!selecionada && estreita, fecharConversa);
+
+  const noFiltro = (c: Resumo, f: string) => f === "todas" || (f === "NAO_LIDAS" ? c.naoLida : c.status === f);
+  const termo = busca.trim().toLowerCase().replace(/^@/, "");
   const visiveis = (lista ?? [])
-    .filter((c) => filtro === "todas" || (filtro === "NAO_LIDAS" ? c.naoLida : c.status === filtro))
-    .filter((c) => !filtroTag || c.tags.includes(filtroTag));
+    .filter((c) => noFiltro(c, filtro))
+    .filter((c) => !filtroTag || c.tags.includes(filtroTag))
+    .filter(
+      (c) =>
+        !termo ||
+        [c.nome, c.username, c.ultima?.texto, ...c.tags].some((v) => v?.toLowerCase().includes(termo)),
+    );
   const todasTags = [...new Set((lista ?? []).flatMap((c) => c.tags))].sort();
   async function mexerTag(corpo: { tagAdd?: string; tagRemove?: string }) {
     if (!selecionada) return;
@@ -272,15 +292,15 @@ export default function InstagramInbox() {
   }
 
   return (
-    <div className="@container">
-    <div className="grid h-[max(640px,calc(100vh-200px))] grid-cols-1 overflow-hidden rounded-2xl border border-[#e3e5ea] bg-white shadow-sm @3xl:grid-cols-[290px_minmax(0,1fr)] @5xl:grid-cols-[290px_minmax(0,1fr)_270px]">
-      {/* Lista */}
-      <div className={`${selecionada ? "hidden @3xl:flex" : "flex"} min-h-0 flex-col border-r border-[#e3e5ea]`}>
+    <div className="@container" ref={caixa}>
+    <div className="grid grid-cols-1 overflow-hidden rounded-2xl border border-[#e3e5ea] bg-white shadow-sm @3xl:h-[max(640px,calc(100vh-200px))] @3xl:grid-cols-[290px_minmax(0,1fr)] @5xl:grid-cols-[290px_minmax(0,1fr)_270px]">
+      {/* Lista (no celular continua montada por baixo da conversa aberta: a rolagem e o filtro ficam onde estavam) */}
+      <div className="flex min-h-0 flex-col border-[#e3e5ea] @3xl:border-r">
         <div className="border-b border-[#e3e5ea] px-4 py-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
             <p className="flex items-center gap-2 text-base font-semibold text-[#1b1f2b]">
               Mensagens
-              <SinoInstagram onAbrirConversa={(id) => setSelecionada(id)} />
+              <SinoInstagram onAbrirConversa={(id) => abrirConversa(id)} />
             </p>
             {naoLidas > 0 && (
               <span className="rounded-full bg-[#6366f1] px-2.5 py-0.5 text-[11px] font-semibold text-white">{naoLidas} não lida{naoLidas > 1 ? "s" : ""}</span>
@@ -291,16 +311,29 @@ export default function InstagramInbox() {
               </span>
             )}
           </div>
-          <div className="mt-2.5 flex gap-1.5">
-            {FILTROS.map(([v, r]) => (
-              <button
-                key={v}
-                onClick={() => setFiltro(v)}
-                className={`rounded-full px-3 py-1 text-[11px] font-medium transition ${filtro === v ? "bg-[#1b1f2b] text-white" : "bg-[#eef0f4] text-[#5a5f6d] hover:bg-[#e3e5ea]"}`}
-              >
-                {r}
-              </button>
-            ))}
+          <input
+            type="search"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar nome, @, mensagem ou etiqueta"
+            aria-label="Buscar conversa"
+            className="mt-2.5 min-h-[40px] w-full rounded-xl border border-[#e3e5ea] bg-[#f7f8fa] px-3 text-base text-[#1b1f2b] outline-none focus:border-[#6366f1] focus:bg-white @3xl:min-h-[34px] @3xl:text-sm"
+          />
+          <div className="-mx-4 mt-2 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+            {FILTROS.map(([v, r]) => {
+              const n = v === "todas" ? 0 : (lista ?? []).filter((c) => noFiltro(c, v)).length;
+              return (
+                <button
+                  key={v}
+                  onClick={() => setFiltro(v)}
+                  aria-pressed={filtro === v}
+                  className={`min-h-[32px] shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-[11px] font-medium transition ${filtro === v ? "bg-[#1b1f2b] text-white" : "bg-[#eef0f4] text-[#5a5f6d] hover:bg-[#e3e5ea]"}`}
+                >
+                  {r}
+                  {n > 0 && <span className="ml-1 opacity-70">{n}</span>}
+                </button>
+              );
+            })}
           </div>
           {todasTags.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1">
@@ -316,16 +349,37 @@ export default function InstagramInbox() {
             </div>
           )}
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 @3xl:overflow-y-auto">
           {lista === null && <p className="p-4 text-xs text-[#8a8f9c]">Carregando…</p>}
-          {lista && visiveis.length === 0 && <p className="p-4 text-xs text-[#8a8f9c]">Nenhuma conversa nesse filtro.</p>}
+          {lista && visiveis.length === 0 && (
+            <div className="p-6 text-center">
+              <p className="text-sm font-medium text-[#1b1f2b]">{lista.length === 0 ? "Nenhuma conversa ainda" : "Nada encontrado"}</p>
+              <p className="mt-1 text-xs text-[#8a8f9c]">
+                {lista.length === 0
+                  ? "Quando alguém mandar mensagem para a loja no Instagram, a conversa aparece aqui."
+                  : "Nenhuma conversa com esse filtro ou busca."}
+              </p>
+              {lista.length > 0 && (filtro !== "todas" || filtroTag || termo) && (
+                <button
+                  onClick={() => {
+                    setFiltro("todas");
+                    setFiltroTag(null);
+                    setBusca("");
+                  }}
+                  className="mt-3 min-h-[40px] rounded-xl bg-[#eef0f4] px-4 text-xs font-medium text-[#1b1f2b] hover:bg-[#e3e5ea]"
+                >
+                  Limpar filtros
+                </button>
+              )}
+            </div>
+          )}
           {visiveis.map((c) => {
             const s = STATUS[c.status] ?? STATUS.CLOSED;
             const ativa = c.id === selecionada;
             return (
               <button
                 key={c.id}
-                onClick={() => setSelecionada(c.id)}
+                onClick={() => abrirConversa(c.id)}
                 className={`flex w-full items-start gap-3 border-b border-[#f1f2f5] px-4 py-3 text-left transition ${ativa ? "bg-[#f1f2ff]" : c.naoLida ? "bg-[#f7f7ff] hover:bg-[#f1f2ff]" : "hover:bg-[#f9fafb]"}`}
               >
                 <Avatar c={c} tamanho={44} pontoCor={s.ponto} />
@@ -367,9 +421,19 @@ export default function InstagramInbox() {
       </div>
 
       {/* Chat */}
-      <div className={`${selecionada ? "flex" : "hidden @3xl:flex"} min-h-0 min-w-0 flex-col`}>
+      <div
+        className={`${selecionada ? "fixed inset-0 z-50 flex bg-white @3xl:static @3xl:z-auto" : "hidden @3xl:flex"} min-h-0 min-w-0 flex-col`}
+        style={estiloTela}
+        role={selecionada ? "region" : undefined}
+        aria-label={selecionada ? "Conversa aberta" : undefined}
+      >
         {!selecionada || !conversa ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+            {selecionada && (
+              <button onClick={() => abrirConversa(null)} className="absolute left-2 top-2 flex min-h-[44px] items-center rounded-xl px-3 text-sm font-medium text-[#6366f1] @3xl:hidden">
+                ← Voltar
+              </button>
+            )}
             <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#eef0f4] text-2xl">💬</span>
             <p className="text-sm font-medium text-[#1b1f2b]">
               {selecionada ? "Carregando conversa…" : "Escolha uma conversa"}
@@ -378,12 +442,16 @@ export default function InstagramInbox() {
           </div>
         ) : (
           <>
-            <div className="border-b border-[#e3e5ea] px-5 py-3">
-              <div className="flex items-center gap-3">
-                <button onClick={() => setSelecionada(null)} className="text-sm text-[#6366f1] @3xl:hidden">
+            <div className="border-b border-[#e3e5ea] px-3 py-2 @3xl:px-5 @3xl:py-3">
+              <div className="flex items-center gap-2 @3xl:gap-3">
+                <button
+                  onClick={() => abrirConversa(null)}
+                  aria-label="Voltar para a lista"
+                  className="-ml-1 flex h-11 min-w-[44px] shrink-0 items-center justify-center rounded-xl text-lg text-[#6366f1] hover:bg-[#f4f5f8] @3xl:hidden"
+                >
                   ←
                 </button>
-                <Avatar c={conversa} tamanho={44} />
+                <Avatar c={conversa} tamanho={40} />
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-1 truncate text-sm font-semibold text-[#1b1f2b]">
                     {nomeExibido(conversa)}
@@ -396,27 +464,37 @@ export default function InstagramInbox() {
                 </div>
                 {st && <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium ${st.cor}`}>{st.rotulo}</span>}
               </div>
-              <div className="mt-2.5 flex flex-wrap gap-1.5">
+              <div className="mt-2 flex flex-wrap gap-1.5 @3xl:mt-2.5">
                 {conversa.status !== "HUMAN" && (
-                  <button onClick={() => mudarStatus("HUMAN")} className="rounded-lg bg-[#1b1f2b] px-3 py-1.5 text-xs font-medium text-white hover:bg-black">
+                  <button onClick={() => mudarStatus("HUMAN")} className="min-h-[40px] @3xl:min-h-0 rounded-lg bg-[#1b1f2b] px-3 py-1.5 text-xs font-medium text-white hover:bg-black">
                     Assumir conversa
                   </button>
                 )}
                 {conversa.status !== "BOT" && (
-                  <button onClick={() => mudarStatus("BOT")} className="rounded-lg bg-[#eef0f4] px-3 py-1.5 text-xs font-medium text-[#1b1f2b] hover:bg-[#e3e5ea]">
+                  <button
+                    onClick={() => mudarStatus("BOT")}
+                    className={`min-h-[40px] @3xl:inline-block @3xl:min-h-0 ${conversa.status === "HUMAN" || mais ? "" : "hidden"} rounded-lg bg-[#eef0f4] px-3 py-1.5 text-xs font-medium text-[#1b1f2b] hover:bg-[#e3e5ea]`}
+                  >
                     Devolver ao robô
                   </button>
                 )}
-                <button onClick={marcarNaoLida} className="rounded-lg bg-[#eef0f4] px-3 py-1.5 text-xs font-medium text-[#1b1f2b] hover:bg-[#e3e5ea]">
+                <button onClick={marcarNaoLida} className={`min-h-[40px] @3xl:inline-block @3xl:min-h-0 ${mais ? "" : "hidden"} rounded-lg bg-[#eef0f4] px-3 py-1.5 text-xs font-medium text-[#1b1f2b] hover:bg-[#e3e5ea]`}>
                   Marcar como não lida
                 </button>
                 {conversa.status !== "CLOSED" && (
-                  <button onClick={() => mudarStatus("CLOSED")} className="rounded-lg bg-[#eef0f4] px-3 py-1.5 text-xs font-medium text-[#1b1f2b] hover:bg-[#e3e5ea]">
+                  <button onClick={() => mudarStatus("CLOSED")} className={`min-h-[40px] @3xl:inline-block @3xl:min-h-0 ${mais ? "" : "hidden"} rounded-lg bg-[#eef0f4] px-3 py-1.5 text-xs font-medium text-[#1b1f2b] hover:bg-[#e3e5ea]`}>
                     Encerrar
                   </button>
                 )}
+                <button
+                  onClick={() => setMais((m) => !m)}
+                  aria-expanded={mais}
+                  className="min-h-[40px] rounded-lg border border-[#e3e5ea] px-3 py-1.5 text-xs font-medium text-[#5a5f6d] hover:bg-[#f4f5f8] @3xl:hidden"
+                >
+                  {mais ? "Menos ▴" : `Mais ▾${conversa.tags.length ? ` · ${conversa.tags.length} etiqueta${conversa.tags.length > 1 ? "s" : ""}` : ""}`}
+                </button>
               </div>
-              <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+              <div className={`${mais ? "flex" : "hidden"} mt-2.5 flex-wrap items-center gap-1.5 @3xl:flex`}>
                 {conversa.tags.map((t) => (
                   <Etiqueta key={t} t={t} onRemover={() => mexerTag({ tagRemove: t })} />
                 ))}
@@ -443,7 +521,7 @@ export default function InstagramInbox() {
                 </form>
               </div>
               {/* Faixa do perfil quando não cabe o painel lateral */}
-              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-[#f7f8fa] px-3 py-2 text-[11px] text-[#5a5f6d] @5xl:hidden">
+              <div className={`${mais ? "flex" : "hidden"} mt-3 flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-[#f7f8fa] px-3 py-2 text-[11px] text-[#5a5f6d] @3xl:flex @5xl:hidden`}>
                 <span>
                   <b className="text-[#1b1f2b]">{seguidoresCurto(conversa.seguidores)}</b> seguidores
                 </span>
@@ -457,7 +535,7 @@ export default function InstagramInbox() {
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 space-y-1 overflow-y-auto bg-[#f7f8fa] px-5 py-4">
+            <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain bg-[#f7f8fa] px-3 py-3 @3xl:px-5 @3xl:py-4">
               {blocos.map((b) => (
                 <div key={b.dia} className="space-y-2">
                   <div className="my-3 text-center text-[11px] text-[#a1a5b0]">{b.dia}</div>
@@ -471,7 +549,7 @@ export default function InstagramInbox() {
                     return (
                       <div key={m.id} className={`flex items-end gap-2 ${cliente ? "justify-start" : "justify-end"}`}>
                         {cliente && <Avatar c={conversa} tamanho={24} />}
-                        <div className={`max-w-[78%] rounded-2xl px-3.5 py-2 text-sm shadow-sm ${cor} ${cliente ? "rounded-bl-md" : "rounded-br-md"}`}>
+                        <div className={`max-w-[85%] @3xl:max-w-[78%] rounded-2xl px-3.5 py-2 text-sm shadow-sm ${cor} ${cliente ? "rounded-bl-md" : "rounded-br-md"}`}>
                           <div className="whitespace-pre-wrap break-words">{m.texto}</div>
                           <div className={`mt-1 text-[10px] ${m.de === "equipe" ? "text-white/70" : "text-[#8a8f9c]"}`}>
                             {hora(m.em)}
@@ -487,7 +565,7 @@ export default function InstagramInbox() {
               <div ref={fim} />
             </div>
 
-            <div className="border-t border-[#e3e5ea] bg-white p-3">
+            <div className="border-t border-[#e3e5ea] bg-white p-2 pb-[max(8px,env(safe-area-inset-bottom))] @3xl:p-3">
               {!conversa.janelaAberta && (
                 <p className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   Passaram mais de 24h desde a última mensagem do cliente: o Instagram não permite responder por aqui. Quando
@@ -525,19 +603,20 @@ export default function InstagramInbox() {
                   rows={2}
                   disabled={!conversa.janelaAberta}
                   placeholder={conversa.janelaAberta ? "Escreva a resposta… (Enter envia, Shift+Enter quebra a linha)" : "Janela de 24h fechada"}
-                  className="min-h-[46px] flex-1 resize-none rounded-xl border border-[#e3e5ea] px-3.5 py-2.5 text-sm text-[#1b1f2b] outline-none focus:border-[#6366f1] focus:ring-2 focus:ring-[#6366f1]/15 disabled:bg-[#f4f5f7]"
+                  className="min-h-[46px] min-w-0 flex-1 resize-none rounded-xl border border-[#e3e5ea] px-3.5 py-2.5 text-base text-[#1b1f2b] @3xl:text-sm outline-none focus:border-[#6366f1] focus:ring-2 focus:ring-[#6366f1]/15 disabled:bg-[#f4f5f7]"
                 />
                 <button
                   onClick={enviar}
                   disabled={enviando || !texto.trim() || !conversa.janelaAberta}
-                  className="rounded-xl bg-[#6366f1] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#4f52d9] disabled:opacity-40"
+                  className="min-h-[46px] shrink-0 rounded-xl bg-[#6366f1] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#4f52d9] disabled:opacity-40 @3xl:px-5"
                 >
                   {enviando ? "Enviando…" : "Enviar"}
                 </button>
               </div>
-              <p className="mt-1.5 text-[11px] text-[#a1a5b0]">
+              <p className="mt-1.5 hidden text-[11px] text-[#a1a5b0] @3xl:block">
                 Ao enviar, a conversa passa para &ldquo;Atendente na conversa&rdquo; e o robô fica quieto até você devolver.
               </p>
+              <p className="mt-1 px-1 text-[11px] text-[#a1a5b0] @3xl:hidden">Ao enviar, o robô fica quieto até você devolver.</p>
             </div>
           </>
         )}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useEstreito, useTelaCheiaCelular } from "@/components/hub/growth/useTelaCheiaCelular";
 
 type StatusPagina = {
   contaId: string;
@@ -104,6 +105,14 @@ export default function MessengerInbox() {
       clearInterval(lista);
     };
   }, [carregar, loja]);
+
+  // Celular: a conversa aberta cobre a tela inteira; Voltar fecha e a lista continua onde estava.
+  const fechar = useCallback(() => {
+    abertaAtual.current = null;
+    setAberta(null);
+  }, []);
+  const estreita = useEstreito(768); // abaixo do md
+  const estiloTela = useTelaCheiaCelular(!!aberta && estreita, fechar);
 
   async function abrir(id: string) {
     if (abertaAtual.current !== id) setTexto("");
@@ -262,13 +271,13 @@ export default function MessengerInbox() {
       </section>
 
       <div className="grid gap-3 md:grid-cols-[18rem_1fr]">
-        <div className="max-h-[32rem] space-y-1 overflow-y-auto">
+        <div className="space-y-1 md:max-h-[32rem] md:overflow-y-auto">
           {conversas.length === 0 && <div className="rounded-xl border border-[#e3e5ea] p-3 text-sm text-[#8a8f9c]">Nenhuma conversa do Messenger ainda.</div>}
           {conversas.map((c) => (
             <button
               key={c.id}
               onClick={() => abrir(c.id)}
-              className={`block w-full rounded-xl border p-2 text-left text-sm ${aberta?.id === c.id ? "border-[#6366f1]" : "border-[#e3e5ea]"}`}
+              className={`block min-h-[44px] w-full rounded-xl border p-2 text-left text-sm ${aberta?.id === c.id ? "border-[#6366f1]" : "border-[#e3e5ea]"}`}
             >
               <div className="flex items-center gap-2">
                 {c.naoLida && <span className="h-2 w-2 rounded-full bg-[#6366f1]" />}
@@ -280,27 +289,41 @@ export default function MessengerInbox() {
           ))}
         </div>
 
-        <div className="rounded-xl border border-[#e3e5ea] p-3">
+        <div
+          className={`rounded-xl border border-[#e3e5ea] p-3 ${
+            aberta
+              ? "fixed inset-0 z-50 flex flex-col rounded-none border-0 bg-white pb-[max(12px,env(safe-area-inset-bottom))] md:static md:z-auto md:block md:rounded-xl md:border"
+              : "hidden md:block"
+          }`}
+          style={estiloTela}
+        >
           {!aberta ? (
             <div className="text-sm text-[#8a8f9c]">Escolha uma conversa.</div>
           ) : (
-            <div className="flex h-full flex-col gap-2">
+            <div className="flex min-h-0 flex-1 flex-col gap-2 md:h-full">
               <div className="flex flex-wrap items-center gap-2 text-sm">
+                <button
+                  onClick={fechar}
+                  aria-label="Voltar para a lista"
+                  className="-ml-1 flex h-11 min-w-[44px] items-center justify-center rounded-xl text-lg text-[#6366f1] hover:bg-[#f4f5f8] md:hidden"
+                >
+                  ←
+                </button>
                 <span className="font-medium text-[#1b1f2b]">{aberta.nome || `Cliente …${aberta.cliente}`}</span>
                 <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS[aberta.status]?.cor ?? ""}`}>{STATUS[aberta.status]?.rotulo ?? aberta.status}</span>
                 <div className="ml-auto flex gap-1">
                   {aberta.status !== "BOT" && (
-                    <button onClick={() => mudarStatus("BOT")} className="rounded border border-[#e3e5ea] px-2 py-0.5 text-xs">Devolver ao robô</button>
+                    <button onClick={() => mudarStatus("BOT")} className="min-h-[40px] rounded border border-[#e3e5ea] px-2 py-0.5 text-xs md:min-h-0">Devolver ao robô</button>
                   )}
                   {aberta.status !== "HUMAN" && (
-                    <button onClick={() => mudarStatus("HUMAN")} className="rounded border border-[#e3e5ea] px-2 py-0.5 text-xs">Assumir</button>
+                    <button onClick={() => mudarStatus("HUMAN")} className="min-h-[40px] rounded border border-[#e3e5ea] px-2 py-0.5 text-xs md:min-h-0">Assumir</button>
                   )}
                   {aberta.status !== "CLOSED" && (
-                    <button onClick={() => mudarStatus("CLOSED")} className="rounded border border-[#e3e5ea] px-2 py-0.5 text-xs">Encerrar</button>
+                    <button onClick={() => mudarStatus("CLOSED")} className="min-h-[40px] rounded border border-[#e3e5ea] px-2 py-0.5 text-xs md:min-h-0">Encerrar</button>
                   )}
                 </div>
               </div>
-              <div className="max-h-[24rem] flex-1 space-y-1.5 overflow-y-auto">
+              <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain md:max-h-[24rem]">
                 {aberta.mensagens.map((m) => (
                   <div key={m.id} className={`flex ${m.de === "cliente" ? "justify-start" : "justify-end"}`}>
                     <div className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-3 py-1.5 text-sm ${m.de === "cliente" ? "bg-[#f1f2f5] text-[#1b1f2b]" : m.de === "robo" ? "bg-emerald-50 text-emerald-900" : "bg-[#6366f1] text-white"}`}>
@@ -327,9 +350,9 @@ export default function MessengerInbox() {
                       rows={2}
                       maxLength={2000}
                       placeholder="Responder no Messenger…"
-                      className="flex-1 rounded-lg border border-[#e3e5ea] p-2 text-sm"
+                      className="min-w-0 flex-1 rounded-lg border border-[#e3e5ea] p-2 text-base md:text-sm"
                     />
-                    <button onClick={enviar} disabled={!!ocupado || !texto.trim()} className="rounded-lg bg-[#1b1f2b] px-3 text-sm text-white disabled:opacity-50">
+                    <button onClick={enviar} disabled={!!ocupado || !texto.trim()} className="min-h-[44px] shrink-0 rounded-lg bg-[#1b1f2b] px-3 text-sm text-white disabled:opacity-50">
                       {ocupado === "enviar" ? "Enviando…" : "Enviar"}
                     </button>
                   </div>
