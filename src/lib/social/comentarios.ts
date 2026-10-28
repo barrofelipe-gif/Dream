@@ -173,6 +173,8 @@ type IgComentario = {
   timestamp?: string;
   username?: string;
   from?: { id?: string; username?: string };
+  // A API só devolve "user" quando o comentário foi feito pela própria conta: é o sinal de "resposta nossa".
+  user?: { id?: string };
   hidden?: boolean;
   replies?: { data?: IgComentario[] };
 };
@@ -184,6 +186,7 @@ async function lerInstagram(c: ContaInterna, porPost: number, ate: number): Prom
   const midias = await chamar<{ data?: IgMidia[] }>("instagram", `${IG}/me/media?fields=id,caption,media_type,thumbnail_url,media_url,permalink,comments_count&limit=15`, { token, ate });
   const comComentario = (midias.data ?? []).filter((m) => (m.comments_count ?? 0) > 0).slice(0, 12);
   const nossa = (x: IgComentario) =>
+    !!x.user?.id ||
     (!!x.from?.id && x.from.id === c.externoId) || (!!c.username && (x.username ?? x.from?.username) === c.username);
   let falhas = 0;
   let parcialRespostas = false;
@@ -205,7 +208,7 @@ async function lerInstagram(c: ContaInterna, porPost: number, ate: number): Prom
   const comResposta = porMidia.flatMap((p) => p.topo).filter((x) => (x.replies?.data?.length ?? 0) > 0);
   await emLotes(comResposta, 6, async (x) => {
     const todas: IgComentario[] = [];
-    let url: string | null = `${IG}/${x.id}/replies?fields=id,text,timestamp,username,from&limit=50`;
+    let url: string | null = `${IG}/${x.id}/replies?fields=id,text,timestamp,username,from,user&limit=50`;
     try {
       for (let pg = 0; url && pg < 4; pg++) {
         const rr: { data?: IgComentario[]; paging?: { next?: string } } = await chamar("instagram", url, { token, ate });
