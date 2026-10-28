@@ -160,7 +160,7 @@ export default function SocialReaproveitar({
         const s = await fetch("/api/social/sugerir", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ descricao: "", legenda: d.legenda, redes: alvo, tipo: d.tipo }),
+          body: JSON.stringify({ descricao: "", legenda: d.legenda, redes: alvo, tipo: d.tipo, contaIds: alvo.map(contaBff).filter(Boolean) }),
         });
         const sj = await s.json();
         if (!s.ok) throw new Error(sj.error ?? "Falha na IA");

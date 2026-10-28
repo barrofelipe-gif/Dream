@@ -79,10 +79,12 @@ export default function MessengerInbox() {
         chamar<{ paginas: StatusPagina[] }>(`/api/messenger/status?loja=${loja}`),
         chamar<{ conversas: Resumo[] }>(`/api/messenger/conversas?loja=${loja}`),
       ]);
+      // Resposta atrasada de outra loja (trocou de BFF para Moranga no meio) não entra na tela.
+      if (lojaAtual.current !== loja) return;
       setPaginas(s.paginas);
       setConversas(c.conversas);
     } catch (e) {
-      setAviso((e as Error).message);
+      if (lojaAtual.current === loja) setAviso((e as Error).message);
     }
   }, [loja]);
 
@@ -154,9 +156,12 @@ export default function MessengerInbox() {
   async function enviar() {
     if (!aberta || !texto.trim()) return;
     const id = aberta.id;
+    const enviado = texto;
     await acao("enviar", async () => {
-      await chamar(`/api/messenger/conversas/${id}/responder`, { method: "POST", body: JSON.stringify({ texto }) });
-      setTexto("");
+      await chamar(`/api/messenger/conversas/${id}/responder`, { method: "POST", body: JSON.stringify({ texto: enviado }) });
+      // Só limpa e recarrega se a mesma conversa continua aberta e o rascunho não mudou durante o envio.
+      if (abertaAtual.current !== id) return;
+      setTexto((t) => (t === enviado ? "" : t));
       await abrir(id);
     });
   }
@@ -164,8 +169,9 @@ export default function MessengerInbox() {
   const mudarStatus = (status: string) =>
     aberta &&
     acao("status", async () => {
-      await chamar(`/api/messenger/conversas/${aberta.id}`, { method: "PATCH", body: JSON.stringify({ status }) });
-      await abrir(aberta.id);
+      const id = aberta.id;
+      await chamar(`/api/messenger/conversas/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+      if (abertaAtual.current === id) await abrir(id);
     });
 
   return (

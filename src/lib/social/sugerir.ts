@@ -56,13 +56,20 @@ function regrasDaRede(rede: Rede) {
   return `${r.rotulo}:\n- Fazer: ${r.repetir.join(" | ")}\n- Evitar: ${r.evitar.join(" | ")}\n- Medidas: ${r.medidas.map(([k, v]) => `${k}: ${v}`).join(" | ")}`;
 }
 
+/** Moranga é outra empresa: varejo de moda praia, nunca atacado. As regras da BFF não valem para ela. */
+const REGRAS_MORANGA = `Marca: Moranga Biquínis, moda praia no VAREJO para a consumidora final. Nunca fale em atacado, pedido mínimo, revenda, CNPJ ou app da BFF.
+Compra pelo site: https://www.usemoranga.com.br (no Instagram e no TikTok: "link na bio").
+Proibido: inventar preço, promoção ou cupom; falar em porcentagem de cashback; descrever peça, cor ou modelo (a IA não vê o conteúdo); citar marcas de terceiros.
+Tom brasileiro, leve, de verão, no máximo 2 emojis. Escreva como gente, sem frases vazias de marketing.`;
+
 /** Gera título, legenda, hashtags e palavras-chave de cada rede, para um conteúdo descrito em texto (a IA não vê o vídeo). */
-export async function sugerirTextos(entrada: { descricao: string; legenda?: string; redes: Rede[]; tipo: "video" | "imagem" | "carrossel" | "texto" }): Promise<Sugestao> {
+export async function sugerirTextos(entrada: { descricao: string; legenda?: string; redes: Rede[]; tipo: "video" | "imagem" | "carrossel" | "texto"; loja?: "bff" | "moranga" }): Promise<Sugestao> {
+  const moranga = entrada.loja === "moranga";
   const redes = [...new Set(entrada.redes)];
   const resposta = await client.messages.parse({
     model: MODEL,
     max_tokens: 4000,
-    system: `Você escreve os textos de publicação das redes sociais da BFF, focado em crescer seguidores, alcance, engajamento e cliques, e em aparecer na busca do Google, na busca de cada rede e nas respostas de assistentes de IA.\n\n${REGRAS_BFF}\n\nRegras por rede (de pesquisa de mercado de 2025–2026 e dos números da própria conta):\n${redes.map(regrasDaRede).join("\n\n")}`,
+    system: `Você escreve os textos de publicação das redes sociais da ${moranga ? "Moranga Biquínis" : "BFF"}, focado em crescer seguidores, alcance, engajamento e cliques, e em aparecer na busca do Google, na busca de cada rede e nas respostas de assistentes de IA.\n\n${moranga ? REGRAS_MORANGA : REGRAS_BFF}\n\nRegras por rede (de pesquisa de mercado de 2025–2026 e dos números da própria conta):\n${redes.map(regrasDaRede).join("\n\n")}`,
     messages: [
       {
         role: "user",

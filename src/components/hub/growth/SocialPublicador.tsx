@@ -226,7 +226,7 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
 
   const tipoAtual = midias.length > 1 ? "carrossel" : midias[0]?.tipo === "video" ? "video" : midias.length ? "imagem" : "texto";
 
-  async function gerarComIa(redesAlvo: Rede[] = listaRedes, base?: { descricao: string; legenda: string; tipo: string }) {
+  async function gerarComIa(redesAlvo: Rede[] = listaRedes, base?: { descricao: string; legenda: string; tipo: string; contaIds?: string[] }) {
     if (!redesAlvo.length) {
       setMsg({ tipo: "erro", texto: "Escolha onde postar para a IA escrever o texto de cada rede." });
       return;
@@ -245,7 +245,7 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
       const r = await fetch("/api/social/sugerir", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ descricao: d, legenda: l, redes: redesAlvo, tipo: base?.tipo ?? tipoAtual }),
+        body: JSON.stringify({ descricao: d, legenda: l, redes: redesAlvo, tipo: base?.tipo ?? tipoAtual, contaIds: base?.contaIds ?? [...escolhidas] }),
       });
       const j = await r.json();
       if (pedido !== pedidoIa.current) return;
@@ -282,7 +282,7 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
     const r = await fetch("/api/social/posts", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ legenda: legendaFinal, midias, contaIds, acao, agendadoPara, porRede: montarPorRede(redesDoPost, textos, { ...opc, tiktok: tt }, origem, legendaFinal) }),
+      body: JSON.stringify({ legenda: legendaFinal, midias, contaIds, acao, agendadoPara, porRede: montarPorRede(redesDoPost, textos, { ...opc, tiktok: tt, loja: contas.find((c) => contaIds.includes(c.id))?.loja }, origem, legendaFinal) }),
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error ?? "Não foi possível enviar.");
@@ -370,7 +370,7 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
     setEscolhidas(new Set(p.contaIds));
     setMsg({ tipo: "ok", texto: "Post do Instagram carregado. A IA está escrevendo o texto de cada rede…" });
     const redesP = ORDEM.filter((r) => p.contaIds.some((id) => contas.find((c) => c.id === id)?.rede === r));
-    gerarComIa(redesP, { descricao: p.legenda.slice(0, 600), legenda: p.legenda, tipo: p.tipo });
+    gerarComIa(redesP, { descricao: p.legenda.slice(0, 600), legenda: p.legenda, tipo: p.tipo, contaIds: p.contaIds });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 

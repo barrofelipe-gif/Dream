@@ -32,7 +32,7 @@ export function limitarHashtags(texto: string, max: number): string {
 export function montarPorRede(
   redes: Rede[],
   textos: Partial<Record<Rede, TextoRede>>,
-  opc: { ytPriv: string; ytShorts: boolean; ttPriv: string; pinBoard: string; pinLink: string; tiktok?: OpcoesTikTok },
+  opc: { ytPriv: string; ytShorts: boolean; ttPriv: string; pinBoard: string; pinLink: string; tiktok?: OpcoesTikTok; loja?: string },
   origem: string | null,
   legendaPrincipal = "",
 ) {
@@ -68,7 +68,7 @@ export function montarPorRede(
         },
       };
     }
-    else if (r === "pinterest") out.pinterest = { ...base, opcoes: { boardId: opc.pinBoard, titulo, link: opc.pinLink || LINK_APP } };
+    else if (r === "pinterest") out.pinterest = { ...base, opcoes: { boardId: opc.pinBoard, titulo, link: opc.pinLink || (opc.loja === "moranga" ? "" : LINK_APP) } };
     else if (Object.keys(base).length) out[r] = base;
   }
   if (origem) out._origem = origem;

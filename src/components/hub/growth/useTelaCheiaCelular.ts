@@ -35,6 +35,9 @@ export function useTelaCheiaCelular(ativo: boolean, aoFechar: () => void): CSSPr
   useEffect(() => {
     if (!ativo) return;
     const antes = document.body.style.overflow;
+    const calhaAntes = document.documentElement.style.scrollbarGutter;
+    // Guarda o espaço da barra de rolagem: sem isso a largura muda ao travar e, perto de 768 px, a tela ficava piscando.
+    document.documentElement.style.scrollbarGutter = "stable";
     document.body.style.overflow = "hidden";
     const esc = (e: KeyboardEvent) => e.key === "Escape" && aoFechar();
     window.addEventListener("keydown", esc);
@@ -46,6 +49,7 @@ export function useTelaCheiaCelular(ativo: boolean, aoFechar: () => void): CSSPr
     return () => {
       cancelAnimationFrame(raf);
       document.body.style.overflow = antes;
+      document.documentElement.style.scrollbarGutter = calhaAntes;
       window.removeEventListener("keydown", esc);
       vv?.removeEventListener("resize", medir);
       vv?.removeEventListener("scroll", medir);

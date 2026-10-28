@@ -71,6 +71,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Escolha uma data e hora no futuro" }, { status: 400 });
   }
 
+  // Uma postagem é de uma marca só: BFF e Moranga são empresas diferentes.
+  const lojasDestino = new Set((await prisma.socialConta.findMany({ where: { id: { in: contaIds } }, select: { loja: true } })).map((c) => c.loja));
+  if (lojasDestino.size > 1) return NextResponse.json({ error: "Uma postagem não pode ir para a BFF e a Moranga ao mesmo tempo. Faça uma para cada marca." }, { status: 400 });
+
   // Post trazido do Instagram da BFF: só vai para contas da BFF (nunca misturar com a Moranga) e nunca duas vezes
   // para a mesma conta (só uma tentativa que deu erro pode ser refeita).
   const origem = typeof b.porRede?._origem === "string" ? b.porRede._origem : null;

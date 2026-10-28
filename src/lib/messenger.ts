@@ -362,8 +362,9 @@ export async function tratarEventoMessenger(paginaId: string, ev: EventoMessenge
     .catch(() => null); // mesma mensagem chegando duas vezes ao mesmo tempo: a outra execução cuida
   if (!entrada) return;
   // Encerrada que recebe mensagem nova volta a ficar aberta (para o robô, se ele estiver ligado).
-  const status = conversa.status === "CLOSED" ? "BOT" : conversa.status;
-  await prisma.fbConversa.update({ where: { id: conversa.id }, data: { naoLida: true, status } });
+  // Condicional: só reabre se ainda estiver encerrada, sem desfazer uma atendente que assumiu nesse meio tempo.
+  await prisma.fbConversa.update({ where: { id: conversa.id }, data: { naoLida: true } });
+  await prisma.fbConversa.updateMany({ where: { id: conversa.id, status: "CLOSED" }, data: { status: "BOT" } });
   await avancarJanela(conversa.id, agora);
 
   if (texto === "[mídia]") return;

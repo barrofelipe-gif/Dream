@@ -2,6 +2,10 @@ import { FalhaDefinitiva, PublicacaoPendente, type EntradaPublicar, type RedeAda
 
 const GRAPH = `${process.env.IG_GRAPH_BASE ?? "https://graph.instagram.com"}/${process.env.IG_GRAPH_VERSION ?? "v23.0"}`;
 const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const PREFIXO_CONTAINER = "ig-container:";
+
+/** O Instagram respondeu e recusou (diferente de tempo esgotado ou rede fora, quando não dá para saber se fez). */
+class RecusaInstagram extends Error {}
 
 async function chamar<T>(token: string, caminho: string, corpo?: Record<string, unknown>): Promise<T> {
   const res = await fetch(`${GRAPH}/${caminho}`, {
@@ -20,7 +24,7 @@ async function chamar<T>(token: string, caminho: string, corpo?: Record<string, 
       /* mantém o texto cru */
     }
     if (/permission|scope|OAuth/i.test(msg)) msg += " (reconecte a conta do Instagram para liberar a permissão de publicar)";
-    throw new Error(`Instagram recusou: ${msg}`);
+    throw new RecusaInstagram(`Instagram recusou: ${msg}`);
   }
   return JSON.parse(texto) as T;
 }
@@ -46,18 +50,31 @@ async function esperarPronto(token: string, containerId: string, prazo: number):
   return false;
 }
 
-async function publicarContainer(token: string, ig: string, containerId: string): Promise<SaidaPublicar> {
-  const pub = await chamar<{ id: string }>(token, `${ig}/media_publish`, { creation_id: containerId });
-  let url: string | undefined;
+/**
+ * Publica o contêiner. Se a resposta não vier (tempo esgotado, rede fora), não dá para saber se o Instagram publicou:
+ * vira PublicacaoPendente e o concluir confere o contêiner (PUBLISHED = já saiu) antes de qualquer nova tentativa,
+ * então o mesmo post nunca sai duas vezes. O link só é buscado se ainda houver tempo.
+ */
+async function publicarContainer(token: string, ig: string, containerId: string, linkAte = Infinity): Promise<SaidaPublicar> {
+  let pub: { id: string };
   try {
-    url = (await chamar<{ permalink?: string }>(token, `${pub.id}?fields=permalink`)).permalink;
-  } catch {
-    /* o link é só um extra */
+    pub = await chamar<{ id: string }>(token, `${ig}/media_publish`, { creation_id: containerId });
+  } catch (e) {
+    if (e instanceof RecusaInstagram) throw e;
+    throw new PublicacaoPendente(`${PREFIXO_CONTAINER}${containerId}`);
+  }
+  let url: string | undefined;
+  // O link é conferido depois de publicar, e só se ainda sobrar tempo (o sucesso precisa ser gravado antes dos 60 s).
+  if (Date.now() < linkAte) {
+    try {
+      url = (await chamar<{ permalink?: string }>(token, `${pub.id}?fields=permalink`)).permalink;
+    } catch {
+      /* o link é só um extra */
+    }
   }
   return { externoId: pub.id, url };
 }
 
-const PREFIXO_CONTAINER = "ig-container:";
 
 export const adaptador: RedeAdapter = {
   rede: "instagram",
@@ -85,13 +102,16 @@ export const adaptador: RedeAdapter = {
     const token = e.conta.accessToken;
     const ig = e.conta.externoId;
     // Deixa folga dentro dos 60 s da função para gravar o resultado.
-    const prazo = Date.now() + 25_000;
+    const inicio = Date.now();
+    const prazo = inicio + 25_000; // até quando espera o vídeo processar
+    const limite = inicio + 40_000; // depois disto não publica aqui: deixa para o agendador (concluir)
     let containerId: string;
 
     if (e.midias.length > 1) {
       // Carrossel: cria cada item e depois o contêiner que junta todos.
       const filhos: string[] = [];
       for (const m of e.midias.slice(0, 10)) {
+        if (Date.now() > prazo) throw new Error("O Instagram demorou demais para receber o carrossel. Tente de novo.");
         const f = await chamar<{ id: string }>(token, `${ig}/media`, {
           is_carousel_item: true,
           ...(m.tipo === "video" ? { media_type: "VIDEO", video_url: m.url } : { image_url: m.url }),
@@ -117,7 +137,8 @@ export const adaptador: RedeAdapter = {
       if (m.tipo === "video" && !(await esperarPronto(token, containerId, prazo))) throw new PublicacaoPendente(`${PREFIXO_CONTAINER}${containerId}`);
     }
 
-    return publicarContainer(token, ig, containerId);
+    if (Date.now() > limite) throw new PublicacaoPendente(`${PREFIXO_CONTAINER}${containerId}`);
+    return publicarContainer(token, ig, containerId, limite);
   },
   async concluir(conta, referencia) {
     if (!referencia.startsWith(PREFIXO_CONTAINER)) throw new Error("Referência de publicação desconhecida.");

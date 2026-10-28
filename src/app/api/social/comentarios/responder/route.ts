@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { exigirAdmin } from "@/lib/igAdmin";
 import { ErroRede, REDES_COMENTARIO, responderComentario, type RedeComentario } from "@/lib/social/comentarios";
 
-export const maxDuration = 30;
+// Conferir de quem é o comentário e publicar são duas chamadas de até 15 s cada: cabe com folga em 60 s.
+export const maxDuration = 60;
 
 // Publica a resposta que a equipe leu e aprovou. Nada é enviado sem este clique.
 export async function POST(req: NextRequest) {

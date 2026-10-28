@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { exigirAdmin } from "@/lib/igAdmin";
 import { ErroRede, ocultarComentario } from "@/lib/social/comentarios";
 
-export const maxDuration = 30;
+// Conferir de quem é o comentário e publicar são duas chamadas de até 15 s cada: cabe com folga em 60 s.
+export const maxDuration = 60;
 
 // Oculta ou mostra de novo um comentário (Instagram e Facebook). Não apaga nada.
 export async function POST(req: NextRequest) {
