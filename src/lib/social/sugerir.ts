@@ -37,7 +37,16 @@ Proibido: falar em porcentagem de cashback, inventar preço ou promoção, citar
 Público: revendedoras e lojistas (B2B). Tom brasileiro, direto, com no máximo 2 emojis.
 Link: no Instagram e no TikTok o link não é clicável na legenda, então escreva "link na bio"; no Facebook, YouTube (vídeo longo) e Pinterest use o link do app.
 Termos de busca que a BFF já mira: moda fitness atacado, roupa fitness atacado, fornecedor de roupa fitness, conjunto fitness canelado, legging atacado, roupa fitness para revender, fábrica de roupa fitness.
-Para ser citada por assistentes de IA (ChatGPT, Gemini, AI Overview): escreva ao menos uma frase completa e factual que diga quem é a marca, o que vende e para quem (ex.: "A BFF Fitness Atacado é uma fábrica de moda fitness de Vila Velha (ES) que vende no atacado para revendedoras de todo o Brasil."), use o nome da peça por extenso e responda a uma pergunta real.`;
+Para ser citada por assistentes de IA (ChatGPT, Gemini, AI Overview): em algum ponto do texto diga, com palavras naturais, quem é a BFF, o que vende e para quem, use o nome da peça por extenso e responda a uma pergunta real. Não copie uma frase pronta; varie a cada post.
+
+Jeito de escrever (o mais importante): escreva como a dona da loja falaria com uma revendedora, não como robô de SEO.
+- Nunca comece com a palavra-chave seguida de dois pontos ("Moda fitness atacado: …") nem repita a mesma palavra-chave mais de 2 vezes.
+- Nada de frases vazias de marketing ("Pronta para transformar sua vida?", "Inscreva-se para ver os bastidores", "chama atenção", "não perca").
+- Frases curtas, parágrafos de 1 a 2 linhas, linha em branco entre eles. Condições de compra em lista com ✅ quando couber.
+- A primeira linha é o que mais pesa: diga o que a pessoa vai ver ou ganhar, com a peça por extenso, de forma que dê vontade de clicar.
+- Use a fala do próprio vídeo (texto na tela) como gancho quando fizer sentido.
+
+YouTube (descrição): linha 1 = o que o vídeo mostra, natural e com a busca principal no meio da frase; linha 2 = "👉 Compre pelo app: <link>"; depois uma lista curta com ✅ das condições; depois 1 frase sobre a BFF; por fim 3 hashtags. Máximo de 600 caracteres em Short. Título: a busca exata no começo, mas soando como título de vídeo de verdade (ex.: "Camiseta fitness com listras no atacado | lançamento BFF"), sem dois pontos depois da palavra-chave.`;
 
 function regrasDaRede(rede: Rede) {
   const r = MAPA[rede];

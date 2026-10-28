@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { destravarPublicacoes, publicarAgendados } from "@/lib/social/publicar";
+import { concluirPendentes, destravarPublicacoes, publicarAgendados } from "@/lib/social/publicar";
 import { seguirSemAtendente } from "@/lib/igSeguimento";
 import { processarTransmissoes } from "@/lib/igTransmissao";
 import { processarSequencias } from "@/lib/igSequencias";
@@ -27,6 +27,8 @@ export async function GET(req: NextRequest) {
   // Mensagem de cliente que ficou sem resposta (a função do webhook morreu no meio): o robô responde agora.
   await limparEnviosFantasma().catch(() => 0);
   await destravarPublicacoes().catch(() => 0);
+  // Reel do Instagram que ficou processando na rede: publica agora que ficou pronto.
+  const concluidas = await concluirPendentes({ prazo: inicio + 10_000 }).catch(() => 0);
   const retomadas = temTempo() ? await retomarSemResposta({ prazo: inicio + 25_000 }).catch(() => 0) : 0;
   const agendadas = temTempo() ? await processarEnviosAgendados().catch(() => 0) : 0;
   const seguimentos = temTempo() ? await seguirSemAtendente({ prazo: inicio + 20_000 }).catch(() => 0) : 0;
@@ -36,10 +38,11 @@ export async function GET(req: NextRequest) {
   let r: { processados: number } = { processados: 0 };
   if (temTempo()) {
     try {
-      r = await publicarAgendados({ prazo });
+      // Começa postagem só até os 20 s: um Reel pode esperar 30 s pelo Instagram, e a função morre aos 60 s.
+      r = await publicarAgendados({ prazo: inicio + 20_000 });
     } catch (e) {
       console.error("[cron] falha ao publicar agendados", e);
     }
   }
-  return NextResponse.json({ ok: true, ...r, retomadas, agendadas, seguimentos, transmitidas, sequenciadas, fluxos, ms: Date.now() - inicio, em: new Date().toISOString() });
+  return NextResponse.json({ ok: true, ...r, concluidas, retomadas, agendadas, seguimentos, transmitidas, sequenciadas, fluxos, ms: Date.now() - inicio, em: new Date().toISOString() });
 }

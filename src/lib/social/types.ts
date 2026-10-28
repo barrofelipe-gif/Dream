@@ -70,9 +70,27 @@ export interface RedeAdapter {
   validar(e: Omit<EntradaPublicar, "conta">): string[];
   /** Publica de verdade. Deve lançar Error com mensagem clara em português se falhar. */
   publicar(e: EntradaPublicar): Promise<SaidaPublicar>;
+  /**
+   * Termina uma publicação que ficou processando na rede (ver PublicacaoPendente). Devolve a publicação
+   * pronta, ou null se a rede ainda está processando. Lança Error se a rede desistiu.
+   */
+  concluir?(conta: ContaAberta, referencia: string): Promise<SaidaPublicar | null>;
   /** Renova o token se estiver perto de vencer. Devolve os novos dados ou null se não precisa. */
   renovar?(conta: ContaAberta): Promise<{ accessToken: string; refreshToken?: string; expiraEm?: Date } | null>;
 }
+
+/**
+ * A rede aceitou o envio mas ainda está processando (vídeo do Instagram pode levar mais que os 60 s da função).
+ * `referencia` é o que o adaptador precisa para terminar depois em `concluir` (ex.: o id do contêiner).
+ */
+export class PublicacaoPendente extends Error {
+  constructor(public referencia: string) {
+    super("A rede ainda está processando o vídeo. A publicação termina sozinha em alguns minutos.");
+  }
+}
+
+/** A rede desistiu de vez (vídeo com erro, contêiner vencido): não adianta tentar de novo em concluir. */
+export class FalhaDefinitiva extends Error {}
 
 /** Adaptador "ainda não implementado": o painel mostra a rede como em breve, com as pendências. */
 export function adaptadorEmBreve(rede: Rede, rotulo: string, pendencias: string[]): RedeAdapter {

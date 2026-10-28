@@ -1,4 +1,4 @@
-import type { EntradaPublicar, RedeAdapter, SaidaPublicar } from "@/lib/social/types";
+import { FalhaDefinitiva, PublicacaoPendente, type EntradaPublicar, type RedeAdapter, type SaidaPublicar } from "@/lib/social/types";
 
 const GRAPH = `${process.env.IG_GRAPH_BASE ?? "https://graph.instagram.com"}/${process.env.IG_GRAPH_VERSION ?? "v23.0"}`;
 const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -8,6 +8,8 @@ async function chamar<T>(token: string, caminho: string, corpo?: Record<string, 
     method: corpo ? "POST" : "GET",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: corpo ? JSON.stringify(corpo) : undefined,
+    // Cada chamada tem limite: a função inteira morre em 60 s.
+    signal: AbortSignal.timeout(8_000),
   });
   const texto = await res.text();
   if (!res.ok) {
@@ -23,16 +25,39 @@ async function chamar<T>(token: string, caminho: string, corpo?: Record<string, 
   return JSON.parse(texto) as T;
 }
 
-/** Vídeos e reels demoram a processar: espera o Instagram terminar antes de publicar. */
-async function esperarPronto(token: string, containerId: string) {
-  for (let i = 0; i < 40; i++) {
-    const s = await chamar<{ status_code?: string; status?: string }>(token, `${containerId}?fields=status_code,status`);
-    if (s.status_code === "FINISHED") return;
-    if (s.status_code === "ERROR" || s.status_code === "EXPIRED") throw new Error(`O Instagram não conseguiu processar o vídeo (${s.status ?? s.status_code}).`);
+/** Situação de um contêiner: pronto para publicar, ainda processando, ou já publicado (uma execução anterior publicou). */
+async function situacao(token: string, containerId: string): Promise<"pronto" | "processando" | "publicado"> {
+  const s = await chamar<{ status_code?: string; status?: string }>(token, `${containerId}?fields=status_code,status`);
+  if (s.status_code === "FINISHED") return "pronto";
+  if (s.status_code === "PUBLISHED") return "publicado";
+  if (s.status_code === "ERROR" || s.status_code === "EXPIRED") throw new FalhaDefinitiva(`O Instagram não conseguiu processar o vídeo (${s.status ?? s.status_code}).`);
+  return "processando";
+}
+
+/**
+ * Vídeos e reels demoram a processar: espera o Instagram terminar, mas só até `prazo` (a função da Vercel
+ * morre em 60 s, e o Instagram às vezes leva minutos). Devolve false se o prazo acabou antes.
+ */
+async function esperarPronto(token: string, containerId: string, prazo: number): Promise<boolean> {
+  while (Date.now() < prazo) {
+    if ((await situacao(token, containerId)) !== "processando") return true;
     await espera(3000);
   }
-  throw new Error("O Instagram demorou demais para processar o vídeo.");
+  return false;
 }
+
+async function publicarContainer(token: string, ig: string, containerId: string): Promise<SaidaPublicar> {
+  const pub = await chamar<{ id: string }>(token, `${ig}/media_publish`, { creation_id: containerId });
+  let url: string | undefined;
+  try {
+    url = (await chamar<{ permalink?: string }>(token, `${pub.id}?fields=permalink`)).permalink;
+  } catch {
+    /* o link é só um extra */
+  }
+  return { externoId: pub.id, url };
+}
+
+const PREFIXO_CONTAINER = "ig-container:";
 
 export const adaptador: RedeAdapter = {
   rede: "instagram",
@@ -59,6 +84,8 @@ export const adaptador: RedeAdapter = {
   async publicar(e: EntradaPublicar): Promise<SaidaPublicar> {
     const token = e.conta.accessToken;
     const ig = e.conta.externoId;
+    // Deixa folga dentro dos 60 s da função para gravar o resultado.
+    const prazo = Date.now() + 25_000;
     let containerId: string;
 
     if (e.midias.length > 1) {
@@ -69,7 +96,8 @@ export const adaptador: RedeAdapter = {
           is_carousel_item: true,
           ...(m.tipo === "video" ? { media_type: "VIDEO", video_url: m.url } : { image_url: m.url }),
         });
-        if (m.tipo === "video") await esperarPronto(token, f.id);
+        // Vídeo dentro de carrossel precisa estar pronto antes de montar o carrossel: aqui não dá para continuar depois.
+        if (m.tipo === "video" && !(await esperarPronto(token, f.id, prazo))) throw new Error("O Instagram demorou demais para processar um vídeo do carrossel. Tente de novo.");
         filhos.push(f.id);
       }
       const c = await chamar<{ id: string }>(token, `${ig}/media`, { media_type: "CAROUSEL", children: filhos, caption: e.legenda });
@@ -85,16 +113,19 @@ export const adaptador: RedeAdapter = {
           : { image_url: m.url, caption: e.legenda },
       );
       containerId = c.id;
-      if (m.tipo === "video") await esperarPronto(token, containerId);
+      // Reel que não ficou pronto a tempo: o agendador de 5 min termina a publicação (concluir) — o contêiner vale 24 h.
+      if (m.tipo === "video" && !(await esperarPronto(token, containerId, prazo))) throw new PublicacaoPendente(`${PREFIXO_CONTAINER}${containerId}`);
     }
 
-    const pub = await chamar<{ id: string }>(token, `${ig}/media_publish`, { creation_id: containerId });
-    let url: string | undefined;
-    try {
-      url = (await chamar<{ permalink?: string }>(token, `${pub.id}?fields=permalink`)).permalink;
-    } catch {
-      /* o link é só um extra */
-    }
-    return { externoId: pub.id, url };
+    return publicarContainer(token, ig, containerId);
+  },
+  async concluir(conta, referencia) {
+    if (!referencia.startsWith(PREFIXO_CONTAINER)) throw new Error("Referência de publicação desconhecida.");
+    const containerId = referencia.slice(PREFIXO_CONTAINER.length);
+    const sit = await situacao(conta.accessToken, containerId);
+    if (sit === "processando") return null;
+    // Uma execução anterior publicou e morreu antes de gravar: o post está no ar, só sem o link guardado.
+    if (sit === "publicado") return { externoId: `${PREFIXO_CONTAINER}${containerId}` };
+    return publicarContainer(conta.accessToken, conta.externoId, containerId);
   },
 };
