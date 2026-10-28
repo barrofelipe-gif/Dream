@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { exigirAdmin } from "@/lib/igAdmin";
+import { lojaDoPainel } from "@/lib/igLoja";
 import { publicarPost } from "@/lib/social/publicar";
 
 // Publicar em várias redes (com vídeo) demora: o plano gratuito da Vercel aceita até 60 segundos.
@@ -10,10 +11,13 @@ export const maxDuration = 60;
 export async function GET() {
   const { erro } = await exigirAdmin();
   if (erro) return erro;
+  // Postagens com pelo menos uma rede da empresa escolhida no painel.
+  const loja = await lojaDoPainel();
   const posts = await prisma.socialPost.findMany({
+    where: { alvos: { some: { conta: { loja } } } },
     orderBy: { createdAt: "desc" },
     take: 50,
-    include: { alvos: { include: { conta: { select: { rede: true, loja: true, username: true, nome: true } } } } },
+    include: { alvos: { where: { conta: { loja } }, include: { conta: { select: { rede: true, loja: true, username: true, nome: true } } } } },
   });
   return NextResponse.json({
     posts: posts.map((p) => ({

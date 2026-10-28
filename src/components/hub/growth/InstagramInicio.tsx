@@ -4,6 +4,8 @@ import { useState } from "react";
 
 export type DadosInicio = {
   nomeLoja: string;
+  /** Empresa escolhida no topo do painel: todos os números abaixo são só dela. */
+  loja: "bff" | "moranga";
   contas: { id: string; username: string | null; loja: string; active: boolean }[];
   faltaConectar: ("bff" | "moranga")[];
   totalContatos: number;
@@ -100,6 +102,7 @@ export default function InstagramInicio({ d }: { d: DadosInicio }) {
         <header>
           <h2 className="text-3xl font-extrabold tracking-tight text-[#1b1f2b] [text-wrap:balance] sm:text-4xl">Olá, {d.nomeLoja}!</h2>
           <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[13px] text-[#5a5f6d]">
+            <span className="font-semibold text-[#1b1f2b]">{d.loja === "bff" ? "BFF Fitness" : "Moranga"}</span>
             <span>
               {canais} canal{canais === 1 ? "" : "is"} conectado{canais === 1 ? "" : "s"}
             </span>

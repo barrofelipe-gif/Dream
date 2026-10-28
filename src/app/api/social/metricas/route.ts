@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { exigirAdmin } from "@/lib/igAdmin";
 import { analisarFormatos, analisarHorario, resumirPublico, topPostagens, evolucaoDiaria, totaisPeriodo } from "@/lib/social/metricas/analise";
 import { COLETORES } from "@/lib/social/metricas";
+import { lojaDoPainel } from "@/lib/igLoja";
 import type { Rede } from "@/lib/social/types";
 
 const DIA_MS = 86_400_000;
@@ -15,7 +16,7 @@ export async function GET(req: NextRequest) {
   const dias = Math.min(Math.max(Number(req.nextUrl.searchParams.get("dias") ?? 30) || 30, 1), 90);
 
   const contas = await prisma.socialConta.findMany({
-    where: { ativo: true },
+    where: { ativo: true, loja: await lojaDoPainel() },
     orderBy: [{ rede: "asc" }, { createdAt: "asc" }],
     select: { id: true, rede: true, loja: true, nome: true, username: true },
   });

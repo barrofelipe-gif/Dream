@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { exigirAdmin } from "@/lib/igAdmin";
+import { lojaDoPainel } from "@/lib/igLoja";
 import { TIPOS_CAMPO } from "@/lib/igContatos";
 
 // Campos personalizados dos contatos (por conta do Instagram).
@@ -10,7 +11,7 @@ export async function GET(req: NextRequest) {
   if (erro) return erro;
   const accountId = req.nextUrl.searchParams.get("conta") || undefined;
   const campos = await prisma.igCampo.findMany({
-    where: accountId ? { accountId } : {},
+    where: accountId ? { accountId, account: { loja: await lojaDoPainel() } } : { account: { loja: await lojaDoPainel() } },
     orderBy: [{ accountId: "asc" }, { nome: "asc" }],
     include: { account: { select: { username: true } } },
   });

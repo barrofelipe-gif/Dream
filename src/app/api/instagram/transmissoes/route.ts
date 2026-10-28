@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { exigirAdmin } from "@/lib/igAdmin";
+import { lojaDoPainel } from "@/lib/igLoja";
 import { destinatarios, processarTransmissoes } from "@/lib/igTransmissao";
 
 export const maxDuration = 60;
@@ -9,9 +10,10 @@ const lista = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => t
 export async function GET() {
   const { erro } = await exigirAdmin();
   if (erro) return erro;
+  const loja = await lojaDoPainel();
   const [transmissoes, contas] = await Promise.all([
-    prisma.igTransmissao.findMany({ orderBy: { createdAt: "desc" }, take: 20, include: { account: { select: { username: true, loja: true } } } }),
-    prisma.instagramAccount.findMany({ where: { active: true }, select: { id: true, username: true, loja: true } }),
+    prisma.igTransmissao.findMany({ where: { account: { loja } }, orderBy: { createdAt: "desc" }, take: 20, include: { account: { select: { username: true, loja: true } } } }),
+    prisma.instagramAccount.findMany({ where: { active: true, loja }, select: { id: true, username: true, loja: true } }),
   ]);
   return NextResponse.json({ transmissoes, contas });
 }

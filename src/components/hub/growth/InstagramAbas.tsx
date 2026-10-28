@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useEstreito } from "@/components/hub/growth/useTelaCheiaCelular";
+import { NOME_LOJA, trocarLoja, type LojaPainel } from "@/lib/igLojaCliente";
 
 export type Aba = {
   id: string;
@@ -15,6 +16,34 @@ export type Aba = {
 };
 
 const CHAVE = "ig-aba-ativa";
+
+/** Cor de cada grupo do menu: a tarja do título e a marca da seção aberta, para separar um grupo do outro de relance. */
+const COR_GRUPO: Record<string, { tarja: string; ativo: string }> = {
+  "Início": { tarja: "bg-[#eef0f4] text-[#3d4250] border-[#9aa0ad]", ativo: "border-[#5a5f6d]" },
+  Atendimento: { tarja: "bg-[#e8f0ff] text-[#1d4ed8] border-[#3b82f6]", ativo: "border-[#3b82f6]" },
+  "Automações": { tarja: "bg-[#f1ecff] text-[#6d28d9] border-[#8b5cf6]", ativo: "border-[#8b5cf6]" },
+  Clientes: { tarja: "bg-[#e7f8ef] text-[#047857] border-[#10b981]", ativo: "border-[#10b981]" },
+  "Redes sociais": { tarja: "bg-[#fdecf4] text-[#be185d] border-[#ec4899]", ativo: "border-[#ec4899]" },
+};
+const corGrupo = (g: string) => COR_GRUPO[g] ?? COR_GRUPO["Início"];
+
+/** BFF | Moranga: tudo no painel passa a ser da empresa escolhida (as duas nunca aparecem juntas). */
+function SeletorLoja({ loja }: { loja: LojaPainel }) {
+  return (
+    <div className="flex rounded-xl bg-[#eef0f4] p-1" role="group" aria-label="Empresa">
+      {(["bff", "moranga"] as const).map((l) => (
+        <button
+          key={l}
+          onClick={() => l !== loja && trocarLoja(l)}
+          aria-pressed={l === loja}
+          className={`min-h-[36px] flex-1 rounded-lg px-3 text-[13px] font-semibold transition ${l === loja ? "bg-white text-[#1b1f2b] shadow-sm" : "text-[#6b6f80] hover:text-[#1b1f2b]"}`}
+        >
+          {NOME_LOJA[l]}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function Contador({ n }: { n?: number }) {
   if (!n) return null;
@@ -32,7 +61,7 @@ function Contador({ n }: { n?: number }) {
  * seção; ao tocar, abre a lista inteira em tela cheia. O endereço guarda a seção (#conversas),
  * então dá para mandar o link de uma seção e o botão Voltar do navegador funciona.
  */
-export default function InstagramAbas({ abas }: { abas: Aba[] }) {
+export default function InstagramAbas({ abas, loja }: { abas: Aba[]; loja: LojaPainel }) {
   const [ativa, setAtiva] = useState(abas[0]?.id ?? "");
   const [menuAberto, setMenuAberto] = useState(false);
   const topo = useRef<HTMLDivElement>(null);
@@ -126,7 +155,8 @@ export default function InstagramAbas({ abas }: { abas: Aba[] }) {
   return (
     <div ref={topo} className="flex scroll-mt-16 flex-col gap-4 md:flex-row md:gap-6">
       {/* Celular: barra fixa com a seção atual */}
-      <div className="sticky top-[57px] z-20 -mx-3 border-b border-[#e3e5ea] bg-white/95 px-3 py-2 backdrop-blur md:hidden">
+      <div className="sticky top-[57px] z-20 -mx-3 space-y-2 border-b border-[#e3e5ea] bg-white/95 px-3 py-2 backdrop-blur md:hidden">
+        <SeletorLoja loja={loja} />
         <button
           ref={botaoMenu}
           onClick={() => setMenuAberto(true)}
@@ -165,7 +195,7 @@ export default function InstagramAbas({ abas }: { abas: Aba[] }) {
           <div className="flex-1 overflow-y-auto overscroll-contain px-3 pb-[max(16px,env(safe-area-inset-bottom))]">
             {grupos.map((g) => (
               <div key={g} className="pt-3">
-                <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-[#a1a5b0]">{g}</p>
+                <p className={`mb-1 rounded-lg border-l-4 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide ${corGrupo(g).tarja}`}>{g}</p>
                 {abas
                   .filter((a) => a.grupo === g)
                   .map((a) => (
@@ -194,9 +224,10 @@ export default function InstagramAbas({ abas }: { abas: Aba[] }) {
       {/* Computador: lista à esquerda */}
       <nav className="hidden md:block md:w-52 md:shrink-0" aria-label="Seções do Instagram">
         <div className="sticky top-20 flex flex-col gap-4">
+          <SeletorLoja loja={loja} />
           {grupos.map((g) => (
             <div key={g} className="flex flex-col gap-0.5">
-              <p className="px-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-[#a1a5b0]">{g}</p>
+              <p className={`mb-1 rounded-lg border-l-4 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide ${corGrupo(g).tarja}`}>{g}</p>
               {abas
                 .filter((a) => a.grupo === g)
                 .map((a) => (
@@ -205,8 +236,8 @@ export default function InstagramAbas({ abas }: { abas: Aba[] }) {
                     onClick={() => abrir(a.id)}
                     title={a.ajuda}
                     aria-current={a.id === atual?.id ? "page" : undefined}
-                    className={`flex items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                      a.id === atual?.id ? "bg-[#eef0ff] font-medium text-[#4f46e5]" : "text-[#5a5f6d] hover:bg-[#f4f5f8]"
+                    className={`ml-1 flex items-center gap-2 rounded-r-lg border-l-2 px-3 py-2 text-left text-sm transition-colors ${
+                      a.id === atual?.id ? `bg-[#f4f5f8] font-medium text-[#1b1f2b] ${corGrupo(g).ativo}` : "border-transparent text-[#5a5f6d] hover:bg-[#f4f5f8]"
                     }`}
                   >
                     <span className="min-w-0 flex-1">

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { exigirAdmin } from "@/lib/igAdmin";
+import { lojaDoPainel } from "@/lib/igLoja";
 import { lerPassos } from "@/lib/igSequencias";
 
 const etiqueta = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim().replace(/\s+/g, " ").slice(0, 40) : null);
@@ -9,10 +10,11 @@ const etiqueta = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim().r
 export async function GET() {
   const { erro } = await exigirAdmin();
   if (erro) return erro;
+  const loja = await lojaDoPainel();
   const [sequencias, contagem, contas] = await Promise.all([
-    prisma.igSequencia.findMany({ orderBy: { createdAt: "desc" }, include: { account: { select: { username: true, loja: true } } } }),
+    prisma.igSequencia.findMany({ where: { account: { loja } }, orderBy: { createdAt: "desc" }, include: { account: { select: { username: true, loja: true } } } }),
     prisma.igSequenciaInscrito.groupBy({ by: ["sequenciaId", "status"], _count: { _all: true } }),
-    prisma.instagramAccount.findMany({ where: { active: true }, select: { id: true, username: true, loja: true } }),
+    prisma.instagramAccount.findMany({ where: { active: true, loja }, select: { id: true, username: true, loja: true } }),
   ]);
   const porSeq = new Map<string, { ativos: number; concluidos: number; parados: number }>();
   for (const c of contagem) {

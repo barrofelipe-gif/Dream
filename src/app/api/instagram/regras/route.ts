@@ -2,14 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { exigirAdmin } from "@/lib/igAdmin";
+import { lojaDoPainel } from "@/lib/igLoja";
 import { validarRegra } from "@/lib/igRegras";
 
 export async function GET() {
   const { erro } = await exigirAdmin();
   if (erro) return erro;
+  const loja = await lojaDoPainel();
   const [regras, contas] = await Promise.all([
-    prisma.igRegra.findMany({ orderBy: { createdAt: "desc" }, include: { account: { select: { username: true, loja: true } } } }),
-    prisma.instagramAccount.findMany({ where: { active: true }, select: { id: true, username: true, loja: true } }),
+    prisma.igRegra.findMany({ where: { account: { loja } }, orderBy: { createdAt: "desc" }, include: { account: { select: { username: true, loja: true } } } }),
+    prisma.instagramAccount.findMany({ where: { active: true, loja }, select: { id: true, username: true, loja: true } }),
   ]);
   return NextResponse.json({ regras, contas });
 }

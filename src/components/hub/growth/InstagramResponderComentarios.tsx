@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { lojaDoNavegador } from "@/lib/igLojaCliente";
 
 type Rede = "instagram" | "facebook" | "youtube";
 type Resposta = { autor: string; texto: string; em: string; nossa: boolean; autorDesconhecido?: boolean };
@@ -46,7 +47,8 @@ async function postar<T>(url: string, corpo: unknown): Promise<T> {
 
 /** Aba "Responder comentários": lê os comentários das publicações e responde com a IA ou à mão. Nada sai sem o clique em Enviar. */
 export default function InstagramResponderComentarios() {
-  const [loja, setLoja] = useState("");
+  // Empresa escolhida no topo do painel (o seletor de lá recarrega a página).
+  const [loja] = useState<string>(lojaDoNavegador);
   const [rede, setRede] = useState("");
   const [soPendentes, setSoPendentes] = useState(true);
   const [dados, setDados] = useState<{ comentarios: Comentario[]; contas: ContaStatus[] } | null>(null);
@@ -161,11 +163,6 @@ export default function InstagramResponderComentarios() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <select className={seletor} value={loja} onChange={(e) => setLoja(e.target.value)} aria-label="Loja">
-          <option value="">Todas as lojas</option>
-          <option value="bff">BFF</option>
-          <option value="moranga">Moranga</option>
-        </select>
         <select className={seletor} value={rede} onChange={(e) => setRede(e.target.value)} aria-label="Rede">
           <option value="">Todas as redes</option>
           <option value="instagram">Instagram</option>

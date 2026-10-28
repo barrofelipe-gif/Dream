@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { exigirAdmin } from "@/lib/igAdmin";
+import { lojaDoPainel } from "@/lib/igLoja";
 import { ORDENS, ORIGENS, ROTULO_STATUS, camposDe, celulaCsv, filtroDaUrl, origemDe, valorParaTexto, whereContatos } from "@/lib/igContatos";
 
 export const maxDuration = 60;
@@ -17,7 +18,8 @@ export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const filtro = filtroDaUrl(sp);
   const ids = (sp.get("ids") ?? "").split(",").filter(Boolean);
-  const where = ids.length ? { id: { in: ids } } : whereContatos(filtro);
+  const loja = await lojaDoPainel();
+  const where = ids.length ? { id: { in: ids }, account: { loja } } : whereContatos(filtro, loja);
   const ordem = ORDENS[sp.get("ordem") ?? ""] ?? ORDENS.recentes;
 
   const [linhas, campos] = await Promise.all([
@@ -30,7 +32,7 @@ export async function GET(req: NextRequest) {
         messages: { orderBy: { createdAt: "desc" }, take: 1, select: { text: true, createdAt: true } },
       },
     }),
-    prisma.igCampo.findMany({ where: filtro.accountId ? { accountId: filtro.accountId } : {}, orderBy: { nome: "asc" } }),
+    prisma.igCampo.findMany({ where: filtro.accountId ? { accountId: filtro.accountId, account: { loja } } : { account: { loja } }, orderBy: { nome: "asc" } }),
   ]);
 
   // Um campo com o mesmo nome em duas contas vira uma coluna só.

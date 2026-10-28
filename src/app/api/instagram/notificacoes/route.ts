@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { lojaDoPainel } from "@/lib/igLoja";
 import { exigirAdmin } from "@/lib/igAdmin";
 
 // Sino do painel. GET → { naoLidas, itens } (últimos 30; ?todas=1 inclui as lidas).
@@ -7,9 +8,12 @@ export async function GET(req: NextRequest) {
   const { erro } = await exigirAdmin();
   if (erro) return erro;
   const todas = req.nextUrl.searchParams.get("todas") === "1";
+  // Só avisos de conversas da empresa escolhida no painel (o aviso guarda só o id da conversa, sem relação no banco).
+  const loja = await lojaDoPainel();
+  const daLoja = { conversationId: { in: (await prisma.igConversation.findMany({ where: { account: { loja } }, select: { id: true } })).map((c) => c.id) } };
   const [naoLidas, itens] = await Promise.all([
-    prisma.igNotificacao.count({ where: { lida: false } }),
-    prisma.igNotificacao.findMany({ where: todas ? {} : { lida: false }, orderBy: { createdAt: "desc" }, take: 30 }),
+    prisma.igNotificacao.count({ where: { ...daLoja, lida: false } }),
+    prisma.igNotificacao.findMany({ where: todas ? daLoja : { ...daLoja, lida: false }, orderBy: { createdAt: "desc" }, take: 30 }),
   ]);
   const conversas = await prisma.igConversation.findMany({
     where: { id: { in: [...new Set(itens.map((i) => i.conversationId))] } },

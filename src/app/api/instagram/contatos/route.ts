@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { exigirAdmin } from "@/lib/igAdmin";
 import { dentroDaJanela } from "@/lib/instagram";
+import { lojaDoPainel } from "@/lib/igLoja";
 import { ORDENS, camposDe, contagemTags, filtroDaUrl, origemDe, whereContatos } from "@/lib/igContatos";
 
 // Aba Contatos: lista paginada com busca, filtros e ordenação (como a de contatos do ManyChat).
@@ -11,7 +12,8 @@ export async function GET(req: NextRequest) {
   if (erro) return erro;
   const sp = req.nextUrl.searchParams;
   const filtro = filtroDaUrl(sp);
-  const where = whereContatos(filtro);
+  const loja = await lojaDoPainel();
+  const where = whereContatos(filtro, loja);
   const porPagina = Math.min(100, Math.max(10, Number(sp.get("porPagina")) || 25));
   const pagina = Math.max(1, Math.floor(Number(sp.get("pagina")) || 1));
   const ordem = ORDENS[sp.get("ordem") ?? ""] ? (sp.get("ordem") as string) : "recentes";
@@ -28,9 +30,9 @@ export async function GET(req: NextRequest) {
         messages: { orderBy: { createdAt: "desc" }, take: 1, select: { text: true, direction: true, source: true, createdAt: true } },
       },
     }),
-    prisma.instagramAccount.findMany({ select: { id: true, username: true, loja: true, active: true }, orderBy: { createdAt: "asc" } }),
-    prisma.igCampo.findMany({ where: filtro.accountId ? { accountId: filtro.accountId } : {}, orderBy: [{ accountId: "asc" }, { nome: "asc" }] }),
-    contagemTags(filtro.accountId),
+    prisma.instagramAccount.findMany({ where: { loja }, select: { id: true, username: true, loja: true, active: true }, orderBy: { createdAt: "asc" } }),
+    prisma.igCampo.findMany({ where: filtro.accountId ? { accountId: filtro.accountId, account: { loja } } : { account: { loja } }, orderBy: [{ accountId: "asc" }, { nome: "asc" }] }),
+    contagemTags(filtro.accountId, loja),
   ]);
 
   return NextResponse.json({

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { lojaDoPainel } from "@/lib/igLoja";
 import { exigirAdmin } from "@/lib/igAdmin";
 
 // Lista da caixa de entrada: conversas recentes com a última mensagem.
@@ -8,6 +9,7 @@ export async function GET() {
   if (erro) return erro;
 
   const conversas = await prisma.igConversation.findMany({
+    where: { account: { loja: await lojaDoPainel() } },
     orderBy: { updatedAt: "desc" },
     take: 100,
     include: { account: true, messages: { orderBy: { createdAt: "desc" }, take: 1 } },

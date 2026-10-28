@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { lojaDoNavegador } from "@/lib/igLojaCliente";
 
 const LOJAS: [string, string][] = [
   ["bff", "BFF Fitness Atacado"],
@@ -11,7 +12,8 @@ const campo =
   "w-full rounded-xl border border-[#e3e5ea] px-3 py-2.5 text-sm text-[#1b1f2b] outline-none focus:border-[#6366f1] focus:ring-2 focus:ring-[#6366f1]/15";
 
 export default function InstagramMenu() {
-  const [loja, setLoja] = useState("bff");
+  // Empresa escolhida no topo do painel (o seletor de lá recarrega a página).
+  const [loja] = useState(lojaDoNavegador);
   const [iniciadores, setIniciadores] = useState<string | null>(null);
   const [menu, setMenu] = useState("");
   const [salvo, setSalvo] = useState(true);
@@ -69,17 +71,7 @@ export default function InstagramMenu() {
             Botões que o cliente vê ao abrir o chat da loja e o menu (ícone de hambúrguer) dentro do direct. Ao tocar, o robô responde como se a pessoa tivesse digitado.
           </p>
         </div>
-        <div className="flex gap-1.5">
-          {LOJAS.map(([v, r]) => (
-            <button
-              key={v}
-              onClick={() => setLoja(v)}
-              className={`rounded-full px-3 py-1 text-xs font-medium ${loja === v ? "bg-[#1b1f2b] text-white" : "bg-[#eef0f4] text-[#5a5f6d] hover:bg-[#e3e5ea]"}`}
-            >
-              {r}
-            </button>
-          ))}
-        </div>
+        <span className="shrink-0 rounded-full bg-[#eef0f4] px-3 py-1 text-xs font-medium text-[#1b1f2b]">{LOJAS.find(([v]) => v === loja)?.[1]}</span>
       </div>
 
       {iniciadores === null ? (

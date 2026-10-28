@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { lojaDoNavegador } from "@/lib/igLojaCliente";
 import { useEstreito, useTelaCheiaCelular } from "@/components/hub/growth/useTelaCheiaCelular";
 
 type StatusPagina = {
@@ -62,7 +63,8 @@ async function chamar<T>(url: string, init?: RequestInit): Promise<T> {
 
 /** Messenger (Página do Facebook) da BFF ou da Moranga: diagnóstico, conversas, resposta da equipe e robô opcional. */
 export default function MessengerInbox() {
-  const [loja, setLoja] = useState("bff");
+  // Empresa escolhida no topo do painel (o seletor de lá recarrega a página).
+  const [loja] = useState(lojaDoNavegador);
   const [paginas, setPaginas] = useState<StatusPagina[] | null>(null);
   const [conversas, setConversas] = useState<Resumo[]>([]);
   const [aberta, setAberta] = useState<Conversa | null>(null);
@@ -177,24 +179,6 @@ export default function MessengerInbox() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        {LOJAS.map((l) => (
-          <button
-            key={l.id}
-            onClick={() => {
-              if (l.id === loja) return;
-              lojaAtual.current = l.id;
-              abertaAtual.current = null;
-              setPaginas(null);
-              setAberta(null);
-              setConversas([]);
-              setTexto("");
-              setLoja(l.id);
-            }}
-            className={`rounded-full px-3 py-1 text-sm ${loja === l.id ? "bg-[#1b1f2b] text-white" : "border border-[#e3e5ea] text-[#5a5f6d]"}`}
-          >
-            {l.rotulo}
-          </button>
-        ))}
         <button onClick={sincronizar} disabled={!!ocupado} className="ml-auto rounded-lg border border-[#e3e5ea] px-3 py-1 text-sm text-[#5a5f6d] hover:border-[#6366f1] disabled:opacity-50">
           {ocupado === "sinc" ? "Puxando…" : "Puxar mensagens do Facebook"}
         </button>

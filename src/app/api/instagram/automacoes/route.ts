@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { exigirAdmin } from "@/lib/igAdmin";
+import { lojaDoPainel } from "@/lib/igLoja";
 import { lerAutomacao } from "@/lib/igAutomacaoCampos";
 
 // Lista as automações (de todas as contas conectadas).
 export async function GET() {
   const { erro } = await exigirAdmin();
   if (erro) return erro;
+  const loja = await lojaDoPainel();
   const [automacoes, contas] = await Promise.all([
-    prisma.igAutomacao.findMany({ orderBy: { createdAt: "desc" }, include: { account: { select: { username: true, loja: true } } } }),
-    prisma.instagramAccount.findMany({ orderBy: { createdAt: "asc" }, select: { id: true, username: true, loja: true } }),
+    prisma.igAutomacao.findMany({ where: { account: { loja } }, orderBy: { createdAt: "desc" }, include: { account: { select: { username: true, loja: true } } } }),
+    prisma.instagramAccount.findMany({ where: { loja }, orderBy: { createdAt: "asc" }, select: { id: true, username: true, loja: true } }),
   ]);
   return NextResponse.json({ automacoes, contas });
 }

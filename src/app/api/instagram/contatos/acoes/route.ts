@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { exigirAdmin } from "@/lib/igAdmin";
 import { etiquetar } from "@/lib/igTags";
+import { lojaDoPainel } from "@/lib/igLoja";
 import { LIMITE_ACAO_FILTRO, filtroDoCorpo, gravarCampos, normalizarValor, whereContatos } from "@/lib/igContatos";
 
 export const maxDuration = 60;
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
     if (ids.length === 0) return NextResponse.json({ error: "Nenhum contato selecionado" }, { status: 400 });
     if (ids.length > LIMITE_ACAO_FILTRO) return NextResponse.json({ error: `No máximo ${LIMITE_ACAO_FILTRO} contatos por vez` }, { status: 400 });
   } else if (b.filtro && typeof b.filtro === "object") {
-    const where = whereContatos(filtroDoCorpo(b.filtro));
+    const where = whereContatos(filtroDoCorpo(b.filtro), await lojaDoPainel());
     const total = await prisma.igConversation.count({ where });
     if (total > LIMITE_ACAO_FILTRO) {
       return NextResponse.json({ error: `O filtro tem ${total} contatos; o máximo por vez é ${LIMITE_ACAO_FILTRO}. Refine o filtro.` }, { status: 400 });

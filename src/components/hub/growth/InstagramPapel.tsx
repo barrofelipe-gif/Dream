@@ -15,6 +15,7 @@ import InstagramFluxos from "@/components/hub/growth/InstagramFluxos";
 import SocialMetricas from "@/components/hub/growth/SocialMetricas";
 import InstagramResponderComentarios from "@/components/hub/growth/InstagramResponderComentarios";
 import InstagramInicio, { type DadosInicio } from "@/components/hub/growth/InstagramInicio";
+import { lojaDoPainel } from "@/lib/igLoja";
 import InstagramAbas, { type Aba } from "@/components/hub/growth/InstagramAbas";
 
 /**
@@ -39,33 +40,37 @@ export default async function InstagramPapel() {
   }
 
   const desde = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  // Tudo da empresa escolhida no topo do painel (BFF ou Moranga); as duas nunca aparecem juntas.
+  const loja = await lojaDoPainel();
+  const daLoja = { account: { loja } };
+  const msgDaLoja = { conversation: daLoja };
   const [contas, recebidas, doRobo, porTipo, humanas, aguardando, naoLidas, totalContatos, novosContatos, topBruto, boasVindas, comentariosAtivos, fluxosAtivos] = await Promise.all([
-    prisma.instagramAccount.findMany({ orderBy: { createdAt: "asc" } }),
-    prisma.igMessage.count({ where: { direction: "IN", createdAt: { gt: desde } } }),
-    prisma.igMessage.count({ where: { source: "BOT", createdAt: { gt: desde } } }),
-    prisma.igMessage.groupBy({ by: ["matchedKind"], where: { source: "BOT", createdAt: { gt: desde } }, _count: true }),
+    prisma.instagramAccount.findMany({ where: { loja }, orderBy: { createdAt: "asc" } }),
+    prisma.igMessage.count({ where: { ...msgDaLoja, direction: "IN", createdAt: { gt: desde } } }),
+    prisma.igMessage.count({ where: { ...msgDaLoja, source: "BOT", createdAt: { gt: desde } } }),
+    prisma.igMessage.groupBy({ by: ["matchedKind"], where: { ...msgDaLoja, source: "BOT", createdAt: { gt: desde } }, _count: true }),
     prisma.igMessage.findMany({
-      where: { source: "HUMANO" },
+      where: { ...msgDaLoja, source: "HUMANO" },
       orderBy: { createdAt: "desc" },
       take: 15,
       include: { conversation: { include: { account: true } } },
     }),
     // Contadores do menu (como os números do Live Chat do ManyChat): só o que pede ação da equipe.
-    prisma.igConversation.count({ where: { status: "NEEDS_HUMAN" } }),
-    prisma.igConversation.count({ where: { naoLida: true } }),
+    prisma.igConversation.count({ where: { ...daLoja, status: "NEEDS_HUMAN" } }),
+    prisma.igConversation.count({ where: { ...daLoja, naoLida: true } }),
     // Página Inicial (como a do ManyChat): contatos, quem mais conversou e o checklist de primeiros passos.
-    prisma.igConversation.count(),
-    prisma.igConversation.count({ where: { createdAt: { gt: desde } } }),
+    prisma.igConversation.count({ where: daLoja }),
+    prisma.igConversation.count({ where: { ...daLoja, createdAt: { gt: desde } } }),
     prisma.igMessage.groupBy({
       by: ["conversationId"],
-      where: { direction: "IN", createdAt: { gt: desde } },
+      where: { ...msgDaLoja, direction: "IN", createdAt: { gt: desde } },
       _count: { _all: true },
       orderBy: { _count: { conversationId: "desc" } },
       take: 10,
     }),
-    prisma.igBoasVindas.findMany({ select: { ativo: true, iniciadores: true, menu: true } }),
-    prisma.igAutomacao.count({ where: { ativo: true } }),
-    prisma.igFluxo.count({ where: { ativo: true } }),
+    prisma.igBoasVindas.findMany({ where: { loja }, select: { ativo: true, iniciadores: true, menu: true } }),
+    prisma.igAutomacao.count({ where: { ...daLoja, ativo: true } }),
+    prisma.igFluxo.count({ where: { ...daLoja, ativo: true } }),
   ]);
   const perfisTop = topBruto.length
     ? await prisma.igConversation.findMany({
@@ -103,7 +108,8 @@ export default async function InstagramPapel() {
   const inicio: DadosInicio = {
     nomeLoja: session.user.name?.split(" ")[0] || "equipe",
     contas: contas.map((c) => ({ id: c.id, username: c.username, loja: c.loja, active: c.active })),
-    faltaConectar: (["bff", "moranga"] as const).filter((l) => !contas.some((c) => c.loja === l)),
+    loja,
+    faltaConectar: contas.length ? [] : [loja],
     totalContatos,
     aguardando,
     naoLidas,
@@ -172,7 +178,7 @@ export default async function InstagramPapel() {
 
   return (
     <div className="mt-3 border-t border-[#e3e5ea] pt-3 sm:mt-6 sm:pt-6">
-      <InstagramAbas abas={abas} />
+      <InstagramAbas abas={abas} loja={loja} />
     </div>
   );
 }

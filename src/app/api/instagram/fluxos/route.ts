@@ -3,15 +3,17 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { exigirAdmin } from "@/lib/igAdmin";
 import { SUGESTOES_TAGS } from "@/lib/igTags";
+import { lojaDoPainel } from "@/lib/igLoja";
 import { grafoInicial, noGatilho, validarGrafo } from "@/lib/igFluxosModelo";
 
 // Lista os fluxos (de todas as contas), com quantas pessoas estão em cada estado.
 export async function GET() {
   const { erro } = await exigirAdmin();
   if (erro) return erro;
+  const loja = await lojaDoPainel();
   const [fluxos, contas, contagem] = await Promise.all([
-    prisma.igFluxo.findMany({ orderBy: { updatedAt: "desc" }, include: { account: { select: { username: true, loja: true } } } }),
-    prisma.instagramAccount.findMany({ orderBy: { createdAt: "asc" }, select: { id: true, username: true, loja: true } }),
+    prisma.igFluxo.findMany({ where: { account: { loja } }, orderBy: { updatedAt: "desc" }, include: { account: { select: { username: true, loja: true } } } }),
+    prisma.instagramAccount.findMany({ where: { loja }, orderBy: { createdAt: "asc" }, select: { id: true, username: true, loja: true } }),
     prisma.igFluxoExec.groupBy({ by: ["fluxoId", "status"], _count: { _all: true } }),
   ]);
   const stats: Record<string, Record<string, number>> = {};

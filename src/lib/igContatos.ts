@@ -84,8 +84,10 @@ export function filtroDoCorpo(f: unknown): FiltroContatos {
   };
 }
 
-export function whereContatos(f: FiltroContatos): Prisma.IgConversationWhereInput {
+/** `loja`: empresa escolhida no topo do painel — contatos da outra empresa nunca entram (nem em ação em lote ou exportação). */
+export function whereContatos(f: FiltroContatos, loja?: string): Prisma.IgConversationWhereInput {
   const and: Prisma.IgConversationWhereInput[] = [];
+  if (loja) and.push({ account: { loja } });
   if (f.accountId) and.push({ accountId: f.accountId });
   if (f.q) {
     const q = f.q.replace(/^@/, "");
@@ -213,8 +215,13 @@ export async function gravarCampos(conversaId: string, mudancas: Record<string, 
 }
 
 /** Etiquetas existentes com quantos contatos têm cada uma (para os filtros). */
-export async function contagemTags(accountId?: string): Promise<{ tag: string; total: number }[]> {
-  const rows = accountId
+export async function contagemTags(accountId?: string, loja?: string): Promise<{ tag: string; total: number }[]> {
+  // Com loja, a conta só conta se for da mesma empresa (conta da outra empresa devolve lista vazia).
+  const rows = loja
+    ? await prisma.$queryRaw<{ tag: string; total: bigint }[]>`
+        SELECT t AS tag, COUNT(*) AS total FROM (SELECT unnest(c.tags) AS t FROM "IgConversation" c JOIN "InstagramAccount" a ON a.id = c."accountId" WHERE a.loja = ${loja} AND (${accountId ?? null}::text IS NULL OR c."accountId" = ${accountId ?? null})) x
+        GROUP BY t ORDER BY COUNT(*) DESC, t ASC`
+    : accountId
     ? await prisma.$queryRaw<{ tag: string; total: bigint }[]>`
         SELECT t AS tag, COUNT(*) AS total FROM (SELECT unnest(tags) AS t FROM "IgConversation" WHERE "accountId" = ${accountId}) x
         GROUP BY t ORDER BY COUNT(*) DESC, t ASC`

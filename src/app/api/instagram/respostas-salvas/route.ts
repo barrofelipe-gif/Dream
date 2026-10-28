@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { exigirAdmin } from "@/lib/igAdmin";
+import { lojaDoPainel } from "@/lib/igLoja";
 import { limparAtalho } from "@/lib/igRespostasSalvas";
 
 // GET ?accountId=X → respostas da conta X + as que valem para todas. Sem accountId → todas.
@@ -10,10 +11,11 @@ export async function GET(req: NextRequest) {
   const accountId = req.nextUrl.searchParams.get("accountId");
   const [respostas, contas] = await Promise.all([
     prisma.igRespostaSalva.findMany({
-      where: accountId ? { OR: [{ accountId }, { accountId: null }] } : {},
+      // Da empresa escolhida no painel (ou das que valem para todas as contas).
+      where: { OR: [{ ...(accountId ? { accountId } : {}), account: { loja: await lojaDoPainel() } }, { accountId: null }] },
       orderBy: { atalho: "asc" },
     }),
-    prisma.instagramAccount.findMany({ where: { active: true }, select: { id: true, username: true, loja: true } }),
+    prisma.instagramAccount.findMany({ where: { active: true, loja: await lojaDoPainel() }, select: { id: true, username: true, loja: true } }),
   ]);
   return NextResponse.json({ respostas, contas });
 }

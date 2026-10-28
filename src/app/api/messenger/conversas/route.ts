@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { lojaDoPainel } from "@/lib/igLoja";
 import { exigirAdmin } from "@/lib/igAdmin";
 
 // Caixa de entrada do Messenger: conversas recentes com a última mensagem (filtro por loja).
 export async function GET(req: NextRequest) {
   const { erro } = await exigirAdmin();
   if (erro) return erro;
-  const loja = req.nextUrl.searchParams.get("loja");
+  // Sempre a empresa escolhida no topo do painel (BFF ou Moranga), nunca as duas.
+  const loja = await lojaDoPainel();
   const conversas = await prisma.fbConversa.findMany({
     where: loja ? { loja } : {},
     orderBy: { updatedAt: "desc" },

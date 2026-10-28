@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { exigirAdmin } from "@/lib/igAdmin";
 import { ADAPTADORES } from "@/lib/social";
+import { lojaDoPainel } from "@/lib/igLoja";
 import { REDES } from "@/lib/social/types";
 
 // As contas do Instagram já conectadas viram contas do publicador (o token é copiado já criptografado).
@@ -30,8 +31,9 @@ export async function GET() {
   if (erro) return erro;
   await sincronizarInstagram();
 
+  // Só as redes da empresa escolhida no topo do painel.
   const contas = await prisma.socialConta.findMany({
-    where: { ativo: true },
+    where: { ativo: true, loja: await lojaDoPainel() },
     orderBy: [{ rede: "asc" }, { createdAt: "asc" }],
     select: { id: true, rede: true, loja: true, nome: true, username: true, fotoUrl: true, expiraEm: true },
   });
