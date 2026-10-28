@@ -122,17 +122,18 @@ function seguidoresCurto(n: number | null) {
 const nomeExibido = (c: { nome: string | null; username: string | null; cliente: string }) =>
   c.nome || (c.username ? `@${c.username}` : `Cliente …${c.cliente}`);
 
-function Avatar({ c, tamanho }: { c: { nome: string | null; username: string | null; cliente: string; fotoUrl: string | null }; tamanho: number }) {
+function Avatar({ c, tamanho, quadrado }: { c: { nome: string | null; username: string | null; cliente: string; fotoUrl: string | null }; tamanho: number; quadrado?: boolean }) {
+  const forma = quadrado ? "rounded-xl" : "rounded-full";
   const [falhou, setFalhou] = useState(false);
   const inicial = (c.nome || c.username || c.cliente).replace("@", "").slice(0, 2).toUpperCase();
   return (
     <span className="relative inline-flex shrink-0" style={{ width: tamanho, height: tamanho }}>
       {c.fotoUrl && !falhou ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={c.fotoUrl} alt="" referrerPolicy="no-referrer" onError={() => setFalhou(true)} className="h-full w-full rounded-full object-cover ring-2 ring-white" />
+        <img src={c.fotoUrl} alt="" referrerPolicy="no-referrer" onError={() => setFalhou(true)} className={`h-full w-full ${forma} object-cover ring-2 ring-white`} />
       ) : (
         <span
-          className="flex h-full w-full items-center justify-center rounded-full bg-gradient-to-br from-[#c7d2fe] to-[#fbcfe8] font-semibold text-[#4b4f63] ring-2 ring-white"
+          className={`flex h-full w-full items-center justify-center ${forma} bg-gradient-to-br from-[#c7d2fe] to-[#fbcfe8] font-semibold text-[#4b4f63] ring-2 ring-white`}
           style={{ fontSize: tamanho * 0.34 }}
         >
           {inicial}
@@ -251,7 +252,8 @@ export default function InstagramContatos() {
   const [aberto, setAberto] = useState<string | null>(null);
   const [aviso, setAviso] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
   const [modal, setModal] = useState<null | "campos" | "importar">(null);
-  const [mostrarTags, setMostrarTags] = useState(false);
+  const [filtroAberto, setFiltroAberto] = useState(false);
+  const [acoesAbertas, setAcoesAbertas] = useState(true);
 
   useEffect(() => {
     const t = setTimeout(() => setQ(busca.trim()), 300);
@@ -380,9 +382,21 @@ export default function InstagramContatos() {
   }
 
   const sugestoesTags = (dados?.tags ?? []).map((t) => t.tag);
+  const segmentoAtivo = (s: string, o: string) => status === s && origem === o;
+  const segmento = (rotulo: string, s: string, o: string) => (
+    <button
+      key={rotulo}
+      onClick={() => (setStatus(s), setOrigem(o))}
+      className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-left text-[13px] md:w-full ${
+        segmentoAtivo(s, o) ? "bg-[#e9eaee] font-medium text-[#1b1f2b]" : "text-[#3d4250] hover:bg-[#eceef2]"
+      }`}
+    >
+      {rotulo}
+    </button>
+  );
 
   return (
-    <div className="space-y-3">
+    <div className="-mx-1 rounded-2xl bg-[#f6f7f9] px-3 py-5 sm:px-6">
       <datalist id="ig-contatos-tags">
         {sugestoesTags.map((t) => (
           <option key={t} value={t} />
@@ -390,296 +404,309 @@ export default function InstagramContatos() {
       </datalist>
 
       {/* Cabeçalho */}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-base font-semibold text-[#1b1f2b]">Contatos</p>
-          <p className="text-xs text-[#8a8f9c]">
-            {dados ? `${dados.total.toLocaleString("pt-BR")} contato${dados.total === 1 ? "" : "s"}${filtrosAtivos ? " neste filtro" : ""}` : "Carregando…"} · todo mundo que já
-            escreveu para a loja no Instagram
-          </p>
-        </div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-xl font-bold text-[#1b1f2b]">Contatos</h2>
         <div className="flex flex-wrap gap-2">
           <button onClick={() => setModal("campos")} className={botao}>
             Campos personalizados
           </button>
-          <button onClick={() => setModal("importar")} className={botao}>
-            Importar CSV
+          <button onClick={() => exportar(false)} className={botao} disabled={!dados?.total}>
+            Exportar
           </button>
-          <button onClick={() => exportar(false)} className={botaoEscuro} disabled={!dados?.total}>
-            Exportar CSV
+          <button onClick={() => setModal("importar")} className="rounded-lg bg-[#2563eb] px-3 py-2 text-xs font-semibold text-white hover:bg-[#1d4ed8]">
+            Importar
           </button>
         </div>
       </div>
 
-      {/* Filtros */}
-      <div className="space-y-2.5 rounded-2xl border border-[#e3e5ea] bg-white p-3">
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_repeat(5,minmax(0,1fr))]">
-          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar por nome ou @" className={campoCss} />
-          {multiContas ? (
-            <select value={conta} onChange={(e) => setConta(e.target.value)} className={campoCss}>
-              <option value="">Todas as contas</option>
-              {dados?.contas.map((c) => (
-                <option key={c.id} value={c.id}>
-                  @{c.username ?? c.loja}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <span className="hidden lg:block" />
-          )}
-          <select value={status} onChange={(e) => setStatus(e.target.value)} className={campoCss}>
-            <option value="">Qualquer status</option>
-            {Object.entries(STATUS).map(([k, s]) => (
-              <option key={k} value={k}>
-                {s.rotulo}
-              </option>
-            ))}
-          </select>
-          <select value={origem} onChange={(e) => setOrigem(e.target.value)} className={campoCss}>
-            <option value="">Qualquer origem</option>
-            {Object.entries(ORIGEM).map(([k, o]) => (
-              <option key={k} value={k}>
-                {o.rotulo}
-              </option>
-            ))}
-            <option value="sem">Sem origem</option>
-          </select>
-          <input
-            type="number"
-            min={0}
-            value={segMin}
-            onChange={(e) => setSegMin(e.target.value)}
-            placeholder="Seguidores mín."
-            className={campoCss}
-          />
-          <select value={ordem} onChange={(e) => setOrdem(e.target.value)} className={campoCss}>
-            {ORDENS.map(([k, r]) => (
-              <option key={k} value={k}>
-                {r}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button onClick={() => setMostrarTags(!mostrarTags)} className="text-[11px] font-medium text-[#6366f1] hover:underline">
-            {mostrarTags ? "Esconder etiquetas" : `Filtrar por etiqueta (${dados?.tags.length ?? 0})`}
-          </button>
-          {incluir.map((t) => (
-            <span key={`i-${t}`} className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
-              com: {t}
-              <button onClick={() => setIncluir(incluir.filter((x) => x !== t))} className="opacity-60 hover:opacity-100">
-                ×
-              </button>
-            </span>
-          ))}
-          {excluir.map((t) => (
-            <span key={`e-${t}`} className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700">
-              sem: {t}
-              <button onClick={() => setExcluir(excluir.filter((x) => x !== t))} className="opacity-60 hover:opacity-100">
-                ×
-              </button>
-            </span>
-          ))}
-          {incluir.length > 1 && (
-            <button
-              onClick={() => setModoIncluir(modoIncluir === "qualquer" ? "todas" : "qualquer")}
-              className="rounded-full bg-[#eef0f4] px-2 py-0.5 text-[10px] font-medium text-[#5a5f6d] hover:bg-[#e3e5ea]"
-              title="Trocar entre ter qualquer uma ou todas as etiquetas marcadas"
-            >
-              {modoIncluir === "qualquer" ? "tem qualquer uma" : "tem todas"} ⇄
-            </button>
-          )}
-          {filtrosAtivos > 0 && (
-            <button onClick={limparFiltros} className="ml-auto text-[11px] text-[#8a8f9c] hover:text-[#1b1f2b]">
-              Limpar filtros
-            </button>
-          )}
-        </div>
-        {mostrarTags && (
-          <div className="rounded-xl bg-[#f7f8fa] p-2.5">
-            <p className="mb-1.5 text-[11px] text-[#8a8f9c]">Clique uma vez para mostrar quem tem a etiqueta, de novo para mostrar quem não tem, e de novo para tirar o filtro.</p>
-            <div className="flex flex-wrap gap-1">
-              {(dados?.tags ?? []).map(({ tag, total }) => {
-                const est = incluir.includes(tag) ? "inc" : excluir.includes(tag) ? "exc" : "";
-                return (
-                  <button
-                    key={tag}
-                    onClick={() => ciclarTag(tag)}
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 transition ${
-                      est === "inc"
-                        ? "bg-emerald-600 text-white ring-emerald-600"
-                        : est === "exc"
-                          ? "bg-red-600 text-white ring-red-600 line-through"
-                          : `${corTag(tag)} ring-transparent hover:ring-[#c9ccd6]`
-                    }`}
-                  >
-                    {tag} <span className="opacity-70">{total}</span>
-                  </button>
-                );
-              })}
-              {dados && dados.tags.length === 0 && <span className="text-[11px] text-[#a1a5b0]">Nenhuma etiqueta ainda.</span>}
-            </div>
+      <div className="flex flex-col gap-4 md:flex-row md:gap-6">
+        {/* Segmentos (status e origem) e etiquetas */}
+        <aside className="md:w-52 md:shrink-0">
+          <p className="mb-1 px-3 text-[13px] font-semibold text-[#1b1f2b]">Segmentos</p>
+          <div className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 md:mx-0 md:flex-col md:overflow-visible md:px-0">
+            {segmento("Todos os contatos", "", "")}
+            {segmento("Aguardando atendente", "NEEDS_HUMAN", "")}
+            {segmento("Atendente na conversa", "HUMAN", "")}
+            {segmento("Robô atendendo", "BOT", "")}
+            {segmento("Encerradas", "CLOSED", "")}
+            {segmento("Vieram de anúncio", "", "anuncio")}
+            {segmento("Vieram de story", "", "story")}
           </div>
-        )}
-      </div>
+          <p className="mb-1 mt-4 hidden px-3 text-[13px] font-semibold text-[#1b1f2b] md:block">Etiquetas</p>
+          <p className="mb-2 hidden px-3 text-[11px] leading-snug text-[#8a8f9c] md:block">1 clique: quem tem · 2 cliques: quem não tem · 3: tira o filtro.</p>
+          <div className="hidden max-h-[420px] flex-col gap-0.5 overflow-y-auto md:flex">
+            {(dados?.tags ?? []).map(({ tag, total }) => {
+              const est = incluir.includes(tag) ? "inc" : excluir.includes(tag) ? "exc" : "";
+              return (
+                <button
+                  key={tag}
+                  onClick={() => ciclarTag(tag)}
+                  className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-left text-[13px] ${
+                    est === "inc" ? "bg-[#dcfce7] text-[#15803d]" : est === "exc" ? "bg-[#fee2e2] text-[#b91c1c] line-through" : "text-[#3d4250] hover:bg-[#eceef2]"
+                  }`}
+                >
+                  <span className="min-w-0 flex-1 truncate">{tag}</span>
+                  <span className="text-[11px] tabular-nums opacity-70">{total}</span>
+                </button>
+              );
+            })}
+            {dados && dados.tags.length === 0 && <span className="px-3 text-[12px] text-[#a1a5b0]">Nenhuma etiqueta ainda.</span>}
+          </div>
+        </aside>
 
-      {aviso && (
-        <p className={`rounded-xl px-3 py-2 text-xs ${aviso.tipo === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{aviso.texto}</p>
-      )}
+        <div className="min-w-0 flex-1 space-y-3">
+          {/* Filtro · Pesquisar · seleção */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setFiltroAberto(!filtroAberto)}
+              aria-expanded={filtroAberto}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-medium ring-1 ${filtroAberto ? "bg-white text-[#1b1f2b] ring-[#9aa3c7]" : "bg-white text-[#3d4250] ring-[#e3e5ea] hover:ring-[#c7cbe0]"}`}
+            >
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" aria-hidden>
+                <path d="M2 3h12L9.5 8.5V13l-3 1.5V8.5L2 3Z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+              </svg>
+              Filtro
+              {filtrosAtivos > 0 && <span className="rounded-full bg-[#2563eb] px-1.5 text-[10px] font-semibold text-white">{filtrosAtivos}</span>}
+            </button>
+            <label className="flex min-w-0 flex-1 items-center gap-2 rounded-lg bg-white px-3 ring-1 ring-[#e3e5ea] focus-within:ring-[#2563eb] sm:max-w-[300px]">
+              <span className="text-[#a1a5b0]" aria-hidden>
+                ⌕
+              </span>
+              <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Pesquisar por nome ou @" className="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none" />
+            </label>
+            <span className="ml-auto text-[12px] text-[#8a8f9c]">
+              {qtdSelecionada.toLocaleString("pt-BR")} selecionado(s) do total de {(dados?.total ?? 0).toLocaleString("pt-BR")}
+            </span>
+            <button onClick={() => setAcoesAbertas(!acoesAbertas)} disabled={!qtdSelecionada} className={botao} title={qtdSelecionada ? "" : "Marque contatos na lista"}>
+              Ações em lote
+            </button>
+          </div>
 
-      {/* Barra de ações em massa */}
-      {qtdSelecionada > 0 && (
-        <BarraAcoes
-          qtd={qtdSelecionada}
-          todosDoFiltro={todosDoFiltro}
-          total={dados?.total ?? 0}
-          podeTodos={todosDaPagina && (dados?.total ?? 0) > contatos.length}
-          onTodos={() => setTodosDoFiltro(true)}
-          onLimpar={limparSelecao}
-          campos={dados?.campos ?? []}
-          nomesCampos={nomesCampos}
-          onAcao={acaoEmMassa}
-          onExportar={() => exportar(true)}
-        />
-      )}
-
-      {/* Tabela */}
-      <div className="overflow-hidden rounded-2xl border border-[#e3e5ea] bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-left text-sm">
-            <thead className="border-b border-[#e3e5ea] bg-[#fafbfc] text-[11px] font-medium uppercase tracking-wide text-[#8a8f9c]">
-              <tr>
-                <th className="w-10 px-3 py-2.5">
-                  <input type="checkbox" checked={todosDaPagina} onChange={marcarPagina} className="h-4 w-4 accent-[#6366f1]" aria-label="Marcar a página" />
-                </th>
-                <th className="px-2 py-2.5">Contato</th>
-                <th className="px-2 py-2.5 text-right">Seguidores</th>
-                <th className="px-2 py-2.5">Etiquetas</th>
-                <th className="px-2 py-2.5">Última mensagem</th>
-                <th className="px-2 py-2.5">Origem</th>
-                <th className="px-3 py-2.5">Status</th>
-              </tr>
-            </thead>
-            <tbody className={carregando ? "opacity-60" : ""}>
-              {erro && (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-xs text-red-600">
-                    {erro}
-                  </td>
-                </tr>
-              )}
-              {!erro && dados && contatos.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-xs text-[#8a8f9c]">
-                    Nenhum contato {filtrosAtivos ? "neste filtro" : "ainda"}.
-                  </td>
-                </tr>
-              )}
-              {!dados && !erro && (
-                <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-xs text-[#8a8f9c]">
-                    Carregando…
-                  </td>
-                </tr>
-              )}
-              {contatos.map((c) => {
-                const s = STATUS[c.status] ?? STATUS.CLOSED;
-                const marcado = todosDoFiltro || marcados.has(c.id);
-                const o = c.origem ? ORIGEM[c.origem] : null;
-                return (
-                  <tr
-                    key={c.id}
-                    onClick={() => setAberto(c.id)}
-                    className={`cursor-pointer border-b border-[#f1f2f5] transition last:border-0 ${
-                      aberto === c.id ? "bg-[#f1f2ff]" : marcado ? "bg-[#f7f7ff]" : "hover:bg-[#f9fafb]"
-                    }`}
+          {filtroAberto && (
+            <div className="space-y-2.5 rounded-xl bg-white p-3 ring-1 ring-[#eceef2]">
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {multiContas && (
+                  <select value={conta} onChange={(e) => setConta(e.target.value)} className={campoCss}>
+                    <option value="">Todas as contas</option>
+                    {dados?.contas.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        @{c.username ?? c.loja}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <select value={origem} onChange={(e) => setOrigem(e.target.value)} className={campoCss}>
+                  <option value="">Qualquer origem</option>
+                  {Object.entries(ORIGEM).map(([k, o]) => (
+                    <option key={k} value={k}>
+                      {o.rotulo}
+                    </option>
+                  ))}
+                  <option value="sem">Sem origem</option>
+                </select>
+                <input type="number" min={0} value={segMin} onChange={(e) => setSegMin(e.target.value)} placeholder="Seguidores mín." className={campoCss} />
+                <select value={ordem} onChange={(e) => setOrdem(e.target.value)} className={campoCss}>
+                  {ORDENS.map(([k, r]) => (
+                    <option key={k} value={k}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {/* Celular: etiquetas aqui (no computador ficam na coluna da esquerda). */}
+              <div className="flex flex-wrap gap-1 md:hidden">
+                {(dados?.tags ?? []).map(({ tag, total }) => {
+                  const est = incluir.includes(tag) ? "inc" : excluir.includes(tag) ? "exc" : "";
+                  return (
+                    <button
+                      key={tag}
+                      onClick={() => ciclarTag(tag)}
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ${
+                        est === "inc" ? "bg-emerald-600 text-white ring-emerald-600" : est === "exc" ? "bg-red-600 text-white ring-red-600 line-through" : `${corTag(tag)} ring-transparent`
+                      }`}
+                    >
+                      {tag} <span className="opacity-70">{total}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {incluir.map((t) => (
+                  <span key={`i-${t}`} className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                    com: {t}
+                    <button onClick={() => setIncluir(incluir.filter((x) => x !== t))} className="opacity-60 hover:opacity-100" aria-label={`Tirar ${t}`}>
+                      ×
+                    </button>
+                  </span>
+                ))}
+                {excluir.map((t) => (
+                  <span key={`e-${t}`} className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700">
+                    sem: {t}
+                    <button onClick={() => setExcluir(excluir.filter((x) => x !== t))} className="opacity-60 hover:opacity-100" aria-label={`Tirar ${t}`}>
+                      ×
+                    </button>
+                  </span>
+                ))}
+                {incluir.length > 1 && (
+                  <button
+                    onClick={() => setModoIncluir(modoIncluir === "qualquer" ? "todas" : "qualquer")}
+                    className="rounded-full bg-[#eef0f4] px-2 py-0.5 text-[11px] font-medium text-[#5a5f6d] hover:bg-[#e3e5ea]"
                   >
-                    <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                      <input type="checkbox" checked={marcado} onChange={() => marcar(c.id)} className="h-4 w-4 accent-[#6366f1]" aria-label="Marcar contato" />
-                    </td>
-                    <td className="px-2 py-2.5">
-                      <div className="flex items-center gap-2.5">
-                        <Avatar c={c} tamanho={36} />
-                        <div className="min-w-0">
-                          <p className="flex items-center gap-1 truncate font-semibold text-[#1b1f2b]">
+                    {modoIncluir === "qualquer" ? "tem qualquer uma" : "tem todas"} ⇄
+                  </button>
+                )}
+                {filtrosAtivos > 0 && (
+                  <button onClick={limparFiltros} className="ml-auto text-[12px] text-[#8a8f9c] hover:text-[#1b1f2b]">
+                    Limpar filtros
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {aviso && (
+            <p className={`rounded-xl px-3 py-2 text-xs ${aviso.tipo === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{aviso.texto}</p>
+          )}
+
+          {qtdSelecionada > 0 && acoesAbertas && (
+            <BarraAcoes
+              qtd={qtdSelecionada}
+              todosDoFiltro={todosDoFiltro}
+              total={dados?.total ?? 0}
+              podeTodos={todosDaPagina && (dados?.total ?? 0) > contatos.length}
+              onTodos={() => setTodosDoFiltro(true)}
+              onLimpar={limparSelecao}
+              campos={dados?.campos ?? []}
+              nomesCampos={nomesCampos}
+              onAcao={acaoEmMassa}
+              onExportar={() => exportar(true)}
+            />
+          )}
+
+          {/* Tabela */}
+          <div className="overflow-hidden rounded-xl bg-white ring-1 ring-[#eceef2]">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] text-left text-sm">
+                <thead className="border-b border-[#eceef2] text-[11px] text-[#8a8f9c]">
+                  <tr>
+                    <th className="w-10 px-3 py-2.5">
+                      <input type="checkbox" checked={todosDaPagina} onChange={marcarPagina} className="h-4 w-4 accent-[#2563eb]" aria-label="Marcar a página" />
+                    </th>
+                    <th className="w-12 px-1 py-2.5 font-medium">Foto</th>
+                    <th className="px-2 py-2.5 font-medium">Nome</th>
+                    <th className="px-2 py-2.5 font-medium">Etiquetas</th>
+                    <th className="px-2 py-2.5 font-medium">Status</th>
+                    <th className="px-2 py-2.5 font-medium">Última mensagem</th>
+                    <th className="px-3 py-2.5 font-medium">Inscrito</th>
+                  </tr>
+                </thead>
+                <tbody className={carregando ? "opacity-60" : ""}>
+                  {erro && (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-8 text-center text-xs text-red-600">
+                        {erro}
+                      </td>
+                    </tr>
+                  )}
+                  {!erro && dados && contatos.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-10 text-center text-xs text-[#8a8f9c]">
+                        Nenhum contato {filtrosAtivos ? "neste filtro" : "ainda"}.
+                      </td>
+                    </tr>
+                  )}
+                  {!dados && !erro && (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-10 text-center text-xs text-[#8a8f9c]">
+                        Carregando…
+                      </td>
+                    </tr>
+                  )}
+                  {contatos.map((c) => {
+                    const s = STATUS[c.status] ?? STATUS.CLOSED;
+                    const marcado = todosDoFiltro || marcados.has(c.id);
+                    return (
+                      <tr
+                        key={c.id}
+                        onClick={() => setAberto(c.id)}
+                        className={`cursor-pointer border-b border-[#f1f2f5] transition last:border-0 ${aberto === c.id ? "bg-[#eef4ff]" : marcado ? "bg-[#f5f8ff]" : "hover:bg-[#fafbfc]"}`}
+                      >
+                        <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                          <input type="checkbox" checked={marcado} onChange={() => marcar(c.id)} className="h-4 w-4 accent-[#2563eb]" aria-label="Marcar contato" />
+                        </td>
+                        <td className="px-1 py-3">
+                          <Avatar c={c} tamanho={34} />
+                        </td>
+                        <td className="max-w-[240px] px-2 py-3">
+                          <p className="flex items-center gap-1 truncate text-[13px] font-medium text-[#1b1f2b]">
                             <span className="truncate">{nomeExibido(c)}</span>
                             {c.verificado && <span className="text-[#3b82f6]">✔</span>}
-                            {c.naoLida && <span className="h-2 w-2 shrink-0 rounded-full bg-[#6366f1]" title="Não lida" />}
+                            {c.naoLida && <span className="h-2 w-2 shrink-0 rounded-full bg-[#2563eb]" title="Não lida" />}
                           </p>
-                          <p className="truncate text-xs text-[#8a8f9c]">
+                          <p className="truncate text-[11px] text-[#8a8f9c]">
                             {c.username ? `@${c.username}` : "sem @"}
-                            {multiContas && c.conta ? <span className="text-[#c0c3cc]"> · em @{c.conta}</span> : null}
+                            {c.seguidores !== null && ` · ${seguidoresCurto(c.seguidores)} seguidores`}
+                            {multiContas && c.conta ? ` · em @${c.conta}` : ""}
                           </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-2 py-2.5 text-right tabular-nums text-[#1b1f2b]">
-                      {seguidoresCurto(c.seguidores)}
-                      {c.seguidores !== null && c.seguidores >= 10000 && <span className="ml-1 text-amber-500">★</span>}
-                    </td>
-                    <td className="max-w-[220px] px-2 py-2.5">
-                      <div className="flex flex-wrap gap-1">
-                        {c.tags.slice(0, 3).map((t) => (
-                          <Etiqueta key={t} t={t} />
-                        ))}
-                        {c.tags.length > 3 && <span className="text-[10px] text-[#a1a5b0]">+{c.tags.length - 3}</span>}
-                        {c.tags.length === 0 && <span className="text-[11px] text-[#c0c3cc]">—</span>}
-                      </div>
-                    </td>
-                    <td className="max-w-[260px] px-2 py-2.5">
-                      <p className="text-[11px] text-[#a1a5b0]">{quando(c.ultimaEm)}</p>
-                      <p className="truncate text-xs text-[#5a5f6d]">
-                        {c.ultima ? `${c.ultima.de === "cliente" ? "" : c.ultima.de === "equipe" ? "Equipe: " : "Robô: "}${c.ultima.texto}` : "—"}
-                      </p>
-                    </td>
-                    <td className="px-2 py-2.5">
-                      {o ? (
-                        <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ${o.cor}`}>{o.rotulo}</span>
-                      ) : (
-                        <span className="text-[11px] text-[#c0c3cc]">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium ${s.cor}`}>
-                        <span className={`h-1.5 w-1.5 rounded-full ${s.ponto}`} />
-                        {s.rotulo}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Paginação */}
-        {dados && dados.total > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#e3e5ea] px-4 py-2.5 text-xs text-[#8a8f9c]">
-            <span>
-              {((dados.pagina - 1) * dados.porPagina + 1).toLocaleString("pt-BR")}–{Math.min(dados.pagina * dados.porPagina, dados.total).toLocaleString("pt-BR")} de{" "}
-              {dados.total.toLocaleString("pt-BR")}
-            </span>
-            <div className="flex items-center gap-2">
-              <select value={porPagina} onChange={(e) => (setPorPagina(Number(e.target.value)), setPagina(1))} className="rounded-lg border border-[#e3e5ea] bg-white px-2 py-1 text-xs">
-                {[25, 50, 100].map((n) => (
-                  <option key={n} value={n}>
-                    {n} por página
-                  </option>
-                ))}
-              </select>
-              <button onClick={() => setPagina((p) => Math.max(1, p - 1))} disabled={dados.pagina <= 1} className={botao}>
-                ← Anterior
-              </button>
-              <span>
-                {dados.pagina} / {dados.paginas}
-              </span>
-              <button onClick={() => setPagina((p) => Math.min(dados.paginas, p + 1))} disabled={dados.pagina >= dados.paginas} className={botao}>
-                Próxima →
-              </button>
+                        </td>
+                        <td className="max-w-[200px] px-2 py-3">
+                          <div className="flex flex-wrap gap-1">
+                            {c.tags.slice(0, 2).map((t) => (
+                              <Etiqueta key={t} t={t} />
+                            ))}
+                            {c.tags.length > 2 && <span className="text-[10px] text-[#a1a5b0]">+{c.tags.length - 2}</span>}
+                            {c.tags.length === 0 && <span className="text-[11px] text-[#c0c3cc]">—</span>}
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-2 py-3">
+                          <span className="inline-flex items-center gap-1.5 text-[12px] text-[#3d4250]">
+                            <span className={`h-1.5 w-1.5 rounded-full ${s.ponto}`} />
+                            {s.rotulo}
+                          </span>
+                        </td>
+                        <td className="max-w-[220px] px-2 py-3">
+                          <p className="truncate text-[12px] text-[#5a5f6d]">
+                            {c.ultima ? `${c.ultima.de === "cliente" ? "" : c.ultima.de === "equipe" ? "Equipe: " : "Robô: "}${c.ultima.texto}` : "—"}
+                          </p>
+                          <p className="text-[11px] text-[#a1a5b0]">{quando(c.ultimaEm)}</p>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 text-[12px] text-[#5a5f6d]">{quando(c.primeiroContato)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
+
+            {/* Paginação */}
+            {dados && dados.total > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#eceef2] px-4 py-2.5 text-xs text-[#8a8f9c]">
+                <span>
+                  {((dados.pagina - 1) * dados.porPagina + 1).toLocaleString("pt-BR")}–{Math.min(dados.pagina * dados.porPagina, dados.total).toLocaleString("pt-BR")} de{" "}
+                  {dados.total.toLocaleString("pt-BR")}
+                </span>
+                <div className="flex items-center gap-2">
+                  <select value={porPagina} onChange={(e) => (setPorPagina(Number(e.target.value)), setPagina(1))} className="rounded-lg border border-[#e3e5ea] bg-white px-2 py-1 text-xs">
+                    {[25, 50, 100].map((n) => (
+                      <option key={n} value={n}>
+                        {n} por página
+                      </option>
+                    ))}
+                  </select>
+                  <button onClick={() => setPagina((p) => Math.max(1, p - 1))} disabled={dados.pagina <= 1} className={botao}>
+                    ← Anterior
+                  </button>
+                  <span>
+                    {dados.pagina} / {dados.paginas}
+                  </span>
+                  <button onClick={() => setPagina((p) => Math.min(dados.paginas, p + 1))} disabled={dados.pagina >= dados.paginas} className={botao}>
+                    Próxima →
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
 
       {contatoAberto && (
@@ -841,7 +868,9 @@ function PainelContato({
   const [valores, setValores] = useState<Record<string, Valor>>(c.campos);
   const [tags, setTags] = useState<string[]>(c.tags);
   const [novaTag, setNovaTag] = useState("");
+  const [addTag, setAddTag] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const [devolvendo, setDevolvendo] = useState(false);
   const [msg, setMsg] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
   const s = STATUS[c.status] ?? STATUS.CLOSED;
   const o = c.origem ? ORIGEM[c.origem] : null;
@@ -878,119 +907,181 @@ function PainelContato({
       onMudou();
     } else setMsg({ tipo: "erro", texto: j.error ?? "Não foi possível salvar" });
   }
+  async function devolverAoRobo() {
+    setDevolvendo(true);
+    const r = await fetch("/api/instagram/contatos/acoes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ acao: "DEVOLVER_ROBO", ids: [c.id] }) });
+    setDevolvendo(false);
+    if (r.ok) onMudou();
+    else setMsg({ tipo: "erro", texto: "Não foi possível devolver ao robô" });
+  }
+  function abrirConversa() {
+    try {
+      window.sessionStorage.setItem("ig-abrir-conversa", c.id);
+    } catch {
+      /* sem armazenamento: abre a caixa de entrada na lista */
+    }
+    window.location.hash = "conversas";
+  }
 
-  const linha = (rotulo: string, valor: React.ReactNode) => (
-    <div className="flex items-center justify-between gap-3 py-1.5 text-xs">
-      <span className="text-[#8a8f9c]">{rotulo}</span>
-      <span className="text-right font-medium text-[#1b1f2b]">{valor}</span>
-    </div>
-  );
+  const sistema: [string, React.ReactNode][] = [
+    ["Nome", c.nome || "—"],
+    ["Usuário", c.username ? `@${c.username}` : "—"],
+    ["Seguidores", c.seguidores !== null ? c.seguidores.toLocaleString("pt-BR") : "—"],
+    ["Segue a loja", c.seguePagina === null ? "—" : c.seguePagina ? "Sim" : "Não"],
+    ["Conta", c.conta ? `@${c.conta}` : c.loja],
+    ["Última mensagem", dataLonga(c.ultimaEm)],
+  ];
+  const titulo = "mb-2 flex items-center justify-between text-[13px] font-semibold text-[#1b1f2b]";
+  const link = "text-[12px] font-medium text-[#2563eb] hover:underline";
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-black/20" onMouseDown={(e) => e.target === e.currentTarget && onFechar()}>
-      <aside className="flex h-full w-full max-w-[400px] flex-col bg-white shadow-2xl">
-        <div className="flex items-start gap-3 border-b border-[#e3e5ea] p-5">
-          <Avatar c={c} tamanho={56} />
-          <div className="min-w-0 flex-1">
-            <p className="flex items-center gap-1 truncate text-base font-semibold text-[#1b1f2b]">
-              {nomeExibido(c)}
-              {c.verificado && <span className="text-[#3b82f6]">✔</span>}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-6" onMouseDown={(e) => e.target === e.currentTarget && onFechar()}>
+      <div role="dialog" aria-modal="true" aria-label={nomeExibido(c)} className="flex max-h-[92vh] w-full max-w-[760px] flex-col overflow-y-auto rounded-xl bg-white shadow-2xl md:flex-row md:overflow-hidden">
+        {/* Esquerda: foto, situação e ações */}
+        <div className="flex flex-col gap-4 border-b border-[#eceef2] p-6 md:w-[270px] md:shrink-0 md:overflow-y-auto md:border-b-0 md:border-r">
+          <Avatar c={c} tamanho={200} quadrado />
+          {c.status !== "BOT" && c.status !== "CLOSED" && (
+            <button onClick={devolverAoRobo} disabled={devolvendo} className={`${botao} w-full`}>
+              {devolvendo ? "Devolvendo…" : "▶ Devolver ao robô"}
+            </button>
+          )}
+          <div className="space-y-2 text-[12px] text-[#5a5f6d]">
+            <p className="flex items-center gap-2">
+              <span className={`h-2 w-2 shrink-0 rounded-full ${s.ponto}`} />
+              <span className="font-medium text-[#1b1f2b]">{s.rotulo}</span>
+            </p>
+            <p className="flex items-start gap-2">
+              <span aria-hidden>🕒</span>
+              <span>
+                Primeiro contato:
+                <br />
+                {dataLonga(c.primeiroContato)}
+              </span>
+            </p>
+            <p className="flex items-center gap-2">
+              <span aria-hidden>💬</span>
+              Janela de 24h {c.janelaAberta ? <span className="text-emerald-700">aberta</span> : "fechada"}
+            </p>
+            <p className="flex items-center gap-2">
+              <span aria-hidden>↗</span>
+              Optou pelo Instagram
             </p>
             {c.username && (
-              <a href={`https://instagram.com/${c.username}`} target="_blank" rel="noreferrer" className="text-xs text-[#6366f1] hover:underline">
-                @{c.username}
+              <a href={`https://instagram.com/${c.username}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-[#c026d3] hover:underline">
+                <span aria-hidden>◎</span>
+                {c.username}
               </a>
             )}
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium ${s.cor}`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${s.ponto}`} />
-                {s.rotulo}
-              </span>
-              {o && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ${o.cor}`}>{o.rotulo}</span>}
-            </div>
           </div>
-          <button onClick={onFechar} className="text-xl leading-none text-[#8a8f9c] hover:text-[#1b1f2b]">
-            ×
+          <button onClick={abrirConversa} className="mt-auto w-full rounded-lg bg-[#2563eb] px-3 py-2.5 text-[13px] font-semibold text-white hover:bg-[#1d4ed8]">
+            Abrir conversa
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
-          <section>
-            <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-[#a1a5b0]">Perfil</p>
-            <div className="divide-y divide-[#f1f2f5]">
-              {linha("Seguidores", c.seguidores !== null ? c.seguidores.toLocaleString("pt-BR") : "—")}
-              {linha("Segue a loja", c.seguePagina === null ? "—" : c.seguePagina ? "Sim" : "Não")}
-              {linha("Conta", c.conta ? `@${c.conta}` : c.loja)}
-              {linha("Primeiro contato", dataLonga(c.primeiroContato))}
-              {linha("Última mensagem", dataLonga(c.ultimaEm))}
-              {linha("Janela de 24h", c.janelaAberta ? <span className="text-emerald-700">aberta</span> : <span className="text-[#8a8f9c]">fechada</span>)}
-            </div>
-            {c.ultima && <p className="mt-2 rounded-xl bg-[#f7f8fa] px-3 py-2 text-xs text-[#5a5f6d]">“{c.ultima.texto}”</p>}
-          </section>
-
-          <section>
-            <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-[#a1a5b0]">Etiquetas</p>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {tags.map((t) => (
-                <Etiqueta key={t} t={t} onRemover={() => mexerTag({ tagRemove: t })} />
-              ))}
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (novaTag.trim()) mexerTag({ tagAdd: novaTag.trim() });
-                  setNovaTag("");
-                }}
-              >
-                <input
-                  list="ig-contatos-tags"
-                  value={novaTag}
-                  onChange={(e) => setNovaTag(e.target.value)}
-                  placeholder="+ etiqueta"
-                  maxLength={40}
-                  className="w-28 rounded-full border border-dashed border-[#d5d8e0] bg-transparent px-2.5 py-0.5 text-[11px] outline-none focus:border-[#6366f1]"
-                />
-              </form>
-            </div>
-          </section>
-
-          <section>
-            <div className="mb-1.5 flex items-center justify-between">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-[#a1a5b0]">Campos personalizados</p>
-              <button onClick={onAbrirCampos} className="text-[11px] font-medium text-[#6366f1] hover:underline">
-                Gerenciar
-              </button>
-            </div>
-            {campos.length === 0 ? (
-              <p className="rounded-xl bg-[#f7f8fa] px-3 py-3 text-xs text-[#8a8f9c]">
-                Nenhum campo criado para esta conta. Crie campos como “Cidade”, “CNPJ” ou “Data do último pedido” em Gerenciar.
-              </p>
-            ) : (
-              <div className="space-y-2.5">
-                {campos.map((f) => (
-                  <label key={f.id} className="block">
-                    <span className="mb-1 flex items-center justify-between text-xs font-medium text-[#5a5f6d]">
-                      {f.nome}
-                      <span className="text-[10px] font-normal text-[#a1a5b0]">{TIPOS.find(([k]) => k === f.tipo)?.[1] ?? f.tipo}</span>
-                    </span>
-                    <EntradaCampo campo={f} valor={valores[f.nome]} onChange={(v) => setValores((x) => ({ ...x, [f.nome]: v }))} />
-                  </label>
-                ))}
-              </div>
-            )}
-          </section>
-        </div>
-
-        {campos.length > 0 && (
-          <div className="flex items-center justify-between gap-2 border-t border-[#e3e5ea] p-4">
-            <span className={`text-xs ${msg?.tipo === "erro" ? "text-red-600" : "text-emerald-700"}`}>
-              {msg?.texto ?? (alterados.length ? `${alterados.length} alteraç${alterados.length === 1 ? "ão" : "ões"} não salva${alterados.length === 1 ? "" : "s"}` : "")}
-            </span>
-            <button onClick={salvar} disabled={salvando || alterados.length === 0} className={botaoEscuro}>
-              {salvando ? "Salvando…" : "Salvar campos"}
+        {/* Direita: etiquetas e campos */}
+        <div className="flex min-w-0 flex-1 flex-col md:overflow-hidden">
+          <div className="flex items-start gap-3 px-6 pt-6">
+            <p className="min-w-0 flex-1 text-lg font-semibold text-[#1b1f2b]">
+              {nomeExibido(c)}
+              {c.verificado && <span className="ml-1 text-[#3b82f6]">✔</span>}
+            </p>
+            <button onClick={onFechar} className="-mr-2 -mt-1 flex h-9 w-9 items-center justify-center rounded-lg text-xl text-[#8a8f9c] hover:bg-[#f2f3f5]" aria-label="Fechar">
+              ×
             </button>
           </div>
-        )}
-      </aside>
+
+          <div className="min-h-0 flex-1 divide-y divide-[#eceef2] overflow-y-auto px-6 pb-4">
+            <section className="py-4">
+              <p className={titulo}>
+                Etiquetas do contato
+                <button onClick={() => setAddTag(!addTag)} className={link}>
+                  + Adicionar etiqueta
+                </button>
+              </p>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {tags.map((t) => (
+                  <Etiqueta key={t} t={t} onRemover={() => mexerTag({ tagRemove: t })} />
+                ))}
+                {tags.length === 0 && !addTag && <span className="text-[12px] text-[#a1a5b0]">Nenhuma etiqueta.</span>}
+                {addTag && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (novaTag.trim()) mexerTag({ tagAdd: novaTag.trim() });
+                      setNovaTag("");
+                    }}
+                  >
+                    <input
+                      autoFocus
+                      list="ig-contatos-tags"
+                      value={novaTag}
+                      onChange={(e) => setNovaTag(e.target.value)}
+                      placeholder="Nome da etiqueta + Enter"
+                      maxLength={40}
+                      className="w-48 rounded-full border border-[#c7cbe0] px-3 py-1 text-[12px] outline-none focus:border-[#2563eb]"
+                    />
+                  </form>
+                )}
+              </div>
+            </section>
+
+            <section className="py-4">
+              <p className={titulo}>Origem</p>
+              {o ? <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ${o.cor}`}>{o.rotulo}</span> : <span className="rounded-full bg-[#eef0f3] px-2.5 py-1 text-[11px] text-[#5a5f6d]">Instagram</span>}
+            </section>
+
+            <section className="py-4">
+              <p className={titulo}>Campos do sistema</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {sistema.map(([r, v]) => (
+                  <div key={r} className="rounded-lg bg-[#eef4ff] px-3 py-2 ring-1 ring-[#dbe6ff]">
+                    <p className="text-[11px] text-[#6b7aa6]">{r}:</p>
+                    <p className="truncate text-[13px] text-[#1b1f2b]">{v}</p>
+                  </div>
+                ))}
+              </div>
+              {c.ultima && <p className="mt-2 rounded-lg bg-[#f6f7f9] px-3 py-2 text-[12px] text-[#5a5f6d]">“{c.ultima.texto}”</p>}
+            </section>
+
+            <section className="py-4">
+              <p className={titulo}>
+                Campos personalizados
+                <button onClick={onAbrirCampos} className={link}>
+                  Gerenciar campos
+                </button>
+              </p>
+              {campos.length === 0 ? (
+                <p className="text-[12px] text-[#8a8f9c]">Nenhum campo criado para esta conta. Crie campos como “Cidade” ou “CNPJ” em Gerenciar campos.</p>
+              ) : (
+                <div className="space-y-2.5">
+                  {campos.map((f) => (
+                    <label key={f.id} className="block">
+                      <span className="mb-1 flex items-center justify-between text-xs font-medium text-[#5a5f6d]">
+                        {f.nome}
+                        <span className="text-[10px] font-normal text-[#a1a5b0]">{TIPOS.find(([k]) => k === f.tipo)?.[1] ?? f.tipo}</span>
+                      </span>
+                      <EntradaCampo campo={f} valor={valores[f.nome]} onChange={(v) => setValores((x) => ({ ...x, [f.nome]: v }))} />
+                    </label>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+
+          {(campos.length > 0 || msg) && (
+            <div className="flex items-center justify-between gap-2 border-t border-[#eceef2] px-6 py-3">
+              <span className={`text-xs ${msg?.tipo === "erro" ? "text-red-600" : "text-emerald-700"}`}>
+                {msg?.texto ?? (alterados.length ? `${alterados.length} alteraç${alterados.length === 1 ? "ão" : "ões"} não salva${alterados.length === 1 ? "" : "s"}` : "")}
+              </span>
+              {campos.length > 0 && (
+                <button onClick={salvar} disabled={salvando || alterados.length === 0} className="rounded-lg bg-[#2563eb] px-3 py-2 text-xs font-semibold text-white hover:bg-[#1d4ed8] disabled:opacity-40">
+                  {salvando ? "Salvando…" : "Salvar campos"}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

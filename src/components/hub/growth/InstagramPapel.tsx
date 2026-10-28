@@ -14,6 +14,7 @@ import InstagramRespostasSalvas from "@/components/hub/growth/InstagramRespostas
 import InstagramFluxos from "@/components/hub/growth/InstagramFluxos";
 import SocialMetricas from "@/components/hub/growth/SocialMetricas";
 import InstagramResponderComentarios from "@/components/hub/growth/InstagramResponderComentarios";
+import InstagramInicio, { type DadosInicio } from "@/components/hub/growth/InstagramInicio";
 import InstagramAbas, { type Aba } from "@/components/hub/growth/InstagramAbas";
 
 /**
@@ -21,16 +22,6 @@ import InstagramAbas, { type Aba } from "@/components/hub/growth/InstagramAbas";
  * e as respostas da equipe (material para a base de perguntas aprender). Só administradores,
  * porque as conversas têm dados de clientes. Mesmo login do app.
  */
-
-/** Atalhos da Visão geral: abrem a seção pelo endereço (#id). */
-const ATALHOS: [string, string, string][] = [
-  ["conversas", "Responder mensagens", "Caixa de entrada do direct, com filtros e busca."],
-  ["comentarios", "Comentário vira direct", "Quem comentar a palavra recebe o link no direct."],
-  ["fluxos", "Fluxos de conversa", "Monte o caminho do robô com botões e perguntas."],
-  ["contatos", "Contatos e etiquetas", "Encontre clientes, filtre e exporte a lista."],
-  ["transmissao", "Mandar para vários", "Uma mensagem para um grupo de contatos."],
-  ["metricas", "Métricas", "Como as publicações estão indo."],
-];
 
 const fmt = (d: Date | null | undefined) =>
   d
@@ -48,7 +39,7 @@ export default async function InstagramPapel() {
   }
 
   const desde = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const [contas, recebidas, doRobo, porTipo, humanas, aguardando, naoLidas] = await Promise.all([
+  const [contas, recebidas, doRobo, porTipo, humanas, aguardando, naoLidas, totalContatos, novosContatos, topBruto, boasVindas, comentariosAtivos, fluxosAtivos] = await Promise.all([
     prisma.instagramAccount.findMany({ orderBy: { createdAt: "asc" } }),
     prisma.igMessage.count({ where: { direction: "IN", createdAt: { gt: desde } } }),
     prisma.igMessage.count({ where: { source: "BOT", createdAt: { gt: desde } } }),
@@ -62,7 +53,32 @@ export default async function InstagramPapel() {
     // Contadores do menu (como os números do Live Chat do ManyChat): só o que pede ação da equipe.
     prisma.igConversation.count({ where: { status: "NEEDS_HUMAN" } }),
     prisma.igConversation.count({ where: { naoLida: true } }),
+    // Página Inicial (como a do ManyChat): contatos, quem mais conversou e o checklist de primeiros passos.
+    prisma.igConversation.count(),
+    prisma.igConversation.count({ where: { createdAt: { gt: desde } } }),
+    prisma.igMessage.groupBy({
+      by: ["conversationId"],
+      where: { direction: "IN", createdAt: { gt: desde } },
+      _count: { _all: true },
+      orderBy: { _count: { conversationId: "desc" } },
+      take: 10,
+    }),
+    prisma.igBoasVindas.findMany({ select: { ativo: true, iniciadores: true, menu: true } }),
+    prisma.igAutomacao.count({ where: { ativo: true } }),
+    prisma.igFluxo.count({ where: { ativo: true } }),
   ]);
+  const perfisTop = topBruto.length
+    ? await prisma.igConversation.findMany({
+        where: { id: { in: topBruto.map((t) => t.conversationId) } },
+        select: { id: true, nome: true, username: true, fotoUrl: true },
+      })
+    : [];
+  const top = topBruto
+    .map((t) => {
+      const p = perfisTop.find((x) => x.id === t.conversationId);
+      return p ? { ...p, mensagens: t._count._all } : null;
+    })
+    .filter((p): p is NonNullable<typeof p> => !!p);
 
   const contagem = (k: string) => porTipo.find((p) => p.matchedKind === k)?._count ?? 0;
   // Pergunta do cliente que veio antes de cada resposta da equipe: uma consulta só (antes eram 15, e a página demorava ~3 s).
@@ -83,90 +99,30 @@ export default async function InstagramPapel() {
     pergunta: entradas.find((e) => e.conversationId === h.conversationId && e.createdAt < h.createdAt) ?? null,
   }));
 
-  const cartoes: [string, number][] = [
-    ["Mensagens recebidas (7 dias)", recebidas],
-    ["Respostas do robô", doRobo],
-    ["Respondidas com a base", contagem("faq") + contagem("pergunta")],
-    ["Chamaram atendente", contagem("atendente")],
-  ];
+  const bv = boasVindas;
+  const inicio: DadosInicio = {
+    nomeLoja: session.user.name?.split(" ")[0] || "equipe",
+    contas: contas.map((c) => ({ id: c.id, username: c.username, loja: c.loja, active: c.active })),
+    faltaConectar: (["bff", "moranga"] as const).filter((l) => !contas.some((c) => c.loja === l)),
+    totalContatos,
+    aguardando,
+    naoLidas,
+    recebidas,
+    doRobo,
+    novosContatos,
+    chamaramAtendente: contagem("atendente"),
+    top,
+    passos: [
+      { id: "boasvindas", titulo: "Mensagem de boas-vindas ligada", feito: bv.some((b) => b.ativo), secao: "boasvindas" },
+      { id: "comentarios", titulo: "Comentário vira direct", feito: comentariosAtivos > 0, secao: "comentarios" },
+      { id: "menu", titulo: "Perguntas e menu do direct", feito: bv.some((b) => !!b.iniciadores.trim() || !!b.menu.trim()), secao: "menu" },
+      { id: "fluxos", titulo: "Um fluxo de conversa ativo", feito: fluxosAtivos > 0, secao: "fluxos" },
+    ],
+    atualizadoEm: new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date()),
+  };
 
   const abas: Aba[] = [
-    { id: "geral", rotulo: "Visão geral", grupo: "Início", ajuda: "Números da semana, contas ligadas e o que precisa da sua atenção.", conteudo: (
-      <div className="space-y-6">
-      {(aguardando > 0 || naoLidas > 0) && (
-        <a
-          href="#conversas"
-          className="flex min-h-[44px] flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 hover:border-amber-300"
-        >
-          <span className="min-w-0 flex-1">
-            {aguardando > 0 && (
-              <>
-                <b>{aguardando}</b> conversa{aguardando === 1 ? "" : "s"} aguardando atendente
-              </>
-            )}
-            {aguardando > 0 && naoLidas > 0 && " · "}
-            {naoLidas > 0 && (
-              <>
-                <b>{naoLidas}</b> conversa{naoLidas === 1 ? "" : "s"} não lida{naoLidas === 1 ? "" : "s"}
-              </>
-            )}
-          </span>
-          <span className="shrink-0 font-medium">Abrir conversas →</span>
-        </a>
-      )}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {cartoes.map(([t, n]) => (
-          <div key={t} className="rounded-xl border border-[#e3e5ea] bg-[#f9fafb] p-3">
-            <div className="text-xl font-semibold text-[#1b1f2b]">{n}</div>
-            <div className="mt-0.5 text-[11px] text-[#8a8f9c]">{t}</div>
-          </div>
-        ))}
-      </div>
-
-      <section>
-        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[#a1a5b0]">Contas conectadas</p>
-        <div className="space-y-2">
-          {contas.map((c) => (
-            <div key={c.id} className="flex items-center justify-between rounded-xl border border-[#e3e5ea] px-3 py-2 text-sm">
-              <div>
-                <span className="font-medium text-[#1b1f2b]">@{c.username}</span>
-                <span className="ml-2 text-[#8a8f9c]">loja {c.loja}</span>
-                <span className={`ml-2 rounded-full px-2 py-0.5 text-xs ${c.active ? "bg-emerald-50 text-emerald-700" : "bg-zinc-100 text-zinc-600"}`}>
-                  {c.active ? "ativa" : "inativa"}
-                </span>
-              </div>
-              <a href={`/api/instagram/connect?loja=${c.loja}`} className="text-xs text-[#6366f1] hover:underline">
-                Reconectar
-              </a>
-            </div>
-          ))}
-          {(["bff", "moranga"] as const)
-            .filter((l) => !contas.some((c) => c.loja === l))
-            .map((l) => (
-              <a
-                key={l}
-                href={`/api/instagram/connect?loja=${l}`}
-                className="block rounded-xl border border-dashed border-[#d5d8e0] px-3 py-2 text-sm text-[#5a5f6d] hover:border-[#6366f1]"
-              >
-                + Conectar a conta da {l === "bff" ? "BFF" : "Moranga"}
-              </a>
-            ))}
-        </div>
-      </section>
-
-      <section>
-        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[#a1a5b0]">Atalhos</p>
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {ATALHOS.map(([id, titulo, texto]) => (
-            <a key={id} href={`#${id}`} className="block min-h-[44px] rounded-xl border border-[#e3e5ea] px-3 py-2.5 hover:border-[#6366f1] hover:bg-[#f7f7ff]">
-              <span className="block text-sm font-medium text-[#1b1f2b]">{titulo} →</span>
-              <span className="block text-xs text-[#8a8f9c]">{texto}</span>
-            </a>
-          ))}
-        </div>
-      </section>
-      </div>
-    ) },
+    { id: "geral", rotulo: "Inicial", grupo: "Início", ajuda: "Resumo da semana, primeiros passos e as contas ligadas.", conteudo: <InstagramInicio d={inicio} /> },
     { id: "conversas", rotulo: "Conversas do Instagram", grupo: "Atendimento", contador: aguardando, ajuda: "Leia e responda o direct. Assuma a conversa para o robô parar e devolva quando terminar.", conteudo: <InstagramInbox /> },
     { id: "messenger", rotulo: "Conversas do Messenger", grupo: "Atendimento", ajuda: "Mensagens da Página do Facebook, com o mesmo jeito de assumir e responder.", conteudo: <MessengerInbox /> },
     { id: "responder-comentarios", rotulo: "Responder comentários", grupo: "Atendimento", ajuda: "Comentários das publicações para responder à mão, um por um.", conteudo: <InstagramResponderComentarios /> },

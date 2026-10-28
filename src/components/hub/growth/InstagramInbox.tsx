@@ -170,6 +170,18 @@ export default function InstagramInbox() {
       .catch(() => {});
   }, []);
   const [selecionada, setSelecionada] = useState<string | null>(null);
+  // "Abrir conversa" da ficha do contato: a seção abre já nesta conversa.
+  useEffect(() => {
+    try {
+      const id = window.sessionStorage.getItem("ig-abrir-conversa");
+      if (id) {
+        window.sessionStorage.removeItem("ig-abrir-conversa");
+        setSelecionada(id);
+      }
+    } catch {
+      /* sem armazenamento: abre na lista */
+    }
+  }, []);
   const [conversa, setConversa] = useState<Conversa | null>(null);
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);

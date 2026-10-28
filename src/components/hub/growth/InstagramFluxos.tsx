@@ -30,6 +30,7 @@ import {
   type No,
   type TipoNo,
 } from "@/lib/igFluxosModelo";
+import ModelosFluxo, { type Modelo } from "@/components/hub/growth/InstagramModelos";
 
 type Conta = { id: string; username: string | null; loja: string };
 type Fluxo = {
@@ -1146,12 +1147,55 @@ function Editor({
 
 // ═════════════════════════════ Lista ═════════════════════════════
 
+function haQuanto(iso: string) {
+  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (min < 1) return "agora";
+  if (min < 60) return `há ${min} min`;
+  if (min < 60 * 24) return `há ${Math.floor(min / 60)} h`;
+  const d = Math.floor(min / 1440);
+  return d < 30 ? `há ${d} dia${d === 1 ? "" : "s"}` : new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short" }).format(new Date(iso));
+}
+
+/** Menu ⋮ de cada automação (Editar, Duplicar, Excluir). */
+function MenuLinha({ onEditar, onDuplicar, onExcluir }: { onEditar: () => void; onDuplicar: () => void; onExcluir: () => void }) {
+  const [aberto, setAberto] = useState(false);
+  const caixa = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!aberto) return;
+    const fora = (e: MouseEvent) => !caixa.current?.contains(e.target as Node) && setAberto(false);
+    document.addEventListener("mousedown", fora);
+    return () => document.removeEventListener("mousedown", fora);
+  }, [aberto]);
+  const opcao = "block w-full px-3 py-2 text-left text-[13px] hover:bg-[#f6f7f9]";
+  return (
+    <div ref={caixa} className="relative">
+      <button onClick={() => setAberto(!aberto)} aria-label="Mais ações" className="flex h-8 w-8 items-center justify-center rounded-lg text-lg text-[#5a5f6d] hover:bg-[#f2f3f5]">
+        ⋮
+      </button>
+      {aberto && (
+        <div className="absolute right-0 top-9 z-20 w-36 overflow-hidden rounded-lg bg-white py-1 shadow-lg ring-1 ring-[#e3e5ea]">
+          <button className={opcao} onClick={() => (setAberto(false), onEditar())}>
+            Editar
+          </button>
+          <button className={opcao} onClick={() => (setAberto(false), onDuplicar())}>
+            Duplicar
+          </button>
+          <button className={`${opcao} text-red-600`} onClick={() => (setAberto(false), onExcluir())}>
+            Excluir
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function InstagramFluxos() {
   const [lista, setLista] = useState<Fluxo[] | null>(null);
   const [contas, setContas] = useState<Conta[]>([]);
   const [etiquetas, setEtiquetas] = useState<string[]>([]);
   const [abertoId, setAbertoId] = useState<string | null>(null);
-  const [criando, setCriando] = useState<{ nome: string; contaId: string } | null>(null);
+  const [modelos, setModelos] = useState<string | null>(null);
+  const [busca, setBusca] = useState("");
   const [erro, setErro] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
@@ -1170,16 +1214,29 @@ export default function InstagramFluxos() {
     carregar();
   }, [carregar]);
 
-  async function criar() {
-    if (!criando) return;
+  // Atalhos da Inicial ("Veja todos os modelos" e os cartões de "Comece aqui") abrem a janela de modelos.
+  useEffect(() => {
+    try {
+      const m = window.sessionStorage.getItem("ig-abrir-modelos");
+      if (m) {
+        window.sessionStorage.removeItem("ig-abrir-modelos");
+        setModelos(m);
+      }
+    } catch {
+      /* sem armazenamento */
+    }
+  }, []);
+
+  async function criar(accountId: string, nome: string, grafo?: unknown) {
     const r = await fetch("/api/instagram/fluxos", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ accountId: criando.contaId, nome: criando.nome || "Novo fluxo" }),
+      body: JSON.stringify({ accountId, nome, ...(grafo ? { grafo } : {}) }),
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) return setErro(j.error ?? "Não foi possível criar.");
-    setCriando(null);
+    setErro(null);
+    setModelos(null);
     await carregar();
     setAbertoId(j.id);
   }
@@ -1204,86 +1261,121 @@ export default function InstagramFluxos() {
     return <Editor key={aberto.id} fluxo={aberto} fluxos={lista ?? []} contas={contas} etiquetas={etiquetas} onFechar={() => setAbertoId(null)} onSalvo={carregar} />;
   }
 
+  const q = busca.trim().toLowerCase();
+  const visiveis = (lista ?? []).filter((f) => !q || f.nome.toLowerCase().includes(q));
+  const multiContas = contas.length > 1;
+
   return (
-    <section className="rounded-2xl border border-[#e3e5ea] bg-white p-5 shadow-sm">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-base font-semibold text-[#1b1f2b]">Fluxos</p>
-          <p className="text-xs text-[#8a8f9c]">Monte conversas com blocos ligados (como no ManyChat): mensagens com botões, perguntas, condições, atrasos e etiquetas.</p>
+    <div className="-mx-1 rounded-2xl bg-[#f6f7f9] px-3 py-5 sm:px-6">
+      <div className="mx-auto max-w-[900px]">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold text-[#1b1f2b]">Minhas automações</h2>
+            <p className="text-[12px] text-[#8a8f9c]">Conversas do robô montadas em blocos: mensagens com botões, perguntas, condições, atrasos e etiquetas.</p>
+          </div>
+          <button
+            onClick={() => setModelos("todos")}
+            disabled={!contas.length}
+            className="rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1d4ed8] disabled:opacity-40"
+          >
+            + Nova automação
+          </button>
         </div>
-        <button
-          onClick={() => setCriando({ nome: "", contaId: contas[0]?.id ?? "" })}
-          disabled={!contas.length}
-          className="rounded-xl bg-[#6366f1] px-4 py-2 text-sm font-semibold text-white hover:bg-[#4f52d9] disabled:opacity-40"
-        >
-          + Novo fluxo
-        </button>
+
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <label className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-[#e3e5ea] bg-white px-3 sm:max-w-[280px]">
+            <span className="text-[#a1a5b0]" aria-hidden>
+              ⌕
+            </span>
+            <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Pesquisar todas as automações" className="min-w-0 flex-1 py-2 text-sm outline-none" />
+          </label>
+          <span className="ml-auto text-[12px] text-[#8a8f9c]">
+            {(lista ?? []).filter((f) => f.ativo).length} ativa{(lista ?? []).filter((f) => f.ativo).length === 1 ? "" : "s"} de {(lista ?? []).length}
+          </span>
+        </div>
+
+        {erro && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{erro}</p>}
+
+        {lista === null && <p className="py-10 text-center text-sm text-[#8a8f9c]">Carregando…</p>}
+        {lista && lista.length === 0 && !erro && (
+          <div className="rounded-xl bg-white p-10 text-center ring-1 ring-[#eceef2]">
+            <p className="text-base font-semibold text-[#1b1f2b]">Crie sua primeira automação</p>
+            <p className="mx-auto mt-1 max-w-sm text-[13px] text-[#8a8f9c]">Comece por um modelo pronto (como responder stories ou mandar link para quem comenta) e ajuste o texto.</p>
+            <button onClick={() => setModelos("todos")} className="mt-4 rounded-lg bg-[#2563eb] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1d4ed8]">
+              Ver modelos
+            </button>
+          </div>
+        )}
+
+        {lista && lista.length > 0 && (
+          <div className="overflow-x-auto rounded-xl bg-white ring-1 ring-[#eceef2]">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="border-b border-[#eceef2] text-[11px] text-[#8a8f9c]">
+                <tr>
+                  <th className="px-4 py-2.5 font-medium">Nome</th>
+                  {multiContas && <th className="px-2 py-2.5 font-medium">Conta</th>}
+                  <th className="px-2 py-2.5 text-right font-medium">Execuções</th>
+                  <th className="px-2 py-2.5 text-right font-medium">Em andamento</th>
+                  <th className="px-2 py-2.5 font-medium">Modificado</th>
+                  <th className="px-2 py-2.5 font-medium">Ligado</th>
+                  <th className="w-10 px-2 py-2.5" />
+                </tr>
+              </thead>
+              <tbody>
+                {visiveis.map((f) => {
+                  const g = noGatilho(f.grafo ?? { nos: [], ligacoes: [] });
+                  const emAndamento = (f.stats.ATIVO ?? 0) + (f.stats.ESPERANDO_RESPOSTA ?? 0) + (f.stats.ESPERANDO_TEMPO ?? 0);
+                  const execucoes = emAndamento + (f.stats.CONCLUIDO ?? 0) + (f.stats.CANCELADO ?? 0);
+                  return (
+                    <tr key={f.id} className="border-b border-[#f1f2f5] last:border-0 hover:bg-[#fafbfc]">
+                      <td className="max-w-0 px-4 py-3">
+                        <button onClick={() => setAbertoId(f.id)} className="flex w-full min-w-0 items-center gap-2 text-left">
+                          <span
+                            className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold tracking-wide ${f.ativo ? "bg-[#dcfce7] text-[#15803d]" : "bg-[#eef0f3] text-[#6b6f80]"}`}
+                          >
+                            {f.ativo ? "ATIVO" : "PARADO"}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block truncate font-semibold text-[#1b1f2b] hover:text-[#2563eb]">{f.nome}</span>
+                            <span className="block truncate text-[11px] text-[#8a8f9c]">⚡ {g ? descreverGatilho(g.dados) : "Sem gatilho"}</span>
+                          </span>
+                        </button>
+                      </td>
+                      {multiContas && <td className="whitespace-nowrap px-2 py-3 text-[12px] text-[#5a5f6d]">@{f.account.username}</td>}
+                      <td className="px-2 py-3 text-right tabular-nums text-[#1b1f2b]">{execucoes.toLocaleString("pt-BR")}</td>
+                      <td className="px-2 py-3 text-right tabular-nums text-[#5a5f6d]">{emAndamento.toLocaleString("pt-BR")}</td>
+                      <td className="whitespace-nowrap px-2 py-3 text-[12px] text-[#5a5f6d]">{haQuanto(f.updatedAt)}</td>
+                      <td className="px-2 py-3">
+                        <Toggle valor={f.ativo} onChange={() => alternar(f)} />
+                      </td>
+                      <td className="px-2 py-3">
+                        <MenuLinha onEditar={() => setAbertoId(f.id)} onDuplicar={() => duplicar(f)} onExcluir={() => excluir(f)} />
+                      </td>
+                    </tr>
+                  );
+                })}
+                {visiveis.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-[13px] text-[#8a8f9c]">
+                      Nenhuma automação com esse nome.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {erro && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{erro}</p>}
-
-      {criando && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#e3e5ea] bg-[#f7f8fa] p-3">
-          <input
-            autoFocus
-            value={criando.nome}
-            onChange={(e) => setCriando({ ...criando, nome: e.target.value })}
-            onKeyDown={(e) => e.key === "Enter" && criar()}
-            placeholder="Nome do fluxo (ex: Catálogo atacado)"
-            className={`${campo} max-w-xs bg-white`}
-          />
-          {contas.length > 1 && (
-            <select value={criando.contaId} onChange={(e) => setCriando({ ...criando, contaId: e.target.value })} className={`${campo} max-w-[220px] bg-white`}>
-              {contas.map((c) => (
-                <option key={c.id} value={c.id}>
-                  @{c.username} ({c.loja})
-                </option>
-              ))}
-            </select>
-          )}
-          <button onClick={criar} className="rounded-xl bg-[#6366f1] px-4 py-2 text-sm font-semibold text-white hover:bg-[#4f52d9]">Criar</button>
-          <button onClick={() => setCriando(null)} className="text-xs text-[#8a8f9c] hover:text-[#1b1f2b]">Cancelar</button>
-        </div>
+      {modelos && (
+        <ModelosFluxo
+          contas={contas}
+          inicial={modelos}
+          onFechar={() => setModelos(null)}
+          onEscolher={(m: Modelo, contaId) => criar(contaId, m.titulo, m.grafo())}
+          onDoZero={(contaId) => criar(contaId, "Novo fluxo")}
+        />
       )}
-
-      {lista === null && <p className="py-6 text-center text-sm text-[#8a8f9c]">Carregando…</p>}
-      {lista && lista.length === 0 && !erro && (
-        <div className="rounded-xl border border-dashed border-[#d5d8e0] p-8 text-center">
-          <p className="text-sm font-medium text-[#1b1f2b]">Nenhum fluxo ainda</p>
-          <p className="mt-1 text-xs text-[#8a8f9c]">Exemplo: quem mandar &ldquo;CATÁLOGO&rdquo; recebe botões &ldquo;Atacado&rdquo; / &ldquo;Varejo&rdquo; e cada um leva a um caminho.</p>
-        </div>
-      )}
-      <div className="grid gap-3 sm:grid-cols-2">
-        {(lista ?? []).map((f) => {
-          const g = noGatilho(f.grafo ?? { nos: [], ligacoes: [] });
-          const emAndamento = (f.stats.ATIVO ?? 0) + (f.stats.ESPERANDO_RESPOSTA ?? 0) + (f.stats.ESPERANDO_TEMPO ?? 0);
-          return (
-            <div key={f.id} className="rounded-xl border border-[#e3e5ea] p-4">
-              <div className="flex items-start justify-between gap-3">
-                <button onClick={() => setAbertoId(f.id)} className="min-w-0 text-left">
-                  <p className="truncate text-sm font-semibold text-[#1b1f2b] hover:text-[#6366f1]">{f.nome}</p>
-                  <p className="text-[11px] text-[#8a8f9c]">
-                    @{f.account.username} · loja {f.account.loja} · {f.grafo?.nos?.length ?? 0} blocos
-                  </p>
-                </button>
-                <Toggle valor={f.ativo} onChange={() => alternar(f)} />
-              </div>
-              <p className="mt-3 truncate text-xs text-[#5a5f6d]">⚡ {g ? descreverGatilho(g.dados) : "Sem gatilho"}</p>
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
-                <span className={`rounded-full px-2 py-0.5 font-medium ${f.ativo ? "bg-emerald-50 text-emerald-700" : "bg-zinc-100 text-zinc-600"}`}>{f.ativo ? "Ativo" : "Desligado"}</span>
-                <span className="text-[#8a8f9c]">
-                  {emAndamento} em andamento · {f.stats.CONCLUIDO ?? 0} concluídos · {f.stats.CANCELADO ?? 0} cancelados
-                </span>
-                <span className="ml-auto flex gap-3">
-                  <button onClick={() => setAbertoId(f.id)} className="text-[#6366f1] hover:underline">Editar</button>
-                  <button onClick={() => duplicar(f)} className="text-[#5a5f6d] hover:underline">Duplicar</button>
-                  <button onClick={() => excluir(f)} className="text-red-600 hover:underline">Excluir</button>
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </section>
+    </div>
   );
 }
