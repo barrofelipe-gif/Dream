@@ -551,6 +551,72 @@ export function DicasPublicacao({ redes, onUsar, abrirMapa, ocupados = {} }: { r
   );
 }
 
+type PerfilGoogle = { url: string; nome: string | null; totalSeguidores: string | null; redes: { rede: string; conta: string; seguidores: string }[]; postsRecentes: number; avisos: string[]; lidoEm: string };
+
+/** Perfil de pesquisa do Google (Google for Creators), lido na hora da página pública: seguidores por rede e o que falta. */
+function PerfilNoGoogle() {
+  const [p, setP] = useState<PerfilGoogle | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    fetch("/api/social/google-perfil", { cache: "no-store" })
+      .then(async (r) => {
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error ?? "Falha ao ler o perfil do Google.");
+        if (vivo) setP(j);
+      })
+      .catch((e) => vivo && setErro(e instanceof Error ? e.message : "Falha ao ler o perfil do Google."));
+    return () => {
+      vivo = false;
+    };
+  }, []);
+  return (
+    <section className="rounded-2xl border border-[#e3e5ea] bg-white p-4 shadow-sm" style={{ borderTop: "4px solid #4285f4" }}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-[#1b1f2b]">Perfil no Google</h3>
+          <p className="text-xs text-[#6b7280]">A página da BFF na busca do Google (Google for Creators), lida agora.</p>
+        </div>
+        {p && (
+          <a href={p.url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#4f46e5] hover:underline">
+            Abrir o perfil
+          </a>
+        )}
+      </div>
+      {erro && <p className="mt-2 text-xs text-amber-700">{erro}</p>}
+      {!p && !erro && <p className="mt-2 text-xs text-[#9ca3af]">Lendo o perfil do Google…</p>}
+      {p && (
+        <div className="mt-3 space-y-2">
+          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <span className="text-lg font-semibold">{p.nome ?? "—"}</span>
+            {p.totalSeguidores && <span className="text-sm text-[#4b5563]"><b>{p.totalSeguidores}</b> seguidores no total</span>}
+            <span className="text-xs text-[#9ca3af]">{p.postsRecentes} posts recentes aparecendo</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {p.redes.map((r) => {
+              const id = r.rede.toLowerCase() as Rede;
+              const m = MAPA[id];
+              return (
+                <span key={r.rede} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold" style={m ? estiloMarca(m) : { background: "#f3f4f6" }}>
+                  {m && <Icone rede={id} />}
+                  {r.rede} · {r.seguidores}
+                </span>
+              );
+            })}
+          </div>
+          {p.avisos.length > 0 && (
+            <ul className="list-disc space-y-1 pl-4 text-xs text-amber-800">
+              {p.avisos.map((a) => (
+                <li key={a}>{a}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function SocialMapa() {
   const [aba, setAba] = useState<AbaId>("geral");
   const abas: { id: AbaId; rotulo: string }[] = [{ id: "geral", rotulo: "Visão geral" }, ...ORDEM.map((r) => ({ id: r, rotulo: MAPA[r].rotulo }))];
@@ -583,6 +649,7 @@ export default function SocialMapa() {
 
       {aba === "geral" ? (
         <div className="space-y-4">
+          <PerfilNoGoogle />
           <Calendario abrir={setAba} />
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             {ORDEM.map((r) => (
