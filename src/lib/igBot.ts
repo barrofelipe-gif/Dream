@@ -191,8 +191,8 @@ const RASTREIO_APP = "https://converta.app/redirectbff.html";
 /** Mensagem de atacado da BFF, igual à que a equipe manda no WhatsApp: um bloco com botão do app e, em seguida, o convite do grupo VIP. {nome} vira o primeiro nome. */
 /** Site da BFF com o parâmetro de rastreio de parceiro: é a URL que vai para o cliente. */
 export const SITE_BFF = "https://www.bfffitnessatacado.com.br?parceiro=4273";
-/** Grupo de ofertas da BFF (por enquanto o do WhatsApp; troca aqui quando o canal do Instagram tiver link). */
-const GRUPO_OFERTAS_BFF = "https://chat.whatsapp.com/BaLrgr074U7BXoN8ShIIxu";
+/** Canal de ofertas da BFF no Instagram (a pessoa já está no app, é só tocar e entrar). */
+const GRUPO_OFERTAS_BFF = "https://www.instagram.com/channel/Abbaz7JxW3zy4lcf/";
 
 /** Problema para entrar na conta (quase sempre senha esquecida). */
 const REGEX_LOGIN =
@@ -303,7 +303,7 @@ export const ATACADO_BFF: { partes: string[]; link?: { title: string; url: strin
   link: { title: "Abrir o app", url: APP_BFF },
   seguinte: {
     texto: "Fique por dentro das OFERTAS E PROMOÇÕES 👇👇👇",
-    links: [{ title: "Entrar no grupo", url: GRUPO_OFERTAS_BFF }],
+    links: [{ title: "Entrar no canal", url: GRUPO_OFERTAS_BFF }],
     depoisMin: 60,
   },
 };
