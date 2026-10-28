@@ -91,7 +91,8 @@ function traduzir(rede: RedeComentario, status: number, texto: string): string {
     if (motivo === "quotaExceeded") return "A cota diária do YouTube acabou. Tente amanhã.";
     if (motivo === "commentsDisabled") return "Os comentários estão desligados neste vídeo.";
     if (status === 401) return "O acesso ao YouTube venceu. Reconecte a conta do YouTube.";
-    if (status === 403 || /insufficient|scope|permission/i.test(msg)) return "Falta permissão no YouTube. Reconecte a conta do YouTube aceitando todas as permissões.";
+    if (status === 403 || /insufficient|scope|permission/i.test(msg))
+      return `Falta permissão no YouTube. Reconecte a conta do YouTube aceitando todas as permissões. (${motivo ?? msg.slice(0, 120)})`;
   } else {
     if (codigo === 190) return `O acesso ao ${r} venceu. Reconecte a conta do ${r}.`;
     if (codigo === 10 || codigo === 200 || codigo === 3 || /permission|permiss/i.test(msg))
@@ -185,44 +186,70 @@ async function lerInstagram(c: ContaInterna, porPost: number, ate: number): Prom
   const nossa = (x: IgComentario) =>
     (!!x.from?.id && x.from.id === c.externoId) || (!!c.username && (x.username ?? x.from?.username) === c.username);
   let falhas = 0;
-  const listas = await emLotes(comComentario, 6, async (m) => {
-    const campos = "id,text,timestamp,username,from,hidden,replies{id,text,timestamp,username,from}";
-    let r: { data?: IgComentario[] };
+  let parcialRespostas = false;
+  // 1) Comentários de todas as publicações primeiro (o mais importante cabe no prazo).
+  const porMidia = await emLotes(comComentario, 6, async (m) => {
+    const campos = "id,text,timestamp,username,from,hidden,replies{id}";
     try {
-      r = await chamar<{ data?: IgComentario[] }>("instagram", `${IG}/${m.id}/comments?fields=${encodeURIComponent(campos)}&limit=${porPost}`, { token, ate });
+      const r = await chamar<{ data?: IgComentario[] }>("instagram", `${IG}/${m.id}/comments?fields=${encodeURIComponent(campos)}&limit=${porPost}`, { token, ate });
+      return { m, topo: (r.data ?? []).filter((x) => !nossa(x)) };
     } catch (e) {
       // Uma publicação que falha não derruba as outras; se todas falharem, o erro sobe.
       falhas++;
       if (falhas === comComentario.length) throw e;
-      return [];
+      return { m, topo: [] as IgComentario[] };
     }
-    return (r.data ?? [])
-      .filter((x) => !nossa(x))
-      .map((x): Comentario => {
-        const respostas = (x.replies?.data ?? []).map((y) => ({
-          autor: y.username ?? y.from?.username ?? "",
-          texto: y.text ?? "",
-          em: y.timestamp ?? "",
-          nossa: nossa(y),
-        }));
-        return {
-          rede: "instagram",
-          loja: c.status.loja,
-          contaId: c.status.contaId,
-          contaNome: c.status.nome,
-          id: x.id,
-          texto: x.text ?? "",
-          autor: x.username ?? x.from?.username ?? "alguém",
-          em: x.timestamp ?? "",
-          oculto: !!x.hidden,
-          podeOcultar: true,
-          respondido: respostas.some((y) => y.nossa),
-          respostas,
-          post: { id: m.id, legenda: (m.caption ?? "").slice(0, 300), miniatura: m.thumbnail_url ?? m.media_url ?? null, link: m.permalink ?? null },
-        };
-      });
   });
-  return { comentarios: listas.flat(), parcial: falhas ? `Não consegui ler ${falhas} publicação(ões); a lista pode estar incompleta.` : undefined };
+  // 2) Com o tempo que sobra, as respostas de cada comentário (as aninhadas vêm sem autor),
+  //    página a página até achar a da marca, para saber se já respondemos.
+  const comResposta = porMidia.flatMap((p) => p.topo).filter((x) => (x.replies?.data?.length ?? 0) > 0);
+  await emLotes(comResposta, 6, async (x) => {
+    const todas: IgComentario[] = [];
+    let url: string | null = `${IG}/${x.id}/replies?fields=id,text,timestamp,username,from&limit=50`;
+    try {
+      for (let pg = 0; url && pg < 4; pg++) {
+        const rr: { data?: IgComentario[]; paging?: { next?: string } } = await chamar("instagram", url, { token, ate });
+        todas.push(...(rr.data ?? []));
+        if (todas.some(nossa)) break;
+        url = rr.paging?.next ?? null;
+      }
+      if (url && !todas.some(nossa)) parcialRespostas = true;
+      x.replies = { data: todas };
+    } catch {
+      parcialRespostas = true;
+      x.replies = { data: todas };
+    }
+  });
+  const comentarios = porMidia.flatMap(({ m, topo }) =>
+    topo.map((x): Comentario => {
+      const respostas = (x.replies?.data ?? []).map((y) => ({
+        autor: y.username ?? y.from?.username ?? "",
+        texto: y.text ?? "",
+        em: y.timestamp ?? "",
+        nossa: nossa(y),
+      }));
+      return {
+        rede: "instagram",
+        loja: c.status.loja,
+        contaId: c.status.contaId,
+        contaNome: c.status.nome,
+        id: x.id,
+        texto: x.text ?? "",
+        autor: x.username ?? x.from?.username ?? "alguém",
+        em: x.timestamp ?? "",
+        oculto: !!x.hidden,
+        podeOcultar: true,
+        respondido: respostas.some((y) => y.nossa),
+        respostas,
+        post: { id: m.id, legenda: (m.caption ?? "").slice(0, 300), miniatura: m.thumbnail_url ?? m.media_url ?? null, link: m.permalink ?? null },
+      };
+    }),
+  );
+  const avisos = [
+    falhas ? `Não consegui ler ${falhas} publicação(ões); a lista pode estar incompleta.` : "",
+    parcialRespostas ? "Algumas respostas não carregaram; confira antes de responder de novo." : "",
+  ].filter(Boolean);
+  return { comentarios, parcial: avisos.join(" ") || undefined };
 }
 
 // ── Facebook ────────────────────────────────────────────────────────────────
