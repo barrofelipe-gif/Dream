@@ -359,7 +359,7 @@ export default function SocialReaproveitar({
           const falta = faltam(it);
           const foi = Object.entries(it.jaFoi);
           return (
-            <div key={it.externoId} className="flex gap-3 rounded-xl border border-[#e3e5ea] bg-white p-3">
+            <div key={it.externoId} className="flex min-w-0 gap-3 rounded-xl border border-[#e3e5ea] bg-white p-3">
               <a href={it.permalink ?? undefined} target="_blank" rel="noreferrer" className="shrink-0">
                 {it.miniatura ? (
                   // eslint-disable-next-line @next/next/no-img-element
