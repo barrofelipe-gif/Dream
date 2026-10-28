@@ -1367,7 +1367,8 @@ export default function InstagramFluxos() {
         )}
       </div>
 
-      {modelos && (
+      {/* Só depois de carregar as contas: a janela escolhe a primeira ao abrir (o atalho da Inicial chega antes). */}
+      {modelos && contas.length > 0 && (
         <ModelosFluxo
           contas={contas}
           inicial={modelos}
