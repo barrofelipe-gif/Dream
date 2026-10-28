@@ -48,7 +48,7 @@ const dataHora = (iso: string | null) =>
 const card = "rounded-2xl border border-[#e3e5ea] bg-white p-5 shadow-sm";
 const titulo = "text-sm font-semibold text-[#1b1f2b]";
 const sub = "text-xs text-[#6b7280]";
-const select = "rounded-xl border border-[#e3e5ea] bg-white px-3 py-2 text-sm text-[#1b1f2b] outline-none focus:border-[#6366f1] focus:ring-2 focus:ring-[#6366f1]/15";
+const select = "min-w-0 max-w-full rounded-xl border border-[#e3e5ea] bg-white px-3 py-2 text-sm text-[#1b1f2b] outline-none focus:border-[#6366f1] focus:ring-2 focus:ring-[#6366f1]/15";
 
 function Cartao({ rotulo, valor, dica }: { rotulo: string; valor: string; dica?: string }) {
   return (
@@ -246,8 +246,8 @@ export default function SocialMetricas() {
           <h2 className="text-lg font-semibold">Métricas das redes</h2>
           <p className={sub}>Desempenho, melhor horário, formatos e público. Hoje: Instagram. As outras redes entram uma de cada vez.</p>
         </div>
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <select className={select} value={contaId} onChange={(e) => setContaId(e.target.value)} aria-label="Conta">
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
+          <select className={`${select} flex-1 sm:flex-none`} value={contaId} onChange={(e) => setContaId(e.target.value)} aria-label="Conta">
             {(contas ?? []).map((c) => (
               <option key={c.id} value={c.id} disabled={!c.coletaDisponivel}>
                 {c.rede === "instagram" ? "Instagram" : c.rede} · {c.username ? `@${c.username}` : (c.nome ?? c.loja)} ({c.loja.toUpperCase()}){c.coletaDisponivel ? "" : " — em breve"}

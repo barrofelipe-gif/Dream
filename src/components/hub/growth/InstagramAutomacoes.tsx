@@ -365,7 +365,7 @@ export default function InstagramAutomacoes() {
       )}
       <div className="grid gap-3 sm:grid-cols-2">
         {(lista ?? []).map((a) => (
-          <div key={a.id} className="rounded-xl border border-[#e3e5ea] p-4">
+          <div key={a.id} className="min-w-0 rounded-xl border border-[#e3e5ea] p-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-[#1b1f2b]">{a.nome}</p>
@@ -383,8 +383,8 @@ export default function InstagramAutomacoes() {
               {a.exigirSeguir && <span className="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-700">Pede para seguir</span>}
               <span className="text-[#8a8f9c]">{a.execucoes} {a.execucoes === 1 ? "execução" : "execuções"}</span>
               <span className="ml-auto flex gap-3">
-                <button onClick={() => editar(a)} className="text-[#6366f1] hover:underline">Editar</button>
-                <button onClick={() => excluir(a)} className="text-red-600 hover:underline">Excluir</button>
+                <button onClick={() => editar(a)} className="min-h-[36px] px-1 text-[#6366f1] hover:underline">Editar</button>
+                <button onClick={() => excluir(a)} className="min-h-[36px] px-1 text-red-600 hover:underline">Excluir</button>
               </span>
             </div>
           </div>
