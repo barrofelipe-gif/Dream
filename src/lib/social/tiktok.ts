@@ -64,12 +64,46 @@ type InfoCriador = {
   stitch_disabled?: boolean;
   max_video_post_duration_sec?: number;
   creator_username?: string;
+  creator_nickname?: string;
+  creator_avatar_url?: string;
 };
 
-/** Decide a privacidade final: força SELF_ONLY sem auditoria e respeita o que a conta permite. */
+/** O que o painel mostra antes de postar (regra da TikTok: ler a cada vez que a tela de postar abre). */
+export type CriadorTikTok = {
+  apelido: string | null;
+  usuario: string | null;
+  fotoUrl: string | null;
+  privacidades: Privacidade[];
+  comentarioDesligado: boolean;
+  duetoDesligado: boolean;
+  stitchDesligado: boolean;
+  maxSegundos: number | null;
+  auditado: boolean;
+};
+
+export async function lerCriador(token: string): Promise<CriadorTikTok> {
+  const i = await chamar<InfoCriador>(token, "/v2/post/publish/creator_info/query/", {}, "dados do criador");
+  return {
+    apelido: i.creator_nickname ?? null,
+    usuario: i.creator_username ?? null,
+    fotoUrl: i.creator_avatar_url ?? null,
+    privacidades: (i.privacy_level_options ?? []).filter((p) => (PRIVACIDADES as readonly string[]).includes(p)),
+    comentarioDesligado: !!i.comment_disabled,
+    duetoDesligado: !!i.duet_disabled,
+    stitchDesligado: !!i.stitch_disabled,
+    maxSegundos: typeof i.max_video_post_duration_sec === "number" ? i.max_video_post_duration_sec : null,
+    auditado: auditado(),
+  };
+}
+
+/**
+ * Decide a privacidade final. Sem escolha (postagem antiga ou automática): SELF_ONLY.
+ * Sem auditoria a TikTok só aceita SELF_ONLY: outra escolha é recusada com aviso claro (não troca em silêncio).
+ */
 function escolherPrivacidade(pedida: unknown, permitidas: Privacidade[]): Privacidade {
   let alvo: Privacidade = "SELF_ONLY";
-  if (auditado() && typeof pedida === "string" && (PRIVACIDADES as readonly string[]).includes(pedida)) alvo = pedida as Privacidade;
+  if (typeof pedida === "string" && (PRIVACIDADES as readonly string[]).includes(pedida)) alvo = pedida as Privacidade;
+  if (!auditado() && alvo !== "SELF_ONLY") throw new Error("TikTok: o app ainda não foi auditado, então só aceita a privacidade Só eu.");
   if (permitidas.length && !permitidas.includes(alvo)) {
     if (alvo === "SELF_ONLY") throw new Error("TikTok: esta conta não aceita publicação privada (SELF_ONLY).");
     throw new Error(`TikTok: a conta não permite a privacidade ${alvo}. Opções: ${permitidas.join(", ")}.`);
@@ -164,6 +198,12 @@ export const adaptador: RedeAdapter = {
     }
     const priv = e.opcoes.privacidade;
     if (priv !== undefined && !(PRIVACIDADES as readonly string[]).includes(String(priv))) erros.push(`TikTok: privacidade inválida (${String(priv)}).`);
+    // Conteúdo de marca (parceria paga) não pode ser privado (regra da TikTok). Sem privacidade = SELF_ONLY.
+    if (e.opcoes.conteudoDeMarca === true && (priv ?? "SELF_ONLY") === "SELF_ONLY") erros.push("TikTok: conteúdo de marca não pode ser Só eu.");
+    if ("consentimento" in e.opcoes && e.opcoes.consentimento !== true) erros.push("TikTok: falta confirmar a declaração de uso de música.");
+    // Sem consentimento (fluxo automático ou postagem antiga): só sai como Só eu e sem divulgação comercial.
+    if (!("consentimento" in e.opcoes) && ((priv ?? "SELF_ONLY") !== "SELF_ONLY" || e.opcoes.conteudoDeMarca === true || e.opcoes.marcaPropria === true))
+      erros.push("TikTok: para postar com outra privacidade ou com divulgação comercial, confirme a declaração no painel.");
     return erros;
   },
   async publicar(e: EntradaPublicar): Promise<SaidaPublicar> {
@@ -171,9 +211,15 @@ export const adaptador: RedeAdapter = {
     const info = await chamar<InfoCriador>(token, "/v2/post/publish/creator_info/query/", {}, "dados do criador");
     const privacidade = escolherPrivacidade(e.opcoes.privacidade, info.privacy_level_options ?? []);
 
+    // Novo painel manda "permitir…" (desmarcado por padrão, como pede a TikTok); postagens antigas podem mandar "desativar…".
+    // Sem nenhum dos dois (automático): interação desligada, como pede a TikTok.
+    const desligar = (permitir: unknown, desativar: unknown) => (typeof permitir === "boolean" ? !permitir : typeof desativar === "boolean" ? desativar : true);
     const comum = {
       privacy_level: privacidade,
-      disable_comment: info.comment_disabled ? true : bool(e.opcoes.desativarComentarios),
+      disable_comment: info.comment_disabled ? true : desligar(e.opcoes.permitirComentarios, e.opcoes.desativarComentarios),
+      // Divulgação de conteúdo comercial: marca própria = "Conteúdo promocional"; marca de terceiro = "Parceria paga".
+      brand_organic_toggle: bool(e.opcoes.marcaPropria),
+      brand_content_toggle: bool(e.opcoes.conteudoDeMarca),
     };
     let publishId: string;
 
@@ -183,8 +229,8 @@ export const adaptador: RedeAdapter = {
       const postInfo = {
         ...comum,
         title: e.legenda,
-        disable_duet: info.duet_disabled ? true : bool(e.opcoes.desativarDuo),
-        disable_stitch: info.stitch_disabled ? true : bool(e.opcoes.desativarStitch),
+        disable_duet: info.duet_disabled ? true : desligar(e.opcoes.permitirDueto, e.opcoes.desativarDuo),
+        disable_stitch: info.stitch_disabled ? true : desligar(e.opcoes.permitirStitch, e.opcoes.desativarStitch),
       };
       try {
         const r = await chamar<{ publish_id: string }>(

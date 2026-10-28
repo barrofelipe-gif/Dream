@@ -5,7 +5,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DicasPublicacao, Icone } from "@/components/hub/growth/SocialMapa";
 import SocialReaproveitar, { type Preparado } from "@/components/hub/growth/SocialReaproveitar";
 import { MAPA, ORDEM, proximosHorarios } from "@/lib/social/mapaRedes";
-import { montarPorRede, type TextoRede } from "@/lib/social/porRede";
+import { montarPorRede, type OpcoesTikTok, type TextoRede } from "@/lib/social/porRede";
+import type { CriadorTikTok } from "@/lib/social/tiktok";
+
+const TT_INICIAL: OpcoesTikTok = { comentarios: false, dueto: false, stitch: false, divulgar: false, marcaPropria: false, conteudoDeMarca: false, consentimento: false };
+const TT_PRIVACIDADE: Record<string, string> = {
+  PUBLIC_TO_EVERYONE: "Todos",
+  FOLLOWER_OF_CREATOR: "Seguidores",
+  MUTUAL_FOLLOW_FRIENDS: "Amigos (quem você segue e te segue)",
+  SELF_ONLY: "Só eu",
+};
+const LINK_MUSICA = "https://www.tiktok.com/legal/page/global/music-usage-confirmation/en";
+const LINK_MARCA = "https://www.tiktok.com/legal/page/global/bc-policy/en";
+type EstadoCriador = { info?: CriadorTikTok; erro?: string };
 
 type Rede = "instagram" | "facebook" | "tiktok" | "youtube" | "pinterest";
 type InfoRede = {
@@ -70,7 +82,15 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
   const [msg, setMsg] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
   const [posts, setPosts] = useState<Post[] | null>(null);
   const arquivo = useRef<HTMLInputElement>(null);
-  const [opc, setOpc] = useState({ ytPriv: "private", ytShorts: true, ttPriv: "SELF_ONLY", pinBoard: "", pinLink: "" });
+  // TikTok: privacidade começa sem escolha e tudo desmarcado (regra da auditoria da TikTok).
+  const [opc, setOpc] = useState({ ytPriv: "private", ytShorts: true, ttPriv: "", pinBoard: "", pinLink: "" });
+  const [tt, setTt] = useState<OpcoesTikTok>(TT_INICIAL);
+  const [criadores, setCriadores] = useState<Record<string, EstadoCriador>>({});
+  /** Qual leitura do TikTok está em `criadores`: enquanto não for a atual, o envio fica bloqueado. */
+  const [leituraTikTok, setLeituraTikTok] = useState("");
+  const [duracoes, setDuracoes] = useState<Record<string, number>>({});
+  // O automático (Instagram → outras redes) não usa a escolha manual do TikTok: lá sai sempre como Só eu.
+  const opcAuto = useMemo(() => ({ ...opc, ttPriv: "" }), [opc]);
   const [boards, setBoards] = useState<{ id: string; name: string }[]>([]);
 
   const carregar = useCallback(async () => {
@@ -116,6 +136,47 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
       .then((j) => setBoards(j.boards ?? []))
       .catch(() => setBoards([]));
   }, [contaPinterest]);
+
+  // TikTok: lê os dados do criador toda vez que uma conta do TikTok entra na postagem.
+  const contasTikTok = useMemo(() => [...escolhidas].filter((id) => contas.find((c) => c.id === id)?.rede === "tiktok"), [escolhidas, contas]);
+  const chaveTikTok = contasTikTok.join(",");
+  useEffect(() => {
+    if (!chaveTikTok) return;
+    let vivo = true;
+    const ids = chaveTikTok.split(",");
+    Promise.all(
+      ids.map(async (id): Promise<[string, EstadoCriador]> => {
+        try {
+          const r = await fetch(`/api/social/tiktok/criador?contaId=${encodeURIComponent(id)}`, { cache: "no-store" });
+          const j = await r.json().catch(() => ({}));
+          return [id, r.ok ? { info: j.criador } : { erro: j.error ?? "não consegui ler a conta" }];
+        } catch (e) {
+          return [id, { erro: (e as Error).message }];
+        }
+      }),
+    ).then((lista) => {
+      if (!vivo) return;
+      setCriadores(Object.fromEntries(lista));
+      setLeituraTikTok(`${chaveTikTok}|${versao}`);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [chaveTikTok, versao]);
+
+  // Duração de cada vídeo (o TikTok tem um limite por conta).
+  const duracaoPedida = useRef(new Set<string>());
+  useEffect(() => {
+    for (const m of midias) {
+      if (m.tipo !== "video" || duracaoPedida.current.has(m.url)) continue;
+      duracaoPedida.current.add(m.url);
+      const v = document.createElement("video");
+      v.preload = "metadata";
+      v.onloadedmetadata = () => setDuracoes((d) => ({ ...d, [m.url]: v.duration }));
+      v.onerror = () => setDuracoes((d) => ({ ...d, [m.url]: NaN }));
+      v.src = m.url;
+    }
+  }, [midias]);
 
   // Horários já ocupados por postagens agendadas, por rede: o "melhor horário" pula esses.
   const ocupados = useMemo(() => {
@@ -211,6 +272,9 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
     setOrigem(null);
     setMidias([]);
     setQuando("");
+    // TikTok: a próxima postagem começa de novo sem privacidade escolhida e sem consentimento.
+    setOpc((o) => ({ ...o, ttPriv: "" }));
+    setTt(TT_INICIAL);
   }
 
   async function criar(contaIds: string[], acao: "publicar" | "agendar" | "rascunho", agendadoPara: string | null, redesDoPost: Rede[]) {
@@ -218,7 +282,7 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
     const r = await fetch("/api/social/posts", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ legenda: legendaFinal, midias, contaIds, acao, agendadoPara, porRede: montarPorRede(redesDoPost, textos, opc, origem, legendaFinal) }),
+      body: JSON.stringify({ legenda: legendaFinal, midias, contaIds, acao, agendadoPara, porRede: montarPorRede(redesDoPost, textos, { ...opc, tiktok: tt }, origem, legendaFinal) }),
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error ?? "Não foi possível enviar.");
@@ -228,6 +292,10 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
 
   async function enviar(acao: "publicar" | "agendar" | "rascunho") {
     setMsg(null);
+    if (acao !== "rascunho" && bloqueioTikTok) {
+      setMsg({ tipo: "erro", texto: bloqueioTikTok });
+      return;
+    }
     if (acao === "agendar" && !quando) {
       setMsg({ tipo: "erro", texto: "Escolha a data e a hora do agendamento." });
       return;
@@ -262,6 +330,10 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
   // Uma postagem por rede, cada uma no próximo melhor horário dela (pula horário já ocupado).
   async function agendarNosMelhores() {
     setMsg(null);
+    if (bloqueioTikTok) {
+      setMsg({ tipo: "erro", texto: bloqueioTikTok });
+      return;
+    }
     setTrabalhando(true);
     const feitos: string[] = [];
     const falhas: string[] = [];
@@ -312,8 +384,47 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
     await carregar();
   }
 
+  // TikTok: o que a conta permite (com mais de uma conta, vale o que todas permitem).
+  const temTikTok = redesEscolhidas.has("tiktok");
+  const infosTikTok = contasTikTok.map((id) => criadores[id]?.info).filter(Boolean) as CriadorTikTok[];
+  const errosTikTok = contasTikTok.flatMap((id) => (criadores[id]?.erro ? [`@${contas.find((c) => c.id === id)?.username ?? "conta"}: ${criadores[id]!.erro}`] : []));
+  const ttCarregando = temTikTok && (leituraTikTok !== `${chaveTikTok}|${versao}` || contasTikTok.some((id) => !criadores[id]));
+  const ttPrivacidades = infosTikTok.length ? Object.keys(TT_PRIVACIDADE).filter((p) => infosTikTok.every((i) => i.privacidades.includes(p as never))) : [];
+  const ttSemComentario = infosTikTok.some((i) => i.comentarioDesligado);
+  const ttSemDueto = infosTikTok.some((i) => i.duetoDesligado);
+  const ttSemStitch = infosTikTok.some((i) => i.stitchDesligado);
+  const ttMaxSeg = Math.min(...infosTikTok.map((i) => i.maxSegundos ?? Infinity));
+  const ttAuditado = infosTikTok.length > 0 && infosTikTok.every((i) => i.auditado);
+  const ttFotos = tipoAtual === "imagem" || tipoAtual === "carrossel";
+  const duracaoVideo = tipoAtual === "video" && midias[0] ? duracoes[midias[0].url] : undefined;
+  const bloqueioTikTok = !temTikTok
+    ? null
+    : ttCarregando
+      ? "TikTok: lendo os dados da conta…"
+      : errosTikTok.length
+        ? `O TikTok não deixa postar agora (${errosTikTok.join(" · ")}). Tente mais tarde.`
+        : !opc.ttPriv
+          ? "TikTok: escolha quem pode ver o post."
+          : !ttPrivacidades.includes(opc.ttPriv)
+            ? "TikTok: esta privacidade não está liberada para a conta. Escolha outra."
+            : tt.divulgar && !tt.marcaPropria && !tt.conteudoDeMarca
+              ? "TikTok: marque Sua marca, Conteúdo de marca ou os dois (ou desligue a divulgação)."
+              : tt.divulgar && tt.conteudoDeMarca && opc.ttPriv === "SELF_ONLY"
+                ? "TikTok: conteúdo de marca não pode ser Só eu."
+                : tipoAtual === "video" && !(duracaoVideo !== undefined && Number.isFinite(duracaoVideo))
+                  ? duracaoVideo === undefined
+                    ? "TikTok: lendo a duração do vídeo…"
+                    : "TikTok: não consegui ler a duração do vídeo. Envie o arquivo de novo."
+                : duracaoVideo !== undefined && Number.isFinite(ttMaxSeg) && duracaoVideo > ttMaxSeg
+                  ? `TikTok: o vídeo tem ${Math.ceil(duracaoVideo)} s e esta conta aceita até ${ttMaxSeg} s.`
+                  : !tt.consentimento
+                    ? "TikTok: confirme que concorda e autoriza o envio."
+                    : null;
+
   const temTexto = legenda.trim() || listaRedes.some((r) => textos[r]?.legenda?.trim());
-  const podeEnviar = escolhidas.size > 0 && (temTexto || midias.length > 0) && !enviando && !trabalhando && !gerando;
+  const podeSalvar = escolhidas.size > 0 && (temTexto || midias.length > 0) && !enviando && !trabalhando && !gerando;
+  // Publicar e agendar no TikTok só com tudo escolhido; rascunho pode ser salvo antes.
+  const podeEnviar = podeSalvar && !bloqueioTikTok;
   const textoAtual = abaAtual ? textos[abaAtual] : undefined;
   const legendaPrevia = (abaAtual && textos[abaAtual]?.legenda) || legenda;
 
@@ -570,15 +681,158 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
                   </label>
                 </div>
               )}
-              {redesEscolhidas.has("tiktok") && (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-[#5a5f6d]">TikTok</p>
-                  <select value={opc.ttPriv} onChange={(e) => setOpc({ ...opc, ttPriv: e.target.value })} className={campo}>
-                    <option value="SELF_ONLY">Só eu (obrigatório até o app ser auditado)</option>
-                    <option value="FOLLOWER_OF_CREATOR">Seguidores</option>
-                    <option value="MUTUAL_FOLLOW_FRIENDS">Amigos</option>
-                    <option value="PUBLIC_TO_EVERYONE">Todos</option>
-                  </select>
+              {temTikTok && (
+                <div className="space-y-3 rounded-xl border border-[#e3e5ea] bg-[#fafafa] p-3 lg:col-span-3" data-bloco="tiktok">
+                  <p className="text-xs font-semibold text-[#1b1f2b]">TikTok</p>
+
+                  {/* Conta que vai receber o post (lida agora do TikTok) */}
+                  <div className="flex flex-wrap gap-2">
+                    {contasTikTok.map((id) => {
+                      const st = criadores[id];
+                      const c = contas.find((x) => x.id === id);
+                      return (
+                        <div key={id} className="flex items-center gap-2 rounded-full border border-[#e3e5ea] bg-white py-1 pl-1 pr-3">
+                          {st?.info?.fotoUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={st.info.fotoUrl} alt="" className="h-7 w-7 rounded-full object-cover" />
+                          ) : (
+                            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-black text-[10px] font-bold text-white">TT</span>
+                          )}
+                          <span className="text-xs text-[#1b1f2b]">
+                            Vai postar em <b>{st?.info?.apelido ?? c?.nome ?? c?.username}</b>
+                            {(st?.info?.usuario ?? c?.username) && <span className="text-[#8a8f9c]"> @{st?.info?.usuario ?? c?.username}</span>}
+                          </span>
+                          {ttCarregando && <span className="text-[11px] text-[#8a8f9c]">lendo…</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {errosTikTok.length > 0 && (
+                    <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">O TikTok não deixa postar agora: {errosTikTok.join(" · ")}. Tente mais tarde.</p>
+                  )}
+
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    {/* Privacidade: só as opções da conta, sem nenhuma pré-escolhida */}
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-[#5a5f6d]">Quem pode ver</p>
+                      <select value={opc.ttPriv} onChange={(e) => setOpc({ ...opc, ttPriv: e.target.value })} className={campo} disabled={!infosTikTok.length}>
+                        <option value="" disabled>
+                          Escolha…
+                        </option>
+                        {ttPrivacidades.map((p) => {
+                          const travada = p === "SELF_ONLY" && tt.divulgar && tt.conteudoDeMarca;
+                          return (
+                            <option key={p} value={p} disabled={travada} title={travada ? "Conteúdo de marca não pode ser privado." : undefined}>
+                              {TT_PRIVACIDADE[p]}
+                              {travada ? " (não vale para conteúdo de marca)" : ""}
+                            </option>
+                          );
+                        })}
+                      </select>
+                      {infosTikTok.length > 0 && !ttAuditado && (
+                        <p className="text-[11px] text-[#a1a5b0]">Até a TikTok aprovar o app, só “Só eu” funciona.</p>
+                      )}
+                      {Number.isFinite(ttMaxSeg) && tipoAtual === "video" && (
+                        <p className={`text-[11px] ${duracaoVideo !== undefined && duracaoVideo > ttMaxSeg ? "text-red-600" : "text-[#a1a5b0]"}`}>
+                          Vídeo de até {ttMaxSeg} s nesta conta{duracaoVideo !== undefined ? ` (o seu tem ${Math.ceil(duracaoVideo)} s)` : ""}.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Interações: desmarcadas; o que a conta desligou fica cinza */}
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-[#5a5f6d]">Permitir</p>
+                      {(
+                        [
+                          ["comentarios", "Comentários", ttSemComentario],
+                          ...(ttFotos ? [] : [["dueto", "Dueto", ttSemDueto], ["stitch", "Stitch", ttSemStitch]]),
+                        ] as [keyof OpcoesTikTok, string, boolean][]
+                      ).map(([k, rotulo, desligado]) => (
+                        <label key={k} className={`flex items-center gap-2 text-xs ${desligado ? "text-[#c5c8d4]" : "text-[#1b1f2b]"}`} title={desligado ? "Desligado nas configurações do app do TikTok" : undefined}>
+                          <input type="checkbox" disabled={desligado} checked={!desligado && tt[k]} onChange={(e) => setTt({ ...tt, [k]: e.target.checked })} />
+                          {rotulo}
+                          {desligado && <span className="text-[10px]">(desligado no app do TikTok)</span>}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Divulgação de conteúdo comercial */}
+                  <div className="space-y-2 rounded-lg border border-[#e3e5ea] bg-white p-3" title="Diga se o conteúdo promove você, um terceiro ou os dois.">
+                    <label className="flex items-center justify-between gap-2 text-xs font-medium text-[#1b1f2b]">
+                      <span>
+                        Divulgar conteúdo comercial
+                        <span className="block text-[11px] font-normal text-[#8a8f9c]">Diga se o conteúdo promove você, um terceiro ou os dois.</span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        role="switch"
+                        checked={tt.divulgar}
+                        onChange={(e) => setTt({ ...tt, divulgar: e.target.checked, consentimento: false, ...(e.target.checked ? {} : { marcaPropria: false, conteudoDeMarca: false }) })}
+                      />
+                    </label>
+                    {tt.divulgar && (
+                      <div className="space-y-2">
+                        <label className="flex items-start gap-2 text-xs text-[#1b1f2b]">
+                          <input type="checkbox" checked={tt.marcaPropria} onChange={(e) => setTt({ ...tt, marcaPropria: e.target.checked })} />
+                          <span>
+                            <b>Sua marca</b>
+                            <span className="block text-[11px] text-[#8a8f9c]">Você está promovendo você mesmo ou o seu negócio.</span>
+                          </span>
+                        </label>
+                        <label
+                          className={`flex items-start gap-2 text-xs ${opc.ttPriv === "SELF_ONLY" ? "text-[#c5c8d4]" : "text-[#1b1f2b]"}`}
+                          title={opc.ttPriv === "SELF_ONLY" ? "Conteúdo de marca não pode ser privado. Mude quem pode ver." : undefined}
+                        >
+                          <input
+                            type="checkbox"
+                            disabled={opc.ttPriv === "SELF_ONLY"}
+                            checked={tt.conteudoDeMarca}
+                            onChange={(e) => setTt({ ...tt, conteudoDeMarca: e.target.checked, consentimento: false })}
+                          />
+                          <span>
+                            <b>Conteúdo de marca</b>
+                            <span className="block text-[11px] text-[#8a8f9c]">
+                              {opc.ttPriv === "SELF_ONLY" ? "Não vale para “Só eu”: conteúdo de marca não pode ser privado." : "Você está promovendo outra marca ou um terceiro."}
+                            </span>
+                          </span>
+                        </label>
+                        {(tt.marcaPropria || tt.conteudoDeMarca) && (
+                          <p className="rounded-md bg-[#f4f5f8] px-2 py-1.5 text-[11px] text-[#1b1f2b]">
+                            Seu {ttFotos ? "post de fotos" : "vídeo"} será identificado como “{tt.conteudoDeMarca ? "Parceria paga" : "Conteúdo promocional"}”.
+                          </p>
+                        )}
+                        {!tt.marcaPropria && !tt.conteudoDeMarca && <p className="text-[11px] text-red-600">Marque pelo menos uma opção.</p>}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Declaração e consentimento antes de postar */}
+                  <div className="space-y-2 text-xs text-[#1b1f2b]">
+                    <p>
+                      Ao postar, você concorda com{" "}
+                      {tt.divulgar && tt.conteudoDeMarca ? (
+                        <>
+                          a{" "}
+                          <a href={LINK_MARCA} target="_blank" rel="noreferrer" className="text-[#6366f1] underline">
+                            Política de Conteúdo de Marca
+                          </a>{" "}
+                          e a{" "}
+                        </>
+                      ) : (
+                        "a "
+                      )}
+                      <a href={LINK_MUSICA} target="_blank" rel="noreferrer" className="text-[#6366f1] underline">
+                        Confirmação de Uso de Música
+                      </a>{" "}
+                      do TikTok.
+                    </p>
+                    <label className="flex items-start gap-2">
+                      <input type="checkbox" checked={tt.consentimento} onChange={(e) => setTt({ ...tt, consentimento: e.target.checked })} />
+                      <span>Concordo e autorizo enviar este conteúdo ao TikTok.</span>
+                    </label>
+                    <p className="text-[11px] text-[#8a8f9c]">Depois de postar, o TikTok pode levar alguns minutos para mostrar o post no perfil. Acompanhe em Postagens recentes.</p>
+                  </div>
                 </div>
               )}
               {redesEscolhidas.has("pinterest") && (
@@ -606,6 +860,7 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
           </div>
 
           {msg && <p className={`rounded-lg px-3 py-2 text-xs ${msg.tipo === "ok" ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-700"}`}>{msg.texto}</p>}
+          {bloqueioTikTok && escolhidas.size > 0 && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{bloqueioTikTok}</p>}
           <div className="flex flex-wrap gap-2">
             <button onClick={() => enviar("publicar")} disabled={!podeEnviar} className="rounded-xl bg-[#6366f1] px-6 py-2.5 text-sm font-semibold text-white hover:bg-[#4f52d9] disabled:opacity-40">
               {trabalhando ? "Enviando…" : "Publicar agora em todas"}
@@ -616,7 +871,7 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
             <button onClick={() => enviar("agendar")} disabled={!podeEnviar || !quando} className="rounded-xl bg-[#1b1f2b] px-5 py-2.5 text-sm font-medium text-white hover:bg-black disabled:opacity-40">
               Agendar no horário escolhido
             </button>
-            <button onClick={() => enviar("rascunho")} disabled={!podeEnviar} className="rounded-xl bg-[#eef0f4] px-5 py-2.5 text-sm font-medium text-[#1b1f2b] hover:bg-[#e3e5ea] disabled:opacity-40">
+            <button onClick={() => enviar("rascunho")} disabled={!podeSalvar}className="rounded-xl bg-[#eef0f4] px-5 py-2.5 text-sm font-medium text-[#1b1f2b] hover:bg-[#e3e5ea] disabled:opacity-40">
               Salvar rascunho
             </button>
           </div>
@@ -627,8 +882,15 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
           <div className="w-[280px] self-center rounded-[2rem] border border-[#e3e5ea] bg-[#fafafa] p-3 shadow-sm">
             <div className="rounded-xl bg-white p-3 shadow-sm">
               <div className="mb-2 flex items-center gap-2">
-                <span className="h-7 w-7 rounded-full bg-[#e3e5ea]" />
-                <span className="text-xs font-semibold text-[#1b1f2b]">{abaAtual ? `${MAPA[abaAtual].rotulo} · bff` : "sua_loja"}</span>
+                {abaAtual === "tiktok" && infosTikTok[0]?.fotoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={infosTikTok[0].fotoUrl} alt="" className="h-7 w-7 rounded-full object-cover" />
+                ) : (
+                  <span className="h-7 w-7 rounded-full bg-[#e3e5ea]" />
+                )}
+                <span className="text-xs font-semibold text-[#1b1f2b]">
+                  {abaAtual === "tiktok" && infosTikTok[0] ? `TikTok · ${infosTikTok[0].apelido ?? infosTikTok[0].usuario}` : abaAtual ? `${MAPA[abaAtual].rotulo} · bff` : "sua_loja"}
+                </span>
               </div>
               <div className="mb-2 aspect-square overflow-hidden rounded-lg bg-[#eef0f4]">
                 {midias[0] ? (
@@ -654,7 +916,7 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
 
       {/* Instagram → outras redes */}
       <div className="mt-8">
-        <SocialReaproveitar contas={contas} redes={redes} ocupados={ocupados} opcoes={opc} versao={versao} bloqueado={gerando || trabalhando} onPreparar={preparar} onAgendado={carregar} />
+        <SocialReaproveitar contas={contas} redes={redes} ocupados={ocupados} opcoes={opcAuto} versao={versao} bloqueado={gerando || trabalhando} onPreparar={preparar} onAgendado={carregar} />
       </div>
 
       {/* Histórico */}
