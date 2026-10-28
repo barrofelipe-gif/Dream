@@ -80,7 +80,23 @@ type MidiaIg = { id: string; media_type?: string; media_url?: string; caption?: 
  * Baixa os arquivos originais de um post do Instagram (o endereço do Instagram vence em poucas horas) e guarda
  * no armazenamento do painel, pronto para publicar em outra rede.
  */
-export async function importarDoInstagram(externoId: string): Promise<{ midias: Midia[]; legenda: string; tipo: "video" | "imagem" | "carrossel" }> {
+/** Endereço do arquivo no servidor de vídeos do Instagram/Facebook (o único aceito vindo do navegador). */
+function enderecoCdnInstagram(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" && /(^|\.)(fbcdn\.net|cdninstagram\.com)$/i.test(u.hostname) ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `videoUrl`: quando o Reel usa música da biblioteca, a API oficial não entrega o arquivo. O painel aberto no
+ * navegador logado no Instagram consegue o endereço do vídeo da própria conta e manda aqui; só vale endereço do
+ * servidor de vídeos do Instagram e só para Reel (um arquivo).
+ */
+export async function importarDoInstagram(externoId: string, videoUrl?: string): Promise<{ midias: Midia[]; legenda: string; tipo: "video" | "imagem" | "carrossel" }> {
   if (!/^\d+$/.test(externoId)) throw new Error("Post inválido.");
   const ref = await contaInstagramBff();
   const conta = ref ? await abrirConta(ref.id) : null;
@@ -96,7 +112,9 @@ export async function importarDoInstagram(externoId: string): Promise<{ midias: 
   const m = (await res.json().catch(() => ({}))) as MidiaIg & { error?: { message?: string } };
   if (!res.ok) throw new Error(`Instagram recusou: ${m.error?.message ?? res.status}`);
 
-  const itens = m.media_type === "CAROUSEL_ALBUM" ? (m.children?.data ?? []) : [m];
+  let itens = m.media_type === "CAROUSEL_ALBUM" ? (m.children?.data ?? []) : [m];
+  const alternativo = enderecoCdnInstagram(videoUrl);
+  if (m.media_type === "VIDEO" && !m.media_url && alternativo) itens = [{ ...m, media_url: alternativo }];
   if (!itens.length || itens.some((i) => !i.media_url)) {
     throw new Error("O Instagram não libera o arquivo deste post (acontece com Reels que usam música da biblioteca). Baixe pelo app do Instagram e suba o arquivo aqui.");
   }

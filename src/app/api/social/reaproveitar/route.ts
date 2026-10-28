@@ -16,9 +16,9 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const { erro } = await exigirAdmin();
   if (erro) return erro;
-  const b = (await req.json().catch(() => null)) as { externoId?: string } | null;
+  const b = (await req.json().catch(() => null)) as { externoId?: string; videoUrl?: string } | null;
   try {
-    return NextResponse.json(await importarDoInstagram(String(b?.externoId ?? "")));
+    return NextResponse.json(await importarDoInstagram(String(b?.externoId ?? ""), typeof b?.videoUrl === "string" ? b.videoUrl : undefined));
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Falha ao importar" }, { status: 400 });
   }
