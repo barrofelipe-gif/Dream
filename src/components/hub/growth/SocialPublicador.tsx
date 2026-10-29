@@ -4,7 +4,7 @@ import { upload } from "@vercel/blob/client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DicasPublicacao, Icone } from "@/components/hub/growth/SocialMapa";
 import SocialReaproveitar, { type Preparado } from "@/components/hub/growth/SocialReaproveitar";
-import { MAPA, ORDEM, proximosHorarios } from "@/lib/social/mapaRedes";
+import { MAPA, ORDEM, horariosDoDia, hojeEmBrasilia, proximosHorarios } from "@/lib/social/mapaRedes";
 import { montarPorRede, type OpcoesTikTok, type TextoRede } from "@/lib/social/porRede";
 import type { CriadorTikTok } from "@/lib/social/tiktok";
 
@@ -78,6 +78,9 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
   /** Muda a cada postagem criada: a lista "do Instagram para as outras redes" se recarrega. */
   const [versao, setVersao] = useState(0);
   const [quando, setQuando] = useState("");
+  // Melhores horários: o dia escolhido (hoje ou outra data) e os horários marcados por rede (ISO).
+  const [diaMelhores, setDiaMelhores] = useState(() => hojeEmBrasilia());
+  const [marcados, setMarcados] = useState<Partial<Record<Rede, string[]>>>({});
   const [trabalhando, setTrabalhando] = useState(false);
   const [msg, setMsg] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
   const [posts, setPosts] = useState<Post[] | null>(null);
@@ -185,6 +188,28 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
       if (p.status === "AGENDADO" && p.agendadoPara) for (const a of p.alvos) (m[a.rede] ??= []).push(new Date(p.agendadoPara));
     return m;
   }, [posts]);
+
+  // Os melhores horários de cada rede escolhida no dia selecionado (os já agendados vêm marcados como ocupados).
+  const melhoresDoDia = useMemo(() => listaRedes.map((rede) => ({ rede, slots: horariosDoDia(rede, diaMelhores, ocupados[rede]) })), [listaRedes, diaMelhores, ocupados]);
+  const totalMarcados = listaRedes.reduce((n, r) => n + (marcados[r]?.length ?? 0), 0);
+
+  function alternarHorario(rede: Rede, iso: string) {
+    setMarcados((m) => {
+      const atual = m[rede] ?? [];
+      return { ...m, [rede]: atual.includes(iso) ? atual.filter((x) => x !== iso) : [...atual, iso] };
+    });
+  }
+
+  // Sorteia um dos melhores horários livres de cada rede nesse dia (quem não tem horário livre fica sem).
+  function sortearHorarios() {
+    const novo: Partial<Record<Rede, string[]>> = {};
+    for (const { rede, slots } of melhoresDoDia) {
+      const livres = slots.filter((x) => !x.ocupado);
+      if (livres.length) novo[rede] = [livres[Math.floor(Math.random() * livres.length)].quando.toISOString()];
+    }
+    setMarcados(novo);
+    setMsg(Object.keys(novo).length ? null : { tipo: "erro", texto: "Nenhum horário bom livre nesse dia. Escolha outra data." });
+  }
 
   const limiteDe = (r: Rede) => redes.find((x) => x.rede === r)?.limites.legendaMax ?? 2200;
   const limiteLegenda = listaRedes.length ? Math.min(...listaRedes.filter((r) => !textos[r]?.legenda?.trim()).map(limiteDe), 63206) : 2200;
@@ -325,6 +350,52 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
       setTrabalhando(false);
       await carregar();
     }
+  }
+
+  // Uma postagem por horário marcado, em cada rede.
+  async function agendarMarcados() {
+    setMsg(null);
+    if (bloqueioTikTok) {
+      setMsg({ tipo: "erro", texto: bloqueioTikTok });
+      return;
+    }
+    setTrabalhando(true);
+    const feitos: string[] = [];
+    const falhas: string[] = [];
+    const agendadas = new Set<string>();
+    const restantes: Partial<Record<Rede, string[]>> = {};
+    for (const rede of listaRedes) {
+      const ids = [...escolhidas].filter((id) => contas.find((c) => c.id === id)?.rede === rede);
+      let deuCerto = false;
+      // O tempo passou e a agenda pode ter mudado desde a marcação: só vale o que ainda é horário bom e livre.
+      const validos = new Set(horariosDoDia(rede, diaMelhores, ocupados[rede]).filter((x) => !x.ocupado).map((x) => x.quando.toISOString()));
+      for (const iso of marcados[rede] ?? []) {
+        if (!validos.has(iso)) {
+          falhas.push(`${MAPA[rede].rotulo} ${dataCurta(new Date(iso))}: esse horário não está mais disponível`);
+          continue;
+        }
+        try {
+          await criar(ids, "agendar", iso, [rede]);
+          feitos.push(`${MAPA[rede].rotulo} ${dataCurta(new Date(iso))}`);
+          deuCerto = true;
+        } catch (e) {
+          falhas.push(`${MAPA[rede].rotulo} ${dataCurta(new Date(iso))}: ${(e as Error).message}`);
+          (restantes[rede] ??= []).push(iso);
+        }
+      }
+      if (deuCerto && !restantes[rede]) ids.forEach((id) => agendadas.add(id));
+    }
+    setTrabalhando(false);
+    setMsg({ tipo: falhas.length && !feitos.length ? "erro" : "ok", texto: `${feitos.length ? `Agendado: ${feitos.join(" · ")}.` : ""}${falhas.length ? ` Não agendou: ${falhas.join(" · ")}.` : ""}` });
+    if (feitos.length && !falhas.length) {
+      limpar();
+      setMarcados({});
+    } else if (feitos.length) {
+      // Parte falhou: mantém o conteúdo e só os horários que faltam, para corrigir e repetir.
+      setMarcados(restantes);
+      setEscolhidas((s) => new Set([...s].filter((id) => !agendadas.has(id))));
+    }
+    await carregar();
   }
 
   // Uma postagem por rede, cada uma no próximo melhor horário dela (pula horário já ocupado).
@@ -854,6 +925,42 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
           <div className="rounded-xl border border-[#e3e5ea] p-4">
             <p className="mb-2 text-sm font-semibold text-[#1b1f2b]">Quando</p>
             <input type="datetime-local" value={quando} onChange={(e) => setQuando(e.target.value)} className={`${campo} max-w-xs`} />
+            {listaRedes.length > 0 && (
+              <div className="mt-4 border-t border-[#eef0f4] pt-3">
+                <p className="text-sm font-semibold text-[#1b1f2b]">Melhores horários</p>
+                <p className="mb-2 text-[11px] text-[#a1a5b0]">Os horários de maior alcance e engajamento de cada rede. Toque nos que quiser, ou sorteie um por rede.</p>
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <input type="date" value={diaMelhores} onChange={(e) => { setDiaMelhores(e.target.value); setMarcados({}); }} className={`${campo} max-w-[10rem]`} />
+                  <button type="button" onClick={() => { setDiaMelhores(hojeEmBrasilia()); setMarcados({}); }} className="rounded-full bg-[#eef0f4] px-3 py-1.5 text-xs font-medium text-[#1b1f2b] hover:bg-[#e3e5ea]">Hoje</button>
+                  <button type="button" onClick={sortearHorarios} className="rounded-full bg-[#eef0f4] px-3 py-1.5 text-xs font-medium text-[#1b1f2b] hover:bg-[#e3e5ea]">🎲 Sortear um por rede</button>
+                  {totalMarcados > 0 && <button type="button" onClick={() => setMarcados({})} className="text-xs text-[#8a8f9c] hover:text-[#1b1f2b]">Limpar</button>}
+                </div>
+                <div className="space-y-2">
+                  {melhoresDoDia.map(({ rede, slots }) => (
+                    <div key={rede} className="flex flex-wrap items-center gap-2">
+                      <span className="w-24 shrink-0 text-xs font-medium text-[#1b1f2b]">{MAPA[rede].rotulo}</span>
+                      {slots.length === 0 && <span className="text-xs text-[#a1a5b0]">Sem horário bom livre nesse dia</span>}
+                      {slots.map((x) => {
+                        const iso = x.quando.toISOString();
+                        const on = marcados[rede]?.includes(iso) ?? false;
+                        return (
+                          <button
+                            key={iso}
+                            type="button"
+                            disabled={x.ocupado}
+                            onClick={() => alternarHorario(rede, iso)}
+                            title={x.ocupado ? "Já tem postagem agendada perto desse horário" : x.formato}
+                            className={`rounded-full border px-3 py-1 text-xs ${x.ocupado ? "cursor-not-allowed border-[#eef0f4] text-[#c4c7cf] line-through" : on ? "border-[#0f8f74] bg-[#0f8f74] text-white" : "border-[#d5d8e0] text-[#1b1f2b] hover:border-[#0f8f74]"}`}
+                          >
+                            {x.hora} <span className="opacity-70">· {x.formato}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <p className="mt-1 text-[11px] text-[#a1a5b0]">
               Deixe vazio para publicar agora. O horário é o de Brasília. Ou use <b>Cada rede no melhor horário</b>: o painel cria uma postagem por rede, cada uma no próximo horário bom dela.
             </p>
@@ -864,6 +971,9 @@ export default function SocialPublicador({ abrirMapa }: { abrirMapa?: () => void
           <div className="flex flex-wrap gap-2">
             <button onClick={() => enviar("publicar")} disabled={!podeEnviar} className="rounded-xl bg-[#6366f1] px-6 py-2.5 text-sm font-semibold text-white hover:bg-[#4f52d9] disabled:opacity-40">
               {trabalhando ? "Enviando…" : "Publicar agora em todas"}
+            </button>
+            <button onClick={agendarMarcados} disabled={!podeEnviar || totalMarcados === 0} className="rounded-xl bg-[#0f8f74] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#0b7360] disabled:opacity-40">
+              {totalMarcados > 0 ? `Agendar nos ${totalMarcados} horário${totalMarcados > 1 ? "s" : ""} marcado${totalMarcados > 1 ? "s" : ""}` : "Agendar nos horários marcados"}
             </button>
             <button onClick={agendarNosMelhores} disabled={!podeEnviar} className="rounded-xl bg-[#0f8f74] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#0b7360] disabled:opacity-40">
               Cada rede no melhor horário

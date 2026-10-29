@@ -403,6 +403,28 @@ export function proximosHorarios(rede: Rede, n: number, ocupados: Date[] = [], a
   return out;
 }
 
+/**
+ * Todos os horários bons de uma rede num dia (AAAA-MM-DD, calendário de Brasília), do mais cedo ao mais tarde.
+ * Horário que já passou (ou está a menos de 10 min) não entra; os que colidem com postagem já agendada vêm marcados como ocupados.
+ */
+export function horariosDoDia(rede: Rede, dia: string, ocupados: Date[] = [], agora = new Date()): { quando: Date; hora: string; formato: string; ocupado: boolean }[] {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dia);
+  if (!m) return [];
+  const base = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const w = (new Date(base).getUTCDay() + 6) % 7;
+  return MAPA[rede].agenda
+    .filter((x) => x.dia === w && !/^Stories$/i.test(x.formato))
+    .sort((a, b) => minutosDe(a.hora) - minutosDe(b.hora))
+    .map((x) => ({ quando: new Date(base + minutosDe(x.hora) * 60_000 - BRASILIA_MS), hora: x.hora, formato: x.formato }))
+    .filter((x) => x.quando.getTime() > agora.getTime() + 10 * 60_000)
+    .map((x) => ({ ...x, ocupado: ocupados.some((o) => Math.abs(o.getTime() - x.quando.getTime()) < 45 * 60_000) }));
+}
+
+/** Hoje no calendário de Brasília (AAAA-MM-DD), seja qual for o fuso do navegador. */
+export function hojeEmBrasilia(agora = new Date()): string {
+  return new Date(agora.getTime() + BRASILIA_MS).toISOString().slice(0, 10);
+}
+
 /** Valor para o campo datetime-local (AAAA-MM-DDTHH:MM) no relógio local. */
 export function paraCampoData(d: Date): string {
   const p = (x: number) => String(x).padStart(2, "0");
