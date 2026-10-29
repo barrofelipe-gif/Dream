@@ -222,6 +222,53 @@ export const SEM_APP_BFF = {
   ],
 };
 
+/** WhatsApp do pós-venda da BFF (final 9085; o atendimento, final 7331, não cuida de devolução). */
+const POS_VENDA_BFF = "https://wa.me/5527996419085";
+const REGEX_DEVOLUCAO = /\bdevol\w*|\btroc(a|ar|as|ou)\b|\btroqu\w*/;
+// "Trocar a senha / o endereço / o pagamento" não é devolução.
+const REGEX_TROCA_OUTRA = /tro[cq]\w* (de |a |o |meu |minha )?(senha|endereco|email|e-mail|forma de pagamento|pagamento|cartao|telefone|numero)/;
+// Defeito de fabricação: só esse motivo vale devolução no atacado (precisa de foto/vídeo por e-mail).
+const REGEX_DEFEITO =
+  /defeit|rasg|furad|\bfuro|descost|costura|manch|desbot|solt(ou|ando)|estrag|danific|quebr|transparen|com problema|fio puxad|bolinh/;
+// Tamanho, gosto ou arrependimento: no atacado não tem devolução, mas dá para negociar com o pós-venda.
+const REGEX_SEM_DEFEITO =
+  /tamanho|pequen|grande|coub|curt|comprid|apertad|larg|servi[ru]|nao (gostei|curti|ficou bom|ficou bem)|desist|arrepend|\bcor\b|modelo|caimento|nao combin|nao era (o|a) que/;
+/** Pergunta do 1º passo; a resposta seguinte da cliente é lida com este texto como referência. */
+export const DEVOLUCAO_MOTIVO = "Oi, {nome}! Me conta, qual o motivo da devolução?";
+export const DEVOLUCAO_SEM_DEFEITO = [
+  "Entendi, {nome}! Como você sabe, a gente vende no atacado, e no atacado a devolução é só por defeito de fabricação.",
+  "Mas você pode falar com o nosso pós-venda e tentar negociar outra solução 👇",
+];
+export const DEVOLUCAO_DEFEITO = [
+  [
+    "Poxa, {nome}, sinto muito! Para a gente analisar, manda um e-mail para bfffitnessatacado@gmail.com com:",
+    "",
+    "📸 Fotos do problema (ex.: a costura, o furo, a mancha)",
+    "🎥 Vídeo, se for algo que só aparece vestindo (ex.: peça transparente)",
+    "",
+    "Precisamos comprovar o defeito para dar andamento, tá bom? 💚",
+  ].join("\n"),
+];
+
+/**
+ * Devolução/troca na BFF (regra do Felipe, 29/10): pergunta o motivo; tamanho/gosto → atacado só devolve por defeito e
+ * o botão leva ao pós-venda; defeito → e-mail com foto/vídeo. Motivo que não dá para entender → equipe. Nunca improvisa política.
+ */
+export function respostaDevolucaoBff(ultima: string, historico: Mensagem[]): Resposta | null {
+  const t = semAcento(ultima);
+  // "Não tem defeito, só ficou pequena": a negação não pode cair no ramo do defeito.
+  const semNegacao = t.replace(/(sem|nao (tem|teve|tinha|e|foi|veio com|ta com|esta com)|nenhum) (nenhum )?defeit\w*/g, " ");
+  const ultimaDaLoja = [...historico].reverse().find((m) => m.de === "loja")?.texto ?? "";
+  const respondendoMotivo = semAcento(ultimaDaLoja).includes("qual o motivo da devolucao");
+  if (!respondendoMotivo && (!REGEX_DEVOLUCAO.test(t) || (REGEX_TROCA_OUTRA.test(t) && !/devol/.test(t)))) return null;
+  if (REGEX_DEFEITO.test(semNegacao)) return { tipo: "resposta", partes: DEVOLUCAO_DEFEITO, kind: "faq", id: 9013, confianca: "alta" };
+  if (REGEX_SEM_DEFEITO.test(t)) {
+    return { tipo: "resposta", partes: DEVOLUCAO_SEM_DEFEITO, link: { title: "Falar com o pós-venda", url: POS_VENDA_BFF }, kind: "faq", id: 9012, confianca: "alta" };
+  }
+  if (respondendoMotivo) return { tipo: "humano", motivo: "Devolução: motivo não ficou claro" };
+  return { tipo: "resposta", partes: [DEVOLUCAO_MOTIVO], kind: "faq", id: 9011, confianca: "alta" };
+}
+
 /** Peça citada → categoria do app. Quem procura um produto é sempre mandada olhar a categoria, sem dizer que "não tem". */
 const CATEGORIAS_BFF: { regex: RegExp; nome: string }[] = [
   { regex: /\bmacac(a|ao|oes|aozinho)\b|\bmacaquinh/, nome: "Macacão" },
@@ -356,6 +403,11 @@ export async function responder(
   // BFF: não consegue entrar na conta = senha esquecida; vem antes do "não consigo baixar" (que fala do site).
   if (loja === "bff" && REGEX_LOGIN.test(opts.ultimaMensagem ?? contexto)) {
     return { tipo: "resposta", partes: SEM_LOGIN_BFF, kind: "faq", id: 9008, confianca: "alta" };
+  }
+  // BFF: devolução/troca segue a regra fixa (motivo → atacado só por defeito / pós-venda / e-mail com prova), nunca a base do site.
+  if (loja === "bff") {
+    const dev = respostaDevolucaoBff(opts.ultimaMensagem ?? contexto, historico);
+    if (dev) return dev;
   }
   // BFF: quem diz que não consegue baixar o app recebe o argumento do pedido mínimo (site R$ 700 x app R$ 350) e o link do site.
   if (loja === "bff" && REGEX_SEM_APP.test(opts.ultimaMensagem ?? contexto)) {
