@@ -14,4 +14,9 @@ jobs:
     steps:
       - name: Chamar o painel
         run: |
-          curl --fail --silent --show-error -H "Authorization: Bearer ${{ secrets.PUBLICAR_SECRET }}" "${{ secrets.APP_URL }}/api/cron/publicar-agendados"
+          # Mostra o código HTTP e o início da resposta (401 = segredo diferente do da Vercel, 404 = endereço errado, 5xx = erro no painel).
+          codigo=$(curl --silent --show-error --max-time 90 -o resposta.txt -w "%{http_code}" -H "Authorization: Bearer ${{ secrets.PUBLICAR_SECRET }}" "${{ secrets.APP_URL }}/api/cron/publicar-agendados" || echo "000")
+          echo "HTTP $codigo"
+          head -c 300 resposta.txt || true
+          echo
+          if [ "$codigo" = "000" ] || [ "$codigo" -ge 400 ]; then exit 1; fi
