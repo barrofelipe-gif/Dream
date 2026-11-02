@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { runInNewContext } from "node:vm";
 import { transformSync } from "esbuild";
 
 // Execute the actual TypeScript modules with explicit, isolated boundary fakes.
@@ -43,6 +44,81 @@ function loader(mocks = {}) {
   return load;
 }
 const domain = loader()("src/lib/telegram/domain.ts");
+test("slow cloud responses render and polling does not overlap requests", async () => {
+  const elements = new Map(),
+    timers = new Map();
+  let now = 0,
+    nextTimer = 0,
+    calls = 0;
+  const pending = [];
+  const getElementById = (id) => {
+    if (!elements.has(id))
+      elements.set(id, {
+        value: "",
+        dataset: {},
+        open: false,
+        addEventListener() {},
+      });
+    return elements.get(id);
+  };
+  const schedule = (fn, ms, repeat = false) => {
+    const id = ++nextTimer;
+    timers.set(id, { fn, due: now + ms, ms, repeat });
+    return id;
+  };
+  const drain = async () => {
+    for (let i = 0; i < 12; i++) await Promise.resolve();
+  };
+  const advance = async (time) => {
+    while (true) {
+      const entry = [...timers]
+        .filter(([, t]) => t.due <= time)
+        .sort((a, b) => a[1].due - b[1].due)[0];
+      if (!entry) break;
+      const [id, t] = entry;
+      timers.delete(id);
+      now = t.due;
+      if (t.repeat) timers.set(id, { ...t, due: now + t.ms });
+      t.fn();
+      await drain();
+    }
+    now = time;
+  };
+  runInNewContext(readFileSync("public/telegram-assets/app.js", "utf8"), {
+    document: { hidden: false, getElementById },
+    AbortController,
+    URL,
+    fetch: () => {
+      calls++;
+      return new Promise((resolve) => pending.push(resolve));
+    },
+    setTimeout: (fn, ms) => schedule(fn, ms),
+    clearTimeout: (id) => timers.delete(id),
+    setInterval: (fn, ms) => schedule(fn, ms, true),
+  });
+  await advance(5000);
+  assert.equal(
+    calls,
+    1,
+    "one pending slow request must not be superseded by polling",
+  );
+  const d = domain.initialData();
+  pending.shift()({
+    ok: true,
+    redirected: false,
+    json: async () => ({
+      ...domain.publicSnapshot(d),
+      sources: [],
+      targets: [],
+      mode: "live",
+      connection: { state: "disconnected", configured: false },
+    }),
+  });
+  await drain();
+  assert.equal(elements.get("mode").textContent, "CONECTE SUA CONTA");
+  await advance(8000);
+  assert.equal(calls, 2);
+});
 const group = (id) => ({
   id,
   name: String(id),

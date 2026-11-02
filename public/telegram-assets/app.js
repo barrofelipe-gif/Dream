@@ -115,5 +115,9 @@ $('consent-form').addEventListener('submit',event=>{event.preventDefault();const
 $('select-ready').addEventListener('click',()=>{const body=pair();act(async()=>{const result=await request('/api/selection/bulk',body);notice(`${result.selected} participante(s) autorizado(s) selecionado(s).`);});});
 $('start').addEventListener('click',()=>{const body={...pair(),user_ids:participants().ready.map(p=>p.user_id)};act(async()=>{await request('/api/jobs',body);notice('Operação iniciada. Acompanhe cada resultado abaixo.');});});
 $('job-actions').addEventListener('click',event=>{if(event.target.dataset.control)act(()=>request('/api/control',{job_id:state.jobs[0].id,action:event.target.dataset.control}));});
-refresh().catch(error=>notice(error.message,true));
-setInterval(()=>{if(!busy&&!$('consent-dialog').open)refresh().catch(()=>notice('Conexão com o painel interrompida. Confira se o servidor está aberto.',true));},1500);
+async function poll() {
+  try { if(!busy&&!$('consent-dialog').open) await refresh(); }
+  catch(error) { notice(error.message,true); }
+  finally { setTimeout(poll,document.hidden?15000:3000); }
+}
+poll();
