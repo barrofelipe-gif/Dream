@@ -44,6 +44,28 @@ function loader(mocks = {}) {
   return load;
 }
 const domain = loader()("src/lib/telegram/domain.ts");
+test("only the Telegram panel can be framed by the same app; global framing protection remains", async () => {
+  const config = loader({
+    "workflow/next": { withWorkflow: (config) => config },
+  })("next.config.ts").default;
+  const rules = await config.headers();
+  const panel = rules.find((r) => r.source === "/api/telegram/painel");
+  assert.ok(panel);
+  assert.equal(
+    panel.headers.find((h) => h.key === "X-Frame-Options").value,
+    "SAMEORIGIN",
+  );
+  assert.match(
+    panel.headers.find((h) => h.key === "Content-Security-Policy").value,
+    /frame-ancestors 'self'/,
+  );
+  const global = rules[0].headers;
+  assert.equal(global.find((h) => h.key === "X-Frame-Options").value, "DENY");
+  assert.equal(
+    global.find((h) => h.key === "Content-Security-Policy").value,
+    "frame-ancestors 'none'",
+  );
+});
 test("group search accepts topics, exact handles and public links", () => {
   assert.deepEqual(domain.groupSearch("  biquíni   atacado  "), {
     text: "biquíni atacado",

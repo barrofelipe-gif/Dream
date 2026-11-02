@@ -38,6 +38,12 @@ const nextConfig: NextConfig = {
       // widget e as estrelas das lojas precisam do cache da CDN (sem ele, cada visita na loja vira acesso ao servidor).
       { source: "/((?!avaliacoes(?:/|$)).*)", headers: [...securityHeaders, semCache] },
       { source: "/avaliacoes/:path*", headers: securityHeaders },
+      // O painel Telegram é incorporado somente pelo próprio app. Esta regra
+      // também precisa existir na configuração da CDN, além da Route Handler.
+      { source: "/api/telegram/painel", headers: [
+        {key:"X-Frame-Options",value:"SAMEORIGIN"},
+        {key:"Content-Security-Policy",value:"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'"},
+      ] },
     ];
   },
 };
