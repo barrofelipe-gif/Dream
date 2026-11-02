@@ -182,7 +182,6 @@ function data() {
   const d = domain.initialData();
   d.sources = [group(-1)];
   d.targets = [group(-2), group(-3)];
-  d.authorizedIds = [7, 8];
   d.contacts = [7, 8].map((id) => ({
     user_id: id,
     name: "Pessoa " + id,
@@ -191,18 +190,17 @@ function data() {
     source_id: -1,
     selected: true,
   }));
-  for (const id of [7, 8])
-    domain.authorize(d, id, -2, "Autorização de teste documentada");
   return d;
 }
-test("queue rejects absent consent, invalid selection and cross-destination authorization", () => {
+test("selected contacts can be queued without consent records or a manual allowlist", () => {
   const d = data();
-  d.authorizations = [];
-  assert.throws(() => domain.enqueue(d, -1, -2, [7]));
-  domain.authorize(d, 7, -2, "Ref de teste");
-  assert.throws(() => domain.enqueue(d, -1, -3, [7]));
-  d.contacts[0].selected = false;
-  assert.throws(() => domain.enqueue(d, -1, -2, [7]));
+  assert.deepEqual(d.authorizations, []);
+  assert.deepEqual(d.authorizedIds, []);
+  assert.equal(domain.enqueue(d, -1, -2, [7]).total, 1);
+  const other = data();
+  other.contacts[0].selected = false;
+  assert.throws(() => domain.enqueue(other, -1, -2, [7]));
+  assert.throws(() => domain.enqueue(data(), -99, -2, [7]));
 });
 test("confirmed participants cannot be queued again for same destination", () => {
   const d = data(),
@@ -211,7 +209,6 @@ test("confirmed participants cannot be queued again for same destination", () =>
   d.results[0].state = "added";
   j.state = "completed";
   assert.throws(() => domain.enqueue(d, -1, -2, [7]));
-  domain.authorize(d, 7, -3, "Outra comunidade autorizada");
   assert.equal(domain.enqueue(d, -1, -3, [7]).total, 1);
 });
 test("active jobs and Telegram restrictions block new jobs", () => {
@@ -258,15 +255,14 @@ test("CSV neutralizes spreadsheet formulas and quotes embedded delimiters", () =
     assert.ok(domain.csvCell(text).startsWith("\"'"));
   assert.equal(domain.csvCell('a"b,c'), '"a""b,c"');
 });
-test("consent stores the actual evidence once and records authorization events", () => {
+test("legacy authorization records never filter a new selection", () => {
   const d = data();
-  domain.authorize(d, 7, -2, "Nova evidência");
-  assert.equal(
-    d.authorizations.filter((a) => a.user_id === 7 && a.target_id === -2)
-      .length,
-    1,
-  );
-  assert.equal(d.audit.at(-1).evidence, "Nova evidência");
+  d.authorizedIds = [8];
+  d.authorizations = [
+    { user_id: 8, target_id: -3, evidence: "Old record", authorized_at: 1 },
+  ];
+  assert.equal(domain.enqueue(d, -1, -2, [7, 8]).total, 2);
+  assert.ok(!("authorizations" in domain.publicSnapshot(d)));
 });
 
 let session = { user: { id: "owner" } },
@@ -419,8 +415,6 @@ test("driver never reports added if Telegram returns a missing invitee", async (
   });
   d.group = async () => target;
   d.member = async () => false;
-  let queries = 0;
-  d.member = async () => ++queries === 1;
   d.client.invoke = async () => ({ missingInvitees: [{ userId: bigInt(7) }] });
   assert.equal(
     (await d.invite(-1, -2, { ...data().contacts[0], accessHash: "123" }))
@@ -551,10 +545,10 @@ test("orphaned in-progress item is marked uncertain and never resent", async () 
   assert.equal(h.job.state, "interrupted");
   assert.equal(h.calls(), 0);
 });
-test("revocation during connection prevents the actual invitation", async () => {
+test("deselection during connection prevents the actual invitation", async () => {
   const h = harness({
     connect: (r) => {
-      r.parsed.authorizations = [];
+      r.parsed.contacts[0].selected = false;
     },
   });
   await h.steps.queueStep("owner", h.job.id);
@@ -691,6 +685,164 @@ function searchDriver() {
   const peer = (id) => new Api.PeerChannel({ channelId: bigInt(id) });
   return { Api, instance, channel, peer, driver, bigInt };
 }
+test("ordinary joined groups are listed and accepted as collection origins", async () => {
+  const { instance, channel, Api, bigInt } = searchDriver();
+  const source = channel(1, {
+    left: false,
+    creator: false,
+    adminRights: undefined,
+  });
+  const target = channel(2, {
+    left: false,
+    creator: true,
+    username: undefined,
+  });
+  instance.client.getDialogs = async () => [
+    { entity: source },
+    { entity: target },
+    { entity: channel(3, { left: true }) },
+    { entity: channel(4, { broadcast: true, megagroup: false }) },
+  ];
+  const groups = await instance.groups();
+  assert.equal(groups.length, 2);
+  assert.equal(groups[0].owner, false);
+  assert.equal(await instance.group(groups[0].id), source);
+  const user = (id) =>
+    new Api.User({
+      id: bigInt(id),
+      accessHash: bigInt(123),
+      firstName: "Pessoa " + id,
+    });
+  instance.client.iterParticipants = async function* () {
+    yield user(7);
+    yield new Api.User({ id: bigInt(9), bot: true });
+    yield user(8);
+  };
+  const contacts = await instance.collect(groups[0].id, groups[1].id);
+  assert.deepEqual(
+    contacts.map((p) => p.user_id),
+    [7, 8],
+  );
+  instance.member = async (group) => {
+    assert.equal(
+      group,
+      target,
+      "origin GetParticipant must not impose an admin-only API check",
+    );
+    return true;
+  };
+  assert.equal(
+    (await instance.invite(groups[0].id, groups[1].id, contacts[0])).state,
+    "already",
+  );
+  await instance.close();
+});
+test("platform refusal to list participants is surfaced without a bypass or fallback scrape", async () => {
+  const { instance, channel } = searchDriver();
+  instance.group = async () => channel(1, { left: false });
+  let attempts = 0;
+  instance.client.iterParticipants = async function* () {
+    attempts++;
+    throw { errorMessage: "CHAT_ADMIN_REQUIRED" };
+  };
+  await assert.rejects(
+    instance.collect(-1, -2),
+    (e) => e.errorMessage === "CHAT_ADMIN_REQUIRED",
+  );
+  assert.equal(attempts, 1);
+  await instance.close();
+});
+test("configure, collect, bulk select and queue work without per-person authorization setup", async () => {
+  const row = {
+    parsed: domain.initialData(),
+    authState: "connected",
+    authAttempt: null,
+    credentialsEnc: "key",
+    sessionEnc: "saved",
+    busyToken: "token",
+  };
+  row.parsed.authorizedIds = [999];
+  let started = 0;
+  const source = { ...group(-1), owner: false, can_invite: false },
+    target = group(-2);
+  class Driver {
+    async connect() {}
+    async close() {}
+    save() {
+      return "saved";
+    }
+    async groups() {
+      return [source, target];
+    }
+    async privacy() {
+      return { group_id: -2, private: true };
+    }
+    async collect(sourceId, targetId) {
+      assert.equal(sourceId, -1);
+      assert.equal(targetId, -2);
+      return [7, 8].map((user_id) => ({
+        user_id,
+        name: "Pessoa " + user_id,
+        username: "u" + user_id,
+        accessHash: "hash",
+      }));
+    }
+  }
+  const service = loader({
+    "./domain": domain,
+    "./access": { csrf: () => "" },
+    "./driver": {
+      TelegramDriver: Driver,
+      deadline: async (p) => p,
+      mapError: (e) => e,
+    },
+    "./store": {
+      load: async () => row,
+      lease: async () => ({ token: "token", row: structuredClone(row) }),
+      release: async () => {},
+      mutate: async (_id, fn) => fn(row),
+      secret: (value) =>
+        value === "key" ? { apiId: 1, apiHash: "test" } : value,
+      seal: (value) => value,
+      notBusy: () => {},
+    },
+    "workflow/api": {
+      start: async () => {
+        started++;
+      },
+    },
+    "@/workflows/telegram": { runTelegramQueue: () => {} },
+  })("src/lib/telegram/service.ts");
+  assert.deepEqual(
+    await service.configure("owner", { source_id: -1, target_id: -2 }),
+    { ok: true },
+  );
+  assert.deepEqual(
+    await service.collect("owner", { source_id: -1, target_id: -2 }),
+    { received: 2 },
+  );
+  assert.ok(row.parsed.contacts.every((p) => !p.selected));
+  assert.equal(
+    (
+      await service.localAction("owner", "/selection/bulk", {
+        source_id: -1,
+        target_id: -2,
+      })
+    ).selected,
+    2,
+  );
+  assert.equal(
+    (
+      await service.createJob("owner", {
+        source_id: -1,
+        target_id: -2,
+        user_ids: [7, 8],
+      })
+    ).total,
+    2,
+  );
+  assert.equal(started, 1);
+});
 test("public discovery returns only valid public groups, without membership changes or secrets", async () => {
   const { Api, instance, channel, peer } = searchDriver();
   const calls = [];
@@ -836,7 +988,7 @@ test("discovery refuses a disconnected session before constructing a Telegram cl
   assert.equal(constructed, 0);
   assert.equal(released, 1);
 });
-function discoveryUI(connected = true) {
+function discoveryUI(connected = true, contents = null) {
   const elements = new Map(),
     requests = [];
   const getElementById = (id) => {
@@ -852,6 +1004,7 @@ function discoveryUI(connected = true) {
           this.listeners[name] = fn;
         },
         setAttribute() {},
+        removeAttribute() {},
         focus() {},
         reportValidity() {
           return true;
@@ -859,17 +1012,23 @@ function discoveryUI(connected = true) {
       });
     return elements.get(id);
   };
-  const d = domain.initialData();
+  const d = contents || domain.initialData();
   const snapshot = {
     ...domain.publicSnapshot(d),
     csrf_token: "TEST-TOKEN",
-    sources: [],
-    targets: [],
+    sources: d.sources,
+    targets: d.targets,
     mode: "live",
     connection: {
       state: connected ? "connected" : "disconnected",
       account: { id: 1 },
-      configured: false,
+      configured: !!d.sources.length && !!d.targets.length,
+      enabled: true,
+      groups: [...d.sources, ...d.targets],
+      retry_at: 0,
+      privacy: d.targets[0]
+        ? { group_id: d.targets[0].id, private: true, owner: true }
+        : null,
     },
   };
   const response = (body) => ({
@@ -974,4 +1133,46 @@ test("discovery UI renders empty results honestly and discards results after acc
   });
   await pending;
   assert.equal(ui.getElementById("discovery-results").innerHTML, "");
+});
+test("panel enables inclusion for selected contacts without consent records", async () => {
+  const ui = discoveryUI(true, data());
+  await ui.drain();
+  ui.getElementById("source").value = "-1";
+  ui.getElementById("target").value = "-2";
+  runInContext("render();", ui.context);
+  assert.equal(ui.getElementById("start").disabled, false);
+  assert.equal(ui.getElementById("count-ready").textContent, 2);
+  assert.ok(!ui.getElementById("contacts").innerHTML.includes("data-consent"));
+  ui.getElementById("start").listeners.click();
+  await ui.drain();
+  const request = ui.requests.find((r) => r.url.endsWith("/jobs"));
+  assert.deepEqual(JSON.parse(request.options.body), {
+    source_id: -1,
+    target_id: -2,
+    user_ids: [7, 8],
+  });
+  ui.resolve({ ok: true });
+  await ui.drain();
+});
+test("group setup has no manual participant list requirement", async () => {
+  const ui = discoveryUI(true, data());
+  await ui.drain();
+  runInContext(
+    readFileSync("public/telegram-assets/setup.js", "utf8"),
+    ui.context,
+  );
+  runInContext("render();", ui.context);
+  assert.equal(ui.getElementById("activate-live").disabled, false);
+  assert.equal(ui.elements.has("setup-participants"), false);
+  ui.getElementById("activate-live").listeners.click();
+  await ui.drain();
+  const request = ui.requests.find((r) =>
+    r.url.endsWith("/connection/configure"),
+  );
+  assert.deepEqual(JSON.parse(request.options.body), {
+    source_id: -1,
+    target_id: -2,
+  });
+  ui.resolve({ ok: true });
+  await ui.drain();
 });

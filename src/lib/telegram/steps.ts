@@ -192,7 +192,7 @@ export async function queueStep(
       if (!eligible(data, result.user_id, job.source_id, job.target_id)) {
         result.state = "revoked";
         result.message =
-          "Seleção ou autorização indisponível. Nenhum convite enviado.";
+          "Participante fora da seleção. Nenhum convite enviado.";
         recount(data, job);
         return { skip: true } as const;
       }
@@ -221,7 +221,7 @@ export async function queueStep(
       throw new TelegramError("auth_required", "Reconecte a conta Telegram.");
     driver = new TelegramDriver(key, saved);
     await driver.connect();
-    // Revogação/cancelamento feitos durante a conexão ainda impedem o despacho.
+    // Mudanças de seleção/cancelamento durante a conexão ainda impedem o despacho.
     const canSend = await mutate(userId, (row) => {
       const job = row.parsed.jobs.find((j) => j.id === jobId)!;
       if (!["running", "queued"].includes(job.state)) {
@@ -250,7 +250,7 @@ export async function queueStep(
       : {
           state: "revoked",
           message:
-            "Operação pausada, cancelada ou autorização retirada antes do despacho.",
+            "Operação pausada, cancelada ou seleção retirada antes do despacho.",
         };
     return await mutate(userId, (row) => {
       const data = row.parsed,

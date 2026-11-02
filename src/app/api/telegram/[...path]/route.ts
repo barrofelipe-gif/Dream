@@ -112,9 +112,7 @@ export async function POST(request: Request, context: Context) {
       result = await telegram.configure(userId, data);
     else if (route === "/collect")
       result = await telegram.collect(userId, data);
-    else if (
-      ["/consent", "/revoke", "/selection", "/selection/bulk"].includes(route)
-    )
+    else if (["/selection", "/selection/bulk"].includes(route))
       result = await telegram.localAction(userId, route, data);
     else if (route === "/jobs") result = await telegram.createJob(userId, data);
     else if (route === "/control")

@@ -22,7 +22,6 @@ import {
   type Workspace,
 } from "./store";
 import {
-  authorize,
   confirmed,
   csvCell,
   enqueue,
@@ -175,7 +174,6 @@ export async function state(userId: string) {
       configured: !!data.sources.length && !!data.targets.length,
       groups: data.groups,
       privacy: data.privacy || null,
-      authorized_user_ids: data.authorizedIds,
       saved_setup: null,
       qr:
         row.authState === "qr" && login?.image
@@ -478,23 +476,6 @@ export async function configure(
       "input",
       "Escolha uma origem diferente do destino.",
     );
-  const references =
-    typeof input.participants === "string"
-      ? input.participants.trim().split(/[\s,;]+/)
-      : Array.isArray(input.authorized_user_ids)
-        ? input.authorized_user_ids.map(String)
-        : [];
-  if (
-    !references.length ||
-    references.length > 500 ||
-    references.some(
-      (r) => !/(?:^[1-9]\d{0,14}$)|(?:^@[A-Za-z][A-Za-z0-9_]{3,31}$)/.test(r),
-    )
-  )
-    throw new TelegramError(
-      "input",
-      "Informe até 500 @usuários ou IDs de participantes autorizados.",
-    );
   idle((await load(userId)).parsed);
   await clientFor(userId, async (driver, row) => {
     idle(row.parsed);
@@ -512,13 +493,11 @@ export async function configure(
         "permission",
         "A comunidade de destino precisa ser privada.",
       );
-    const people = await driver.resolve(source, references);
     await mutate(userId, (current) => {
       idle(current.parsed);
       current.parsed.sources = [s];
       current.parsed.targets = [t];
       current.parsed.privacy = p;
-      current.parsed.authorizedIds = people.map((p) => p.user_id);
     });
   });
   return { ok: true };
@@ -528,11 +507,7 @@ export async function collect(userId: string, input: Record<string, unknown>) {
     idle(row.parsed);
     limits(row.parsed);
     const ids = pair(row.parsed, input.source_id, input.target_id);
-    const people = await driver.collect(
-      ids.sourceId,
-      ids.targetId,
-      row.parsed.authorizedIds,
-    );
+    const people = await driver.collect(ids.sourceId, ids.targetId);
     await mutate(userId, (current) => {
       for (const p of people) {
         const old = current.parsed.contacts.find(
@@ -558,26 +533,6 @@ export async function localAction(
   return mutate(userId, (row) => {
     const data = row.parsed;
     usable(row);
-    if (path === "/consent") {
-      authorize(data, input.user_id, input.target_id, input.evidence);
-      return { ok: true };
-    }
-    if (path === "/revoke") {
-      const uid = numeric(input.user_id, true),
-        target = numeric(input.target_id);
-      data.authorizations = data.authorizations.filter(
-        (a) => a.user_id !== uid || a.target_id !== target,
-      );
-      data.audit.push({
-        action: "revoked",
-        user_id: uid,
-        target_id: target,
-        at: Date.now() / 1000,
-      });
-      for (const person of data.contacts)
-        if (person.user_id === uid) person.selected = false;
-      return { ok: true };
-    }
     if (path === "/selection") {
       idle(data);
       const uid = numeric(input.user_id, true),
@@ -605,12 +560,7 @@ export async function localAction(
       let count = 0;
       for (const person of data.contacts)
         if (person.source_id === sourceId) {
-          person.selected =
-            data.authorizedIds.includes(person.user_id) &&
-            data.authorizations.some(
-              (a) => a.user_id === person.user_id && a.target_id === targetId,
-            ) &&
-            !confirmed(data, person.user_id, targetId);
+          person.selected = !confirmed(data, person.user_id, targetId);
           if (person.selected) count++;
         }
       return { selected: count };
@@ -713,25 +663,14 @@ export async function csv(userId: string, results: boolean) {
         ]),
       ]
     : [
-        [
-          "participante_id",
-          "nome",
-          "usuario",
-          "origem",
-          "destino_autorizado",
-          "referencia",
-        ],
-        ...data.contacts.flatMap((p) => {
-          const a = data.authorizations.filter((a) => a.user_id === p.user_id);
-          return (a.length ? a : [undefined]).map((a) => [
-            p.user_id,
-            p.name,
-            p.username,
-            p.source_id,
-            a?.target_id,
-            a?.evidence,
-          ]);
-        }),
+        ["participante_id", "nome", "usuario", "origem", "selecionado"],
+        ...data.contacts.map((p) => [
+          p.user_id,
+          p.name,
+          p.username,
+          p.source_id,
+          p.selected ? "sim" : "não",
+        ]),
       ];
   return "\uFEFF" + rows.map((r) => r.map(csvCell).join(";")).join("\r\n");
 }

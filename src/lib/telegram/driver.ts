@@ -112,7 +112,7 @@ export function mapError(error: unknown): TelegramError {
   if (/CHAT_ADMIN_REQUIRED|CHAT_WRITE_FORBIDDEN|CHANNEL_PRIVATE/.test(code))
     return new TelegramError(
       "permission",
-      "Confira acesso e permissões de administração dos grupos.",
+      "O Telegram recusou a operação por falta de acesso ou permissão no grupo.",
       0,
       409,
     );
@@ -235,7 +235,6 @@ export class TelegramDriver {
       const e = d.entity;
       if (!(e instanceof Api.Chat) && !(e instanceof Api.Channel)) return [];
       if (e instanceof Api.Channel && !e.megagroup) return [];
-      if (!e.creator && !e.adminRights) return [];
       if (e.left || (e instanceof Api.Chat && e.deactivated)) return [];
       return [this.groupInfo(e)];
     });
@@ -336,11 +335,6 @@ export class TelegramDriver {
         "permission",
         "Este painel trabalha com grupos e supergrupos.",
       );
-    if (!entity.creator && !entity.adminRights)
-      throw new TelegramError(
-        "permission",
-        "Use grupos administrados pela conta conectada.",
-      );
     if (
       invite &&
       (!this.private(entity) ||
@@ -410,63 +404,17 @@ export class TelegramDriver {
       throw error;
     }
   }
-  async collect(sourceId: number, targetId: number, ids: number[]) {
+  async collect(sourceId: number, targetId: number) {
     const source = await this.group(sourceId);
     await this.group(targetId, true);
     const found: Person[] = [];
-    const allowed = new Set(ids);
-    for await (const user of this.client.iterParticipants(source, {})) {
-      if (
-        user instanceof Api.User &&
-        !user.bot &&
-        !user.deleted &&
-        allowed.has(Number(user.id.toString()))
-      ) {
+    for await (const user of this.client.iterParticipants(source, {
+      limit: 500,
+    })) {
+      if (user instanceof Api.User && !user.bot && !user.deleted)
         found.push(this.person(user));
-        allowed.delete(Number(user.id.toString()));
-      }
-      if (!allowed.size) break;
     }
     return found;
-  }
-  async resolve(sourceId: number, references: string[]) {
-    const source = await this.group(sourceId);
-    const ids = new Set(references.filter((r) => /^\d+$/.test(r)).map(Number));
-    const found: Person[] = [];
-    if (ids.size) {
-      for await (const user of this.client.iterParticipants(source, {})) {
-        if (
-          user instanceof Api.User &&
-          !user.bot &&
-          !user.deleted &&
-          ids.has(Number(user.id.toString()))
-        ) {
-          found.push(this.person(user));
-          ids.delete(Number(user.id.toString()));
-        }
-        if (!ids.size) break;
-      }
-      if (ids.size)
-        throw new TelegramError(
-          "participant",
-          "Um dos IDs não está entre os membros disponíveis da origem.",
-        );
-    }
-    for (const name of references.filter((r) => !/^\d+$/.test(r))) {
-      const user = await this.client.getEntity(name);
-      if (
-        !(user instanceof Api.User) ||
-        user.bot ||
-        user.deleted ||
-        !(await this.member(source, user))
-      )
-        throw new TelegramError(
-          "participant",
-          "Um dos participantes não está disponível na origem.",
-        );
-      found.push(this.person(user));
-    }
-    return [...new Map(found.map((p) => [p.user_id, p])).values()];
   }
   async privacy(id: number): Promise<Privacy> {
     const e = await this.group(id);
@@ -549,14 +497,9 @@ export class TelegramDriver {
     return result;
   }
   async invite(sourceId: number, targetId: number, person: Person) {
-    const source = await this.group(sourceId);
+    await this.group(sourceId);
     const target = await this.group(targetId, true);
     const user = this.input(person);
-    if (!(await this.member(source, user)))
-      throw new TelegramError(
-        "participant",
-        "O participante não está mais na origem.",
-      );
     if (await this.member(target, user))
       return {
         state: "already",

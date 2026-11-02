@@ -106,6 +106,7 @@ export type Data = {
   sources: Group[];
   targets: Group[];
   groups: Group[];
+  // Histórico de versões anteriores; não participa da elegibilidade.
   authorizedIds: number[];
   contacts: Contact[];
   authorizations: Consent[];
@@ -207,58 +208,10 @@ export function eligible(
   targetId: number,
 ) {
   return (
-    data.authorizedIds.includes(userId) &&
     data.contacts.some(
       (p) => p.user_id === userId && p.source_id === sourceId && p.selected,
-    ) &&
-    data.authorizations.some(
-      (a) => a.user_id === userId && a.target_id === targetId,
-    ) &&
-    !confirmed(data, userId, targetId)
+    ) && !confirmed(data, userId, targetId)
   );
-}
-export function authorize(
-  data: Data,
-  userId: unknown,
-  targetId: unknown,
-  evidence: unknown,
-) {
-  const uid = numeric(userId, true),
-    target = numeric(targetId);
-  if (
-    !data.authorizedIds.includes(uid) ||
-    !data.contacts.some((p) => p.user_id === uid) ||
-    !data.targets.some((g) => g.id === target)
-  )
-    throw new TelegramError(
-      "permission",
-      "Participante ou destino fora da configuração.",
-    );
-  if (
-    typeof evidence !== "string" ||
-    evidence.trim().length < 8 ||
-    evidence.trim().length > 500
-  )
-    throw new TelegramError(
-      "input",
-      "Informe uma referência de autorização entre 8 e 500 caracteres.",
-    );
-  data.authorizations = data.authorizations.filter(
-    (a) => a.user_id !== uid || a.target_id !== target,
-  );
-  data.authorizations.push({
-    user_id: uid,
-    target_id: target,
-    evidence: evidence.trim(),
-    authorized_at: Date.now() / 1000,
-  });
-  data.audit.push({
-    action: "authorized",
-    user_id: uid,
-    target_id: target,
-    evidence: evidence.trim(),
-    at: Date.now() / 1000,
-  });
 }
 export function enqueue(
   data: Data,
@@ -279,7 +232,7 @@ export function enqueue(
   )
     throw new TelegramError(
       "input",
-      "Selecione até 500 participantes autorizados, ainda não confirmados neste destino.",
+      "Selecione até 500 participantes da origem, ainda não confirmados neste destino.",
     );
   const users = [...new Set(ids)] as number[];
   const job: Job = {
@@ -340,7 +293,6 @@ export function publicSnapshot(data: Data) {
       source_id: p.source_id,
       selected: p.selected,
     })),
-    authorizations: data.authorizations,
     jobs: data.jobs.map((job) => {
       const snapshot = { ...job };
       delete snapshot.lease;

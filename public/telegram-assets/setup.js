@@ -1,5 +1,5 @@
 'use strict';
-let setupLastStage = null, setupParticipantsLoaded = false, setupProtectId = null;
+let setupLastStage = null, setupGroupsLoaded = false, setupProtectId = null;
 const setupLabels = {disconnected:'Desconectado',saved:'Sessão salva',code:'Aguardando código',password:'Verificação em duas etapas',connected:'Conta conectada',qr:'Aguardando leitura do QR Code',qr_error:'QR Code encerrado'};
 function setupPair() { return {source_id:Number($('setup-source').value),target_id:Number($('setup-target').value)}; }
 function updateCredentialFields() {
@@ -32,7 +32,7 @@ function renderSetup(active) {
     if (stage!=='disconnected') { $('api-hash').value=''; $('api-id').value=''; $('telegram-phone').value=''; }
     $('telegram-code').value=''; $('telegram-password').value='';
     if (stage==='disconnected') $('use-saved-credentials').checked=connection.credentials_saved;
-    if (stage!=='connected') {setupParticipantsLoaded=false;$('setup-participants').value='';}
+    if (stage!=='connected') {setupGroupsLoaded=false;}
     setupLastStage=stage;
   }
   updateCredentialFields();
@@ -41,15 +41,14 @@ function renderSetup(active) {
   $('connection-error').textContent=waiting?`O Telegram pediu uma espera até ${new Date(connection.retry_at*1000).toLocaleString('pt-BR')}. Não será solicitado outro código automaticamente.`:'Não foi possível abrir as credenciais salvas. Faça uma nova conexão no app.';
   for (const id of ['start-qr','retry-qr','send-code','restore-session','verify-code','verify-password','load-groups','disconnect-account','check-privacy','confirm-protect']) $(id).disabled=blocked||waiting||!connection.enabled;
   for (const button of document.querySelectorAll('.cancel-connection')) button.disabled=busy;
-  $('setup-source').disabled=blocked; $('setup-target').disabled=blocked; $('setup-participants').disabled=blocked;
+  $('setup-source').disabled=blocked; $('setup-target').disabled=blocked;
   syncOptions('setup-source',connection.groups);
   syncOptions('setup-target',connection.groups.filter(g=>g.can_invite).map(g=>({...g,name:g.name+(g.private?' · privado':' · público')})));
-  if (!setupParticipantsLoaded && connection.groups.length && (connection.configured||connection.saved_setup)) {
+  if (!setupGroupsLoaded && connection.groups.length && (connection.configured||connection.saved_setup)) {
     const saved=connection.saved_setup;
-    $('setup-participants').value=(connection.configured?connection.authorized_user_ids:saved.authorized_user_ids).join('\n');
     $('setup-source').value=String((connection.configured?state.sources:saved.sources)[0]?.id || '');
     $('setup-target').value=String((connection.configured?state.targets:saved.targets)[0]?.id || '');
-    setupParticipantsLoaded=true;
+    setupGroupsLoaded=true;
   }
   const selected=setupPair(), privacy=connection.privacy?.group_id===selected.target_id?connection.privacy:null;
   if (privacy) {
@@ -57,7 +56,7 @@ function renderSetup(active) {
     setHTML('privacy-report',`<h3>${escapeHTML(privacy.name)}</h3><ul class="privacy-list">${rows.map(([label,value])=>`<li><span>${label}</span><span class="pill ${value?'good':'warn'}">${value?'Ativado':'Pendente'}</span></li>`).join('')}</ul>${(privacy.notes||[]).map(n=>`<p class="privacy-warning">${escapeHTML(n)}</p>`).join('')}<p class="hint">Conferido em ${escapeHTML(new Date(privacy.checked_at*1000).toLocaleString('pt-BR'))}.</p>`);
   } else setHTML('privacy-report','<p>Confira o destino antes de ativar a conexão real.</p>');
   $('open-protect').disabled=blocked||!privacy||!privacy.owner;
-  $('activate-live').disabled=blocked||waiting||!privacy?.private||!$('setup-participants').value.trim()||!selected.source_id||!selected.target_id||selected.source_id===selected.target_id;
+  $('activate-live').disabled=blocked||waiting||!privacy?.private||!selected.source_id||!selected.target_id||selected.source_id===selected.target_id;
   $('live-config-hint').textContent=!privacy?'Confira a privacidade do destino.':!privacy.private?'A comunidade precisa ser privada.':selected.source_id===selected.target_id?'Escolha uma origem diferente do destino.':'';
 }
 async function setupAction(action, body={}) { return request('/api/connection/'+action,body); }
@@ -70,10 +69,10 @@ $('password-form').addEventListener('submit',event=>{event.preventDefault();cons
 for(const button of document.querySelectorAll('.cancel-connection'))button.addEventListener('click',()=>act(()=>setupAction('cancel')));
 $('restore-session').addEventListener('click',()=>act(()=>setupAction('restore')));
 $('disconnect-account').addEventListener('click',()=>act(async()=>{await setupAction('disconnect');notice('Sessão do Telegram encerrada. Reconecte sua conta para continuar.');}));
-$('load-groups').addEventListener('click',()=>act(async()=>{const r=await setupAction('groups');notice(r.groups.length?`${r.groups.length} grupo(s) administrado(s) carregado(s). Escolha origem e destino abaixo.`:'Nenhum grupo administrado disponível. Confira a conta conectada e as permissões no Telegram.');}));
-$('setup-target').addEventListener('change',()=>render()); $('setup-source').addEventListener('change',()=>render()); $('setup-participants').addEventListener('input',()=>render());
+$('load-groups').addEventListener('click',()=>act(async()=>{const r=await setupAction('groups');notice(r.groups.length?`${r.groups.length} grupo(s) carregado(s). Escolha origem e destino abaixo.`:'Nenhum grupo disponível. Confira a conta conectada e as permissões no Telegram.');}));
+$('setup-target').addEventListener('change',()=>render()); $('setup-source').addEventListener('change',()=>render());
 $('check-privacy').addEventListener('click',()=>{const body={group_id:setupPair().target_id};act(()=>setupAction('privacy',body));});
 $('open-protect').addEventListener('click',()=>{setupProtectId=setupPair().target_id;$('protect-group-name').textContent=state.connection.groups.find(g=>g.id===setupProtectId)?.name || '';$('protect-dialog').showModal();});
 $('close-protect').addEventListener('click',()=>$('protect-dialog').close());
 $('confirm-protect').addEventListener('click',()=>{const body={group_id:setupProtectId};act(async()=>{try{await setupAction('protect',body);notice('Proteções conferidas. Veja os itens ativados e pendentes.');}finally{$('protect-dialog').close();}});});
-$('activate-live').addEventListener('click',()=>{const body={...setupPair(),participants:$('setup-participants').value};act(async()=>{await setupAction('configure',body);notice('Conexão real ativada. Consulte os participantes e registre as autorizações antes de iniciar inclusões.');});});
+$('activate-live').addEventListener('click',()=>{const body=setupPair();act(async()=>{await setupAction('configure',body);notice('Grupos salvos. Consulte a origem e selecione os participantes.');});});

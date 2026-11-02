@@ -156,7 +156,7 @@ export const AREAS: Area[] = [
       { id: "seo", label: "SEO", icon: "globe", type: "AGENTE", title: "Agente de SEO", desc: "Pesquisar palavras-chave, otimizar páginas e acompanhar posições semanalmente.", skills: ["keywords", "on-page", "ranking"] },
       { id: "paid", label: "PAID", icon: "ad", type: "AGENTE", title: "Agente de Mídia Paga", desc: "Operar campanhas, criativos e orçamento com ROAS como métrica de decisão.", skills: ["campanhas", "criativos", "roas"] },
       { id: "instagram", label: "INSTAGRAM", icon: "mega", type: "AGENTE", title: "Agente de Instagram", desc: "Atender as mensagens do Instagram da BFF e da Moranga com a base de perguntas do site, chamar a equipe quando precisar e aprender com as respostas dela.", skills: ["mensagens", "atendimento", "aprendizado"] },
-      { id: "telegram", label: "TELEGRAM", icon: "users", type: "AGENTE", title: "Telegram BFF", desc: "Conectar sua conta por QR Code, preparar a comunidade privada e acompanhar a inclusão de participantes autorizados.", skills: ["comunidade", "privacidade", "participantes", "resultados"] },
+      { id: "telegram", label: "TELEGRAM", icon: "users", type: "AGENTE", title: "Telegram BFF", desc: "Conectar sua conta por QR Code, preparar a comunidade privada e acompanhar a inclusão dos participantes selecionados.", skills: ["comunidade", "privacidade", "participantes", "resultados"] },
       { id: "conversao", label: "CONVERSÃO", icon: "target", type: "AGENTE", title: "Agente de Conversão", desc: "Entender por que cada produto vende: funil visto → carrinho → compra, prova social, plano de melhorias por produto e histórico do que foi feito.", skills: ["funil", "prova social", "melhorias", "histórico"] },
     ],
   },
