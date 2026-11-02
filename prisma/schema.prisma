@@ -101,6 +101,54 @@ model TelegramWorkspace {
   version        Int      @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  growthLinks    TelegramGrowthLink[]
+}
+
+// Eventos próprios do rastreamento Telegram. Não armazena IP, cookies da loja,
+// nomes de compradores nem identificadores de sessão em texto aberto.
+model TelegramGrowthLink {
+  id          String @id @default(cuid())
+  slug        String @unique
+  userId      String
+  workspace   TelegramWorkspace @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  name        String
+  destination String
+  sourceName  String
+  campaign    String
+  active      Boolean @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  clicks      TelegramGrowthClick[]
+
+  @@index([userId, createdAt])
+}
+
+model TelegramGrowthClick {
+  id          String @id @default(uuid())
+  linkId      String
+  link        TelegramGrowthLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  visitorHash String
+  createdAt   DateTime @default(now())
+  visitedAt   DateTime?
+  sessionHash String?
+  conversions TelegramGrowthConversion[]
+
+  @@index([linkId, createdAt])
+  @@index([sessionHash, createdAt])
+}
+
+model TelegramGrowthConversion {
+  id          String @id @default(cuid())
+  orderKey    String @unique
+  orderId     String
+  clickId     String
+  click       TelegramGrowthClick @relation(fields: [clickId], references: [id], onDelete: Cascade)
+  amountCents Int
+  status      String // paid | pending | cancelled
+  placedAt    DateTime
+  checkedAt   DateTime @default(now())
+
+  @@index([clickId, placedAt])
 }
 
 // Quais setores da aba BFF Fitness cada usuário enxerga. Admin (role=admin)

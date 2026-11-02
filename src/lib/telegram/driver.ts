@@ -242,11 +242,12 @@ export class TelegramDriver {
   publicGroup(
     entity: Api.TypeChat,
     sponsored = false,
+    includeChannels = false,
   ): PublicGroup | undefined {
     if (
       !(entity instanceof Api.Channel) ||
-      !entity.megagroup ||
-      entity.broadcast ||
+      (!entity.megagroup && !(includeChannels && entity.broadcast)) ||
+      (!includeChannels && entity.broadcast) ||
       entity.scam ||
       entity.fake
     )
@@ -271,9 +272,10 @@ export class TelegramDriver {
           ? count
           : null,
       sponsored,
+      ...(includeChannels ? { kind: entity.broadcast ? "channel" as const : "group" as const } : {}),
     };
   }
-  async searchGroups(query: GroupSearch): Promise<PublicGroup[]> {
+  async searchGroups(query: GroupSearch, includeChannels = false): Promise<PublicGroup[]> {
     if (query.username) {
       const resolved = await this.client.invoke(
         new Api.contacts.ResolveUsername({ username: query.username }),
@@ -283,7 +285,7 @@ export class TelegramDriver {
       const entity = resolved.chats.find(
         (c) => c instanceof Api.Channel && c.id.equals(channelId),
       );
-      const group = entity && this.publicGroup(entity);
+      const group = entity && this.publicGroup(entity, false, includeChannels);
       return group ? [group] : [];
     }
     const found = await this.client.invoke(
@@ -303,7 +305,7 @@ export class TelegramDriver {
         const entity = chats.find(
           (c) => c instanceof Api.Channel && c.id.equals(peer.channelId),
         );
-        const group = entity && this.publicGroup(entity, isAd);
+        const group = entity && this.publicGroup(entity, isAd, includeChannels);
         if (group && !seen.has(group.id)) {
           seen.add(group.id);
           results.push(group);

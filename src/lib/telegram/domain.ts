@@ -18,6 +18,7 @@ export type PublicGroup = {
   url: string;
   members: number | null;
   sponsored: boolean;
+  kind?: "group" | "channel";
 };
 export function groupSearch(value: unknown): GroupSearch {
   if (typeof value !== "string" || value.length > 200)
@@ -103,6 +104,9 @@ export type Privacy = {
   notes?: string[];
 };
 export type Data = {
+  growth?: { installedAt?: string; syncedAt?: string; truncated?: boolean; checked?: number };
+  prospects?: (PublicGroup & { savedAt: string; query: string })[];
+  discovery?: { groups: PublicGroup[]; query: string; at: number };
   sources: Group[];
   targets: Group[];
   groups: Group[];

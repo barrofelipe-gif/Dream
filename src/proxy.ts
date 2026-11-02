@@ -75,6 +75,8 @@ export default auth(async (req) => {
     pathname === "/" || // home com o cérebro — porta de entrada pública
     pathname.startsWith("/login") ||
     pathname.startsWith("/legal/") || // privacidade e termos públicos (exigidos pelas redes sociais)
+    /^\/t\/[\w-]{12}$/.test(pathname) ||
+    /^\/api\/telegram-growth\/(tracker\.js|visit)$/.test(pathname) ||
     /^\/tiktok[A-Za-z0-9]+\.txt$/.test(pathname) || // arquivo de verificação do TikTok
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/.well-known/oauth-");

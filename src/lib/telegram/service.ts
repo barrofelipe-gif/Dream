@@ -440,7 +440,23 @@ export async function discover(userId: string, input: Record<string, unknown>) {
   return clientFor(userId, async (driver, row) => {
     idle(row.parsed);
     limits(row.parsed);
-    return { query: query.text, groups: await driver.searchGroups(query) };
+    const groups = await driver.searchGroups(query, input.include_channels === true);
+    await mutate(userId, current => { current.parsed.discovery = { groups, query: query.text, at: Date.now() }; });
+    return { query: query.text, groups };
+  });
+}
+export async function saveProspect(userId: string, input: Record<string, unknown>) {
+  return mutate(userId, row => {
+    const saved = row.parsed.prospects || [];
+    if (input.remove === true) {
+      row.parsed.prospects = saved.filter(p => p.id !== input.id);
+      return { ok: true };
+    }
+    const found = row.parsed.discovery;
+    const group = found?.groups.find(g => g.id === input.id);
+    if (!group || !found || Date.now() - found.at > 86400000) throw new TelegramError("input", "Pesquise novamente para salvar este público.");
+    row.parsed.prospects = [{ ...group, query: found.query, savedAt: new Date().toISOString() }, ...saved.filter(p => p.id !== group.id)].slice(0, 100);
+    return { ok: true };
   });
 }
 export async function privacy(

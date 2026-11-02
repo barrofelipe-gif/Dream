@@ -49,6 +49,12 @@ export default async function PapelPage({
   const encontrado = getPapel(areaId, papelId);
   if (!encontrado) notFound();
   const { area, papel } = encontrado;
+  if (areaId === "growth" && papelId === "telegram") return (
+    <div className="w-full min-w-0 pb-10">
+      <Link href="/areas/growth" className="mb-4 inline-flex text-xs font-medium text-[#667085] hover:text-[#2563eb]">← Voltar para Growth</Link>
+      <TelegramPapel />
+    </div>
+  );
   const avaliacoes = PAPEIS_AVALIACOES[`${areaId}/${papelId}`];
   // Instagram é uma ferramenta de trabalho (usada no celular também): ficha enxuta e largura toda.
   const ig = areaId === "growth" && ["instagram","telegram"].includes(papelId);

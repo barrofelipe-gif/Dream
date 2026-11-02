@@ -685,6 +685,18 @@ function searchDriver() {
   const peer = (id) => new Api.PeerChannel({ channelId: bigInt(id) });
   return { Api, instance, channel, peer, driver, bigInt };
 }
+
+test("dashboard discovery includes real channels only when explicitly requested", async () => {
+  const { instance, Api, channel, peer } = searchDriver();
+  const chats = [channel(1), channel(2, { megagroup: false, broadcast: true, participantsCount: 9000 }), channel(3, { megagroup: false, broadcast: true, scam: true })];
+  instance.client.invoke = async request => request instanceof Api.contacts.Search
+    ? new Api.contacts.Found({ myResults: [], results: [peer(1),peer(2),peer(3)], chats, users: [] })
+    : new Api.contacts.SponsoredPeersEmpty();
+  const groups = await instance.searchGroups({ text: "fitness" });
+  assert.equal(groups.length, 1);
+  const all = await instance.searchGroups({ text: "fitness" }, true);
+  assert.equal(all.length, 2); assert.equal(all[0].kind, "group"); assert.equal(all[1].kind, "channel"); assert.equal(all[1].members, 9000);
+});
 test("ordinary joined groups are listed and accepted as collection origins", async () => {
   const { instance, channel, Api, bigInt } = searchDriver();
   const source = channel(1, {

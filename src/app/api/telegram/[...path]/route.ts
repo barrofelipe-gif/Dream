@@ -4,6 +4,7 @@ import { operator, checkPost, body } from "@/lib/telegram/access";
 import * as telegram from "@/lib/telegram/service";
 import { mapError } from "@/lib/telegram/driver";
 import { TelegramError } from "@/lib/telegram/domain";
+import * as growth from "@/lib/telegram/growth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,6 +42,7 @@ export async function GET(_request: Request, context: Context) {
     const userId = await operator();
     const parts = (await context.params).path;
     const route = "/" + parts.join("/");
+    if (route === "/growth") return Response.json(await growth.dashboard(userId, new URL(_request.url).searchParams), { headers });
     if (route === "/painel") {
       const html = await readFile(
         path.join(process.cwd(), "public/telegram-assets/painel.html"),
@@ -85,7 +87,12 @@ export async function POST(request: Request, context: Context) {
     const data = await body(request);
     const route = "/" + (await context.params).path.join("/");
     let result: unknown;
-    if (route === "/discover") result = await telegram.discover(userId, data);
+    if (route === "/growth/links") result = await growth.createLink(userId, data);
+    else if (route === "/growth/link") result = await growth.toggleLink(userId, data);
+    else if (route === "/growth/install") result = await growth.installTracker(userId, new URL(request.url).origin);
+    else if (route === "/growth/sync") result = await growth.syncSales(userId);
+    else if (route === "/growth/prospect") result = await telegram.saveProspect(userId, data);
+    else if (route === "/discover") result = await telegram.discover(userId, data);
     else if (route === "/connection/qr")
       result = await telegram.begin(userId, data, true);
     else if (route === "/connection/start")
