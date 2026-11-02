@@ -121,7 +121,12 @@ export async function qrStep(userId: string, attempt: string) {
       if (!completed) {
         const current = await load(userId).catch(() => undefined);
         const allowed = await isAdministrator(userId).catch(() => false);
-        if (!allowed || (current && current.authAttempt !== attempt))
+        if (
+          !allowed ||
+          (current &&
+            (current.authAttempt !== attempt ||
+              current.authState !== "password"))
+        )
           await deadline(driver.client.logOut(), 5000).catch(() => undefined);
       }
       await driver.close();

@@ -2,6 +2,10 @@
 // Vercel e não dá para usar localmente). Sem --accept-data-loss: se o push exigir
 // apagar algo, falha e o deploy para. Remover do "build" depois de aplicado.
 import { spawnSync } from "node:child_process";
+import { readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 if (process.env.VERCEL_ENV !== "production") {
   console.log("[db-push] fora de produção, pulando");
   process.exit(0);
@@ -19,8 +23,35 @@ const r = spawnSync("npx", ["prisma", "db", "push", "--skip-generate"], {
   env: { ...process.env, DATABASE_URL: url.toString() },
 });
 if (r.status !== 0) process.exit(r.status ?? 1);
-const privacy = spawnSync("npx", ["prisma", "db", "execute", "--file", "scripts/telegram-private.sql"], {
-  stdio: "inherit", shell: true, timeout: 60_000,
-  env: { ...process.env, DATABASE_URL: url.toString() },
-});
-process.exit(privacy.status ?? 1);
+const schema = url.searchParams.get("schema") || "public";
+const identifier = '"' + schema.replaceAll('"', '""') + '"';
+const sqlFile = join(tmpdir(), `bff-telegram-rls-${randomUUID()}.sql`);
+writeFileSync(
+  sqlFile,
+  `BEGIN;\nSET LOCAL search_path TO ${identifier};\n${readFileSync("scripts/telegram-private.sql", "utf8")}\nCOMMIT;\n`,
+);
+let status = 1;
+try {
+  const privacy = spawnSync(
+    "npx",
+    [
+      "prisma",
+      "db",
+      "execute",
+      "--schema",
+      "prisma/schema.prisma",
+      "--file",
+      sqlFile,
+    ],
+    {
+      stdio: "inherit",
+      shell: true,
+      timeout: 60_000,
+      env: { ...process.env, DATABASE_URL: url.toString() },
+    },
+  );
+  status = privacy.status ?? 1;
+} finally {
+  unlinkSync(sqlFile);
+}
+process.exit(status);

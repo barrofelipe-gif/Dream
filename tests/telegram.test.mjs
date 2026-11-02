@@ -229,6 +229,34 @@ test("changing Telegram accounts clears actionable configuration and selection",
     store.finishConnection(row, "cancelled", { id: 3 }, "SESSION-TEST"),
   );
 });
+test("storage protection checks the configured PostgreSQL schema and refuses public grants", async () => {
+  process.env.DATABASE_URL =
+    "postgresql://test:test@127.0.0.1/test?schema=painel_bff";
+  let upserts = 0;
+  for (const unsafe of [false, true]) {
+    const guarded = loader({
+      "@/lib/prisma": {
+        prisma: {
+          $queryRaw: async (_sql, schema) => {
+            assert.equal(schema, "painel_bff");
+            return [{ rls: true, anon: unsafe, authenticated: false }];
+          },
+          telegramWorkspace: {
+            upsert: async (args) => {
+              upserts++;
+              assert.deepEqual(args.where, { userId: "owner" });
+              return { data: {} };
+            },
+          },
+        },
+      },
+    })("src/lib/telegram/store.ts");
+    if (unsafe)
+      await assert.rejects(guarded.load("owner"), (e) => e.code === "storage");
+    else await guarded.load("owner");
+  }
+  assert.equal(upserts, 1);
+});
 const driver = loader()("src/lib/telegram/driver.ts");
 test("SDK error translation preserves waits while omitting raw secrets", () => {
   assert.equal(
@@ -327,6 +355,10 @@ function harness(options = {}) {
           if (options.qrCancel) {
             row.authAttempt = null;
             row.authState = "disconnected";
+            return;
+          }
+          if (options.qrExpired) {
+            row.authState = "qr_error";
             return;
           }
           if (options.twoFactor) await params.password();
@@ -472,6 +504,13 @@ for (const mode of ["success", "twoFactor", "qrCancel"])
   });
 test("QR refuses to commit a session if administrator access was removed", async () => {
   const h = harness({ admin: false });
+  h.row.authState = "qr";
+  await h.steps.qrStep("owner", "a");
+  assert.equal(h.row.authState, "qr_error");
+  assert.equal(h.loggedOut(), 1);
+});
+test("QR expiry during final confirmation logs out the discarded Telegram session", async () => {
+  const h = harness({ qrExpired: true });
   h.row.authState = "qr";
   await h.steps.qrStep("owner", "a");
   assert.equal(h.row.authState, "qr_error");

@@ -1,6 +1,5 @@
 -- A tabela é criada pelo Prisma. Nenhum dado Telegram é gravado até o app
 -- verificar estas proteções no primeiro acesso. Não concede acesso Data API.
-BEGIN;
-ALTER TABLE public."TelegramWorkspace" ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE public."TelegramWorkspace" FROM anon, authenticated;
-COMMIT;
+-- Executado em transação e no schema do DATABASE_URL pelo script de build.
+ALTER TABLE "TelegramWorkspace" ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE "TelegramWorkspace" FROM anon, authenticated;

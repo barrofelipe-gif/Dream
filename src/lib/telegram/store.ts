@@ -9,9 +9,11 @@ export type Workspace = TelegramWorkspace & { parsed: Data };
 let storageChecked = false;
 async function checkStorage() {
   if (storageChecked) return;
+  const schema =
+    new URL(process.env.DATABASE_URL!).searchParams.get("schema") || "public";
   const rows = await prisma.$queryRaw<
     { rls: boolean; anon: boolean; authenticated: boolean }[]
-  >`SELECT c.relrowsecurity AS rls, has_table_privilege('anon',c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AS anon, has_table_privilege('authenticated',c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AS authenticated FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname='TelegramWorkspace'`;
+  >`SELECT c.relrowsecurity AS rls, has_table_privilege('anon',c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AS anon, has_table_privilege('authenticated',c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AS authenticated FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=${schema} AND c.relname='TelegramWorkspace'`;
   if (!rows[0]?.rls || rows[0].anon || rows[0].authenticated)
     throw new TelegramError(
       "storage",
