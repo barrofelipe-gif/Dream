@@ -20,11 +20,33 @@
       <div class="section-heading"><div><p class="eyebrow">SUA CONTA + COMUNIDADE PRIVADA</p><h2 id="connection-title">Conecte seu Telegram</h2><p id="connection-summary">Carregando sua conexão…</p></div><span id="connection-badge" class="pill">Desconectado</span></div>
       <p id="connection-error" role="status" hidden></p>
       <div id="saved-session" class="setup-actions" hidden><button id="restore-session" disabled>Usar sessão salva</button><p class="hint">Confirma sua conta no Telegram sem solicitar outro código.</p></div>
-      <details id="connection-details"><summary>Conectar minha conta</summary>
+      <aside id="app-setup-guide" class="app-setup-guide" aria-labelledby="app-setup-title" hidden>
+        <p class="eyebrow">CONFIGURAÇÃO INICIAL · UMA VEZ</p>
+        <h3 id="app-setup-title">Prepare o aplicativo BFF no Telegram</h3>
+        <p>Você usa sua conta atual do Telegram. Antes do primeiro QR Code, o Telegram precisa identificar o aplicativo BFF com duas chaves: API ID e API Hash.</p>
+        <ol>
+          <li>Abra o site oficial abaixo, entre com o número que você já usa no Telegram e confirme o código recebido no aplicativo.</li>
+          <li>Abra <b>API development tools</b>. Se aparecer um formulário de aplicativo, use os dados sugeridos abaixo.</li>
+          <li>Copie o <b>API ID</b> e o <b>API Hash</b> para os campos deste painel. Depois clique em <b>Conectar por QR Code</b>.</li>
+        </ol>
+        <a class="button secondary" href="https://my.telegram.org/apps" target="_blank" rel="noopener noreferrer">Abrir configuração oficial do Telegram ↗</a>
+        <details class="app-registration-help"><summary>O que preencher no cadastro do aplicativo?</summary>
+          <p>Esse formulário registra o aplicativo BFF. Sua conta pessoal continua sendo a mesma.</p>
+          <dl>
+            <div><dt>App title / Nome</dt><dd>BFF Fitness</dd></div>
+            <div><dt>Short name / Nome curto</dt><dd>bfffitnessgrowth</dd></div>
+            <div><dt>Platform / Plataforma</dt><dd>Web</dd></div>
+            <div><dt>URL / Site</dt><dd>https://app.bfffitnessatacado.com.br</dd></div>
+            <div><dt>Description / Descrição</dt><dd>Painel interno da BFF Fitness para acompanhar a comunidade no Telegram.</dd></div>
+          </dl>
+          <p class="hint">Conclua essa etapa no site oficial. Se você já tiver um aplicativo cadastrado, use as chaves existentes.</p>
+        </details>
+      </aside>
+      <details id="connection-details"><summary id="connection-form-summary">Conectar minha conta</summary>
         <form id="connect-form" class="setup-form" autocomplete="off">
-          <div id="api-fields" class="setup-grid"><label>API ID<input id="api-id" name="telegram_api_id" type="number" inputmode="numeric" min="1" max="2147483647" step="1" autocomplete="off" required></label><label>API Hash<input id="api-hash" name="telegram_api_hash" type="password" minlength="32" maxlength="32" pattern="[0-9a-fA-F]{32}" autocomplete="new-password" required></label></div>
+          <div id="api-fields" class="setup-grid"><label>API ID do aplicativo<input id="api-id" name="telegram_api_id" type="number" inputmode="numeric" min="1" max="2147483647" step="1" autocomplete="off" required></label><label>API Hash do aplicativo<input id="api-hash" name="telegram_api_hash" type="password" minlength="32" maxlength="32" pattern="[0-9a-fA-F]{32}" autocomplete="new-password" required></label></div>
           <label id="saved-credentials-label" class="check-label" hidden><input id="use-saved-credentials" type="checkbox"> Usar as chaves já salvas no app</label>
-          <p class="hint">Na primeira conexão, obtenha suas chaves em <a href="https://my.telegram.org/apps" target="_blank" rel="noopener noreferrer">my.telegram.org → API development tools</a>. As chaves e a sessão ficam criptografadas no servidor do app, com acesso restrito ao seu usuário administrador.</p>
+          <p class="hint">As chaves identificam o aplicativo BFF e ficam salvas de forma criptografada no servidor, com acesso restrito ao seu usuário administrador. Nas próximas conexões, você pode usar as chaves já salvas.</p>
           <div class="setup-actions"><button id="start-qr" type="button" disabled>Conectar por QR Code</button><span class="hint">Escaneie pelo Telegram do celular, sem digitar seu número aqui.</span></div>
           <label>Número do Telegram — alternativa por código<input id="telegram-phone" type="tel" autocomplete="off" placeholder="+55 DDD e número, sem espaços" pattern="\+[1-9][0-9]{7,14}" maxlength="16" required></label>
           <div class="setup-actions"><button id="send-code" type="submit" class="secondary" disabled>Receber código de conexão</button></div>

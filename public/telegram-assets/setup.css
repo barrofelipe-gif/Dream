@@ -1,6 +1,16 @@
 .setup-panel{border-top:4px solid #176fba}
 .setup-panel .eyebrow{margin:0 0 8px}
 .setup-panel .section-heading{align-items:start}
+.app-setup-guide{max-width:820px;margin-top:20px;padding:20px;border:1px solid #cbdff0;border-radius:10px;background:#f4f9fd}
+.app-setup-guide h3{font-size:17px;margin:0 0 10px}
+.app-setup-guide p,.app-setup-guide li{font-size:13px;line-height:1.65}
+.app-setup-guide ol{padding-left:22px;margin:12px 0 18px}
+.app-setup-guide li+li{margin-top:9px}
+.app-registration-help dl{margin:12px 0}
+.app-registration-help dl div{display:grid;grid-template-columns:180px minmax(0,1fr);gap:12px;padding:9px 0;border-bottom:1px solid #dce7ef;font-size:12px}
+.app-registration-help dt{color:#64758a}
+.app-registration-help dd{margin:0;overflow-wrap:anywhere}
+@media(max-width:620px){.app-setup-guide{padding:16px}.app-registration-help dl div{grid-template-columns:minmax(0,1fr);gap:4px}}
 .setup-panel details{margin-top:14px}
 .setup-panel summary{cursor:pointer;color:#176fba;font-size:14px;font-weight:650;padding:10px 0}
 .setup-form{max-width:680px;display:grid;gap:16px;padding-top:16px}

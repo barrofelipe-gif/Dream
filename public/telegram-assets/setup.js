@@ -15,6 +15,10 @@ function renderSetup(active) {
   $('connection-badge').className='pill '+(connected?'good':stage==='disconnected'?'':'warn');
   const summaries={disconnected:'Conecte por QR Code ou código para carregar seus grupos e preparar uma comunidade privada.',saved:'Sua sessão está salva no app. Confirme a conexão para continuar.',code:`Digite o código recebido na conta com final ${connection.phone_hint}.`,password:'Sua conta solicita a senha de verificação em duas etapas.',connected:`${connection.account?.name || 'Conta conectada'}${connection.account?.username?' · @'+connection.account.username:''} — conexão protegida no app.`,qr:'Escaneie o QR Code pelo Telegram do seu celular e confirme a conexão.',qr_error:'A conexão por QR Code não foi concluída. Você pode tentar novamente ou cancelar.'};
   $('connection-summary').textContent=summaries[stage] || summaries.disconnected;
+  const needsAppSetup=connection.enabled&&stage==='disconnected'&&!connection.credentials_saved;
+  $('app-setup-guide').hidden=!needsAppSetup;
+  $('connection-form-summary').textContent=needsAppSetup?'Já tenho as chaves — conectar Telegram':'Conectar minha conta';
+  if(needsAppSetup) $('connection-summary').textContent='Antes do primeiro QR Code, conclua a configuração do aplicativo BFF no Telegram. Veja o passo a passo abaixo.';
   $('connection-details').hidden=!connection.enabled||stage!=='disconnected';
   $('saved-session').hidden=stage!=='saved';
   $('qr-connection').hidden=!['qr','qr_error'].includes(stage);
