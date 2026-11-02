@@ -543,8 +543,10 @@ export default function TelegramDashboard() {
                       navegadores únicos no período.
                     </li>
                     <li>
-                      <b>Vendas:</b> pedidos pagos da Tray vinculados à sessão
-                      da loja após um clique, em até 30 dias.
+                      <b>Vendas:</b> pedidos pagos confirmados na Tray, ligados
+                      a um clique em até 30 dias pela sessão da loja ou por
+                      referência verificada no Google Analytics. Cada pedido
+                      é contado uma vez.
                     </li>
                   </ul>
                 </div>
