@@ -18,4 +18,9 @@ const r = spawnSync("npx", ["prisma", "db", "push", "--skip-generate"], {
   timeout: 180_000,
   env: { ...process.env, DATABASE_URL: url.toString() },
 });
-process.exit(r.status ?? 1);
+if (r.status !== 0) process.exit(r.status ?? 1);
+const privacy = spawnSync("npx", ["prisma", "db", "execute", "--file", "scripts/telegram-private.sql"], {
+  stdio: "inherit", shell: true, timeout: 60_000,
+  env: { ...process.env, DATABASE_URL: url.toString() },
+});
+process.exit(privacy.status ?? 1);

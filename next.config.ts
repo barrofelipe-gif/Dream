@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withWorkflow } from "workflow/next";
 
 /**
  * Cabeçalhos de segurança aplicados a todas as respostas.
@@ -41,4 +42,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withWorkflow(nextConfig);

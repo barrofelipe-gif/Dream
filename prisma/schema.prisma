@@ -81,6 +81,26 @@ model User {
   columns          Column[]
   gmailConnections GmailConnection[]
   sectorAccess     SectorAccess[]
+  telegramWorkspace TelegramWorkspace?
+}
+
+// Acesso exclusivo do backend autenticado. A migration de deploy habilita RLS
+// sem policies e revoga anon/authenticated; dados separados por operador.
+model TelegramWorkspace {
+  userId         String   @id
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialsEnc String?
+  sessionEnc     String?
+  loginEnc       String?
+  authState      String   @default("disconnected")
+  authAttempt    String?
+  authExpiresAt  DateTime?
+  busyToken      String?
+  busyUntil      DateTime?
+  data           Json     @default("{}")
+  version        Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 // Quais setores da aba BFF Fitness cada usuário enxerga. Admin (role=admin)

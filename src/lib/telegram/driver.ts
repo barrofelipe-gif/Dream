@@ -1,0 +1,508 @@
+import "server-only";
+import { TelegramClient, Api, utils } from "teleproto";
+import { StringSession } from "teleproto/sessions";
+import { Logger } from "teleproto/extensions";
+import bigInt from "big-integer";
+import { TelegramError, type Group, type Person, type Privacy } from "./domain";
+
+export type Credentials = { apiId: number; apiHash: string };
+class QuietLogger extends Logger {
+  override log() {}
+  override _log() {}
+}
+export function credentials(input: Record<string, unknown>): Credentials {
+  if (
+    typeof input.api_id !== "number" ||
+    !Number.isInteger(input.api_id) ||
+    input.api_id <= 0 ||
+    input.api_id >= 2 ** 31 ||
+    typeof input.api_hash !== "string" ||
+    !/^[a-f0-9]{32}$/i.test(input.api_hash)
+  )
+    throw new TelegramError(
+      "credentials",
+      "Informe o API ID numérico e o API Hash de 32 caracteres de my.telegram.org.",
+    );
+  return { apiId: input.api_id, apiHash: input.api_hash };
+}
+export function mapError(error: unknown): TelegramError {
+  if (error instanceof TelegramError) return error;
+  const e = error as {
+    errorMessage?: string;
+    seconds?: number;
+    message?: string;
+    name?: string;
+  };
+  const code = e?.errorMessage || "";
+  if (/FLOOD_WAIT|SLOWMODE_WAIT/.test(code) || e?.seconds)
+    return new TelegramError(
+      "flood_wait",
+      "O Telegram solicitou uma espera. Retome manualmente após o prazo.",
+      Math.max(1, e.seconds || 60),
+      409,
+    );
+  if (/PEER_FLOOD|FROZEN|USER_RESTRICTED/.test(code))
+    return new TelegramError(
+      "restricted",
+      "O Telegram restringiu a conta. Novas inclusões foram interrompidas.",
+      0,
+      409,
+    );
+  if (/SESSION_PASSWORD_NEEDED/.test(code))
+    return new TelegramError(
+      "password_required",
+      "Digite a senha de duas etapas da sua conta.",
+      0,
+      409,
+    );
+  if (/PASSWORD_HASH_INVALID/.test(code))
+    return new TelegramError("password", "Senha de duas etapas incorreta.");
+  if (/PHONE_CODE_EXPIRED/.test(code))
+    return new TelegramError(
+      "code",
+      "O código expirou. Cancele e inicie outra conexão.",
+    );
+  if (/PHONE_CODE_INVALID|PHONE_CODE_EMPTY/.test(code))
+    return new TelegramError(
+      "code",
+      "Código inválido. Confira o código recebido no Telegram.",
+    );
+  if (/API_ID_INVALID|API_ID_PUBLISHED/.test(code))
+    return new TelegramError(
+      "credentials",
+      "Confira seu API ID e API Hash em my.telegram.org.",
+    );
+  if (/AUTH_KEY|SESSION_REVOKED|SESSION_EXPIRED/.test(code))
+    return new TelegramError(
+      "auth_required",
+      "Sua sessão expirou. Reconecte o Telegram no painel.",
+      0,
+      409,
+    );
+  if (
+    /USER_PRIVACY_RESTRICTED|USER_NOT_MUTUAL_CONTACT|USER_CHANNELS_TOO_MUCH/.test(
+      code,
+    )
+  )
+    return new TelegramError(
+      "privacy",
+      "A inclusão foi recusada por privacidade ou condição da conta.",
+      0,
+      409,
+    );
+  if (/CHAT_ADMIN_REQUIRED|CHAT_WRITE_FORBIDDEN|CHANNEL_PRIVATE/.test(code))
+    return new TelegramError(
+      "permission",
+      "Confira acesso e permissões de administração dos grupos.",
+      0,
+      409,
+    );
+  if (/PHONE_NUMBER|EMAIL_|CAPTCHA/.test(code))
+    return new TelegramError(
+      "login",
+      "O Telegram exige uma verificação adicional. Confira sua conta no aplicativo oficial.",
+      0,
+      409,
+    );
+  return new TelegramError(
+    "uncertain",
+    "A conexão não foi concluída. Confira o resultado antes de repetir.",
+    0,
+    409,
+  );
+}
+export async function deadline<T>(
+  work: Promise<T>,
+  milliseconds = 25000,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new TelegramError(
+                "uncertain",
+                "A conexão demorou demais. Confira o resultado antes de repetir.",
+                0,
+                409,
+              ),
+            ),
+          milliseconds,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+export class TelegramDriver {
+  readonly session: StringSession;
+  readonly client: TelegramClient;
+  constructor(
+    readonly credentials: Credentials,
+    session = "",
+  ) {
+    this.session = new StringSession(session);
+    this.client = new TelegramClient(
+      this.session,
+      credentials.apiId,
+      credentials.apiHash,
+      {
+        requestRetries: 1,
+        connectionRetries: 1,
+        reconnectRetries: 0,
+        autoReconnect: false,
+        retryDelay: 500,
+        floodSleepThreshold: 0,
+        baseLogger: new QuietLogger(),
+        deviceModel: "BFF Fitness · Growth",
+        appVersion: "1.0",
+        langCode: "pt",
+        systemLangCode: "pt-BR",
+      },
+    );
+  }
+  async connect(required = true) {
+    await deadline(this.client.connect());
+    if (required && !(await deadline(this.client.checkAuthorization())))
+      throw new TelegramError(
+        "auth_required",
+        "Reconecte sua conta do Telegram.",
+        0,
+        409,
+      );
+  }
+  async close() {
+    await deadline(this.client.destroy(), 5000).catch(() => undefined);
+  }
+  save() {
+    return this.session.save();
+  }
+  async me() {
+    const user = await this.client.getMe();
+    if (!(user instanceof Api.User))
+      throw new TelegramError("auth_required", "Conta não conectada.");
+    return {
+      id: Number(user.id.toString()),
+      name: [user.firstName, user.lastName]
+        .filter(Boolean)
+        .join(" ")
+        .slice(0, 200),
+      username: user.username || "",
+    };
+  }
+  private(entity: Api.Chat | Api.Channel) {
+    return (
+      !(entity instanceof Api.Channel) ||
+      !(entity.username || entity.usernames?.some((u) => u.active))
+    );
+  }
+  groupInfo(entity: Api.Chat | Api.Channel): Group {
+    return {
+      id: Number(utils.getPeerId(entity)),
+      name: entity.title.slice(0, 100),
+      private: this.private(entity),
+      owner: !!entity.creator,
+      can_invite: !!(entity.creator || entity.adminRights?.inviteUsers),
+      supergroup: entity instanceof Api.Channel,
+    };
+  }
+  async groups() {
+    const dialogs = await this.client.getDialogs({});
+    return dialogs.flatMap((d) => {
+      const e = d.entity;
+      if (!(e instanceof Api.Chat) && !(e instanceof Api.Channel)) return [];
+      if (e instanceof Api.Channel && !e.megagroup) return [];
+      if (!e.creator && !e.adminRights) return [];
+      if (e.left || (e instanceof Api.Chat && e.deactivated)) return [];
+      return [this.groupInfo(e)];
+    });
+  }
+  async group(id: number, invite = false) {
+    const dialogs = await this.client.getDialogs({});
+    const entity = dialogs
+      .map((d) => d.entity)
+      .find(
+        (e) =>
+          e &&
+          (e instanceof Api.Chat || e instanceof Api.Channel) &&
+          Number(utils.getPeerId(e)) === id,
+      );
+    if (!(entity instanceof Api.Chat) && !(entity instanceof Api.Channel))
+      throw new TelegramError(
+        "permission",
+        "Grupo não encontrado nos diálogos da sua conta.",
+      );
+    if (entity instanceof Api.Channel && !entity.megagroup)
+      throw new TelegramError(
+        "permission",
+        "Este painel trabalha com grupos e supergrupos.",
+      );
+    if (!entity.creator && !entity.adminRights)
+      throw new TelegramError(
+        "permission",
+        "Use grupos administrados pela conta conectada.",
+      );
+    if (
+      invite &&
+      (!this.private(entity) ||
+        !(entity.creator || entity.adminRights?.inviteUsers))
+    )
+      throw new TelegramError(
+        "permission",
+        "O destino precisa ser privado e permitir convites pela conta conectada.",
+      );
+    return entity;
+  }
+  person(user: Api.User): Person {
+    return {
+      user_id: Number(user.id.toString()),
+      name: [user.firstName, user.lastName]
+        .filter(Boolean)
+        .join(" ")
+        .slice(0, 200),
+      username: user.username || "",
+      accessHash: user.accessHash?.toString() || "0",
+    };
+  }
+  input(person: Person) {
+    return new Api.InputUser({
+      userId: bigInt(person.user_id),
+      accessHash: bigInt(person.accessHash),
+    });
+  }
+  async member(group: Api.Chat | Api.Channel, user: Api.TypeEntityLike) {
+    try {
+      if (group instanceof Api.Channel) {
+        const r = await this.client.invoke(
+          new Api.channels.GetParticipant({
+            channel: group,
+            participant: user,
+          }),
+        );
+        const p = r.participant;
+        return (
+          !(p instanceof Api.ChannelParticipantLeft) &&
+          (!(p instanceof Api.ChannelParticipantBanned) ||
+            (!p.left && !p.bannedRights.viewMessages))
+        );
+      }
+      const r = await this.client.invoke(
+        new Api.messages.GetFullChat({ chatId: group.id }),
+      );
+      const participantId =
+        user instanceof Api.InputUser
+          ? user.userId.toString()
+          : user instanceof Api.User
+            ? user.id.toString()
+            : "";
+      return (
+        r.fullChat instanceof Api.ChatFull &&
+        r.fullChat.participants instanceof Api.ChatParticipants &&
+        r.fullChat.participants.participants.some(
+          (p) => p.userId.toString() === participantId,
+        )
+      );
+    } catch (error) {
+      if (
+        (error as { errorMessage?: string })?.errorMessage ===
+        "USER_NOT_PARTICIPANT"
+      )
+        return false;
+      throw error;
+    }
+  }
+  async collect(sourceId: number, targetId: number, ids: number[]) {
+    const source = await this.group(sourceId);
+    await this.group(targetId, true);
+    const found: Person[] = [];
+    const allowed = new Set(ids);
+    for await (const user of this.client.iterParticipants(source, {})) {
+      if (
+        user instanceof Api.User &&
+        !user.bot &&
+        !user.deleted &&
+        allowed.has(Number(user.id.toString()))
+      ) {
+        found.push(this.person(user));
+        allowed.delete(Number(user.id.toString()));
+      }
+      if (!allowed.size) break;
+    }
+    return found;
+  }
+  async resolve(sourceId: number, references: string[]) {
+    const source = await this.group(sourceId);
+    const ids = new Set(references.filter((r) => /^\d+$/.test(r)).map(Number));
+    const found: Person[] = [];
+    if (ids.size) {
+      for await (const user of this.client.iterParticipants(source, {})) {
+        if (
+          user instanceof Api.User &&
+          !user.bot &&
+          !user.deleted &&
+          ids.has(Number(user.id.toString()))
+        ) {
+          found.push(this.person(user));
+          ids.delete(Number(user.id.toString()));
+        }
+        if (!ids.size) break;
+      }
+      if (ids.size)
+        throw new TelegramError(
+          "participant",
+          "Um dos IDs não está entre os membros disponíveis da origem.",
+        );
+    }
+    for (const name of references.filter((r) => !/^\d+$/.test(r))) {
+      const user = await this.client.getEntity(name);
+      if (
+        !(user instanceof Api.User) ||
+        user.bot ||
+        user.deleted ||
+        !(await this.member(source, user))
+      )
+        throw new TelegramError(
+          "participant",
+          "Um dos participantes não está disponível na origem.",
+        );
+      found.push(this.person(user));
+    }
+    return [...new Map(found.map((p) => [p.user_id, p])).values()];
+  }
+  async privacy(id: number): Promise<Privacy> {
+    const e = await this.group(id);
+    const full =
+      e instanceof Api.Channel
+        ? (
+            await this.client.invoke(
+              new Api.channels.GetFullChannel({ channel: e }),
+            )
+          ).fullChat
+        : undefined;
+    return {
+      group_id: id,
+      name: e.title.slice(0, 100),
+      private: this.private(e),
+      owner: !!e.creator,
+      supergroup: e instanceof Api.Channel,
+      members_hidden:
+        full instanceof Api.ChannelFull && !!full.participantsHidden,
+      content_protected: !!e.noforwards,
+      checked_at: Date.now() / 1000,
+      notes:
+        full instanceof Api.ChannelFull && full.linkedChatId
+          ? [
+              "Este grupo está vinculado a outro chat. Revise o acesso pela discussão e os convites no Telegram.",
+            ]
+          : [],
+    };
+  }
+  async protect(id: number) {
+    const e = await this.group(id);
+    if (!e.creator)
+      throw new TelegramError(
+        "permission",
+        "Conecte a conta proprietária para aplicar as proteções.",
+      );
+    const notes: string[] = [];
+    const before = await this.privacy(id);
+    if (e instanceof Api.Channel) {
+      if (e.username)
+        await this.client.invoke(
+          new Api.channels.UpdateUsername({ channel: e, username: "" }),
+        );
+      if (e.usernames?.some((u) => u.active))
+        await this.client.invoke(
+          new Api.channels.DeactivateAllUsernames({ channel: e }),
+        );
+      if (!before.members_hidden)
+        try {
+          await this.client.invoke(
+            new Api.channels.ToggleParticipantsHidden({
+              channel: e,
+              enabled: true,
+            }),
+          );
+        } catch (error) {
+          const code = (error as { errorMessage?: string }).errorMessage;
+          if (code === "PARTICIPANTS_TOO_FEW")
+            notes.push(
+              "O Telegram ainda não permite ocultar membros neste tamanho de grupo.",
+            );
+          else if (code !== "CHAT_NOT_MODIFIED") throw error;
+        }
+    } else
+      notes.push(
+        "Ocultar membros exige um supergrupo. Converta o grupo no Telegram para habilitar a opção.",
+      );
+    if (!before.content_protected)
+      await this.client
+        .invoke(new Api.messages.ToggleNoForwards({ peer: e, enabled: true }))
+        .catch((error) => {
+          if (
+            (error as { errorMessage?: string }).errorMessage !==
+            "CHAT_NOT_MODIFIED"
+          )
+            throw error;
+        });
+    const result = await this.privacy(id);
+    result.notes = [...(result.notes || []), ...notes];
+    return result;
+  }
+  async invite(sourceId: number, targetId: number, person: Person) {
+    const source = await this.group(sourceId);
+    const target = await this.group(targetId, true);
+    const user = this.input(person);
+    if (!(await this.member(source, user)))
+      throw new TelegramError(
+        "participant",
+        "O participante não está mais na origem.",
+      );
+    if (await this.member(target, user))
+      return {
+        state: "already",
+        message:
+          "Participação no destino já confirmada. Nenhum convite enviado.",
+      };
+    const result =
+      target instanceof Api.Channel
+        ? await this.client.invoke(
+            new Api.channels.InviteToChannel({
+              channel: target,
+              users: [user],
+            }),
+          )
+        : await this.client.invoke(
+            new Api.messages.AddChatUser({
+              chatId: target.id,
+              userId: user,
+              fwdLimit: 0,
+            }),
+          );
+    if (
+      "missingInvitees" in result &&
+      result.missingInvitees.some(
+        (p) => p.userId.toString() === String(person.user_id),
+      )
+    )
+      return {
+        state: "privacy",
+        message: "O Telegram informou que o participante não foi adicionado.",
+      };
+    if (!(await this.member(target, user)))
+      throw new TelegramError(
+        "uncertain",
+        "Solicitação enviada, mas participação não confirmada. Confira no Telegram antes de repetir.",
+        0,
+        409,
+      );
+    return {
+      state: "added",
+      message: "Inclusão confirmada por consulta à participação no destino.",
+    };
+  }
+}

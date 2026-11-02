@@ -1,0 +1,31 @@
+.setup-panel{border-top:4px solid #176fba}
+.setup-panel .eyebrow{margin:0 0 8px}
+.setup-panel .section-heading{align-items:start}
+.setup-panel details{margin-top:14px}
+.setup-panel summary{cursor:pointer;color:#176fba;font-size:14px;font-weight:650;padding:10px 0}
+.setup-form{max-width:680px;display:grid;gap:16px;padding-top:16px}
+.setup-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.setup-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:18px}
+.setup-actions .hint{margin:0}
+.check-label{flex-direction:row;align-items:center;justify-content:start}
+.check-label input{accent-color:#176fba}
+.setup-panel a{color:#176fba}
+.setup-panel hr{border:0;border-top:1px solid #e0e6ee;margin:26px 0}
+.privacy-report{border:1px solid #dce7ef;background:#f7fafc;border-radius:10px;padding:20px;margin:18px 0}
+.privacy-report h3{font-size:15px;margin:0 0 12px;overflow-wrap:anywhere}
+.privacy-report p{margin:0}
+.privacy-list{list-style:none;padding:0;margin:0;max-width:680px}
+.privacy-list li{display:flex;gap:12px;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #e7eef5;font-size:13px}
+.privacy-report .hint{margin-top:12px}
+.privacy-report .privacy-warning{margin-top:12px;border-left:3px solid #c48a28;background:#fff3dc;color:#77511c;padding:10px 12px;font-size:12px}
+.participants-field{max-width:680px;margin-top:24px}
+.participants-field textarea{min-height:95px;resize:vertical}
+.privacy-explanation{max-width:850px}
+.qr-connection{display:grid;grid-template-columns:minmax(0,1fr) 284px;gap:24px;align-items:center;margin-top:22px;padding:20px;border:1px solid #dce7ef;border-radius:10px;background:#f7fafc}
+.qr-connection h3{font-size:17px;margin:0 0 10px}
+.qr-connection img{width:260px;height:260px;background:white;border-radius:8px;max-width:100%;object-fit:contain}
+#qr-status{font-size:13px;color:#233348}
+@media(max-width:720px){.qr-connection{grid-template-columns:minmax(0,1fr);padding:14px}.qr-connection img{justify-self:center}}
+#connection-error{border:1px solid #e7c58b;background:#fff6e6;padding:12px;border-radius:7px;font-size:13px;color:#77511c}
+.flow-content{min-width:0}
+@media(max-width:620px){.setup-grid{grid-template-columns:minmax(0,1fr)}.setup-actions{align-items:stretch;flex-direction:column}.setup-actions button{white-space:normal}.privacy-list li{font-size:12px}.setup-panel .section-heading{gap:8px}.privacy-report{padding:14px}}

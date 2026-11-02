@@ -9,6 +9,7 @@ import CobrancaPapel from "@/components/hub/financas/CobrancaPapel";
 import FaturamentoPapel from "@/components/hub/financas/FaturamentoPapel";
 import AvaliacoesPapel, { type PapelAvaliacoes } from "@/components/hub/avaliacoes/AvaliacoesPapel";
 import InstagramPapel from "@/components/hub/growth/InstagramPapel";
+import TelegramPapel from "@/components/hub/growth/TelegramPapel";
 
 /**
  * Ficha de um papel (manager ou agente) — equivalente ao painel lateral
@@ -50,7 +51,7 @@ export default async function PapelPage({
   const { area, papel } = encontrado;
   const avaliacoes = PAPEIS_AVALIACOES[`${areaId}/${papelId}`];
   // Instagram é uma ferramenta de trabalho (usada no celular também): ficha enxuta e largura toda.
-  const ig = areaId === "growth" && papelId === "instagram";
+  const ig = areaId === "growth" && ["instagram","telegram"].includes(papelId);
   const conteudoReal =
     areaId === "financas"
       ? CONTEUDO_FINANCAS[papelId]
@@ -61,7 +62,9 @@ export default async function PapelPage({
               <InstagramPapel />
             </Suspense>
           )
-        : undefined;
+        : areaId === "growth" && papelId === "telegram"
+          ? () => <TelegramPapel />
+          : undefined;
 
   return (
     <div className={`${ig ? "w-full min-w-0 space-y-3 sm:space-y-6" : `${avaliacoes || conteudoReal ? "max-w-4xl" : "max-w-2xl"} space-y-6`} pb-10`}>

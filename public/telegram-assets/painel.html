@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Comunidade Telegram | BFF</title>
+  <link rel="stylesheet" href="/telegram-assets/style.css">
+  <link rel="stylesheet" href="/telegram-assets/setup.css">
+  <script src="/telegram-assets/app.js" defer></script>
+  <script src="/telegram-assets/setup.js" defer></script>
+  <script src="/telegram-assets/frame.js" defer></script>
+</head>
+<body>
+  <header><div class="brand">BFF<span>COMUNIDADE</span></div><span id="mode" class="badge">Conectando…</span></header>
+  <main>
+    <div class="intro"><div><p class="eyebrow">CONSULTA + INCLUSÃO</p><h1>Comunidade Telegram</h1><p>Organize participantes, revise a lista e acompanhe cada inclusão.</p></div><a class="button secondary" href="/api/telegram/export/results.csv">Exportar resultados</a></div>
+    <div id="notice" role="status" aria-live="polite" hidden></div>
+    <section class="panel setup-panel" aria-labelledby="connection-title">
+      <div class="section-heading"><div><p class="eyebrow">SUA CONTA + COMUNIDADE PRIVADA</p><h2 id="connection-title">Conecte seu Telegram</h2><p id="connection-summary">Carregando sua conexão…</p></div><span id="connection-badge" class="pill">Desconectado</span></div>
+      <p id="connection-error" role="status" hidden></p>
+      <div id="saved-session" class="setup-actions" hidden><button id="restore-session" disabled>Usar sessão salva</button><p class="hint">Confirma sua conta no Telegram sem solicitar outro código.</p></div>
+      <details id="connection-details"><summary>Conectar minha conta</summary>
+        <form id="connect-form" class="setup-form" autocomplete="off">
+          <div id="api-fields" class="setup-grid"><label>API ID<input id="api-id" type="text" inputmode="numeric" pattern="[0-9]+" maxlength="10" autocomplete="off" required></label><label>API Hash<input id="api-hash" type="password" minlength="32" maxlength="32" autocomplete="off" required></label></div>
+          <label id="saved-credentials-label" class="check-label" hidden><input id="use-saved-credentials" type="checkbox"> Usar as chaves já salvas no app</label>
+          <p class="hint">Na primeira conexão, obtenha suas chaves em <a href="https://my.telegram.org/apps" target="_blank" rel="noopener noreferrer">my.telegram.org → API development tools</a>. As chaves e a sessão ficam criptografadas no servidor do app, com acesso restrito ao seu usuário administrador.</p>
+          <div class="setup-actions"><button id="start-qr" type="button" disabled>Conectar por QR Code</button><span class="hint">Escaneie pelo Telegram do celular, sem digitar seu número aqui.</span></div>
+          <label>Número do Telegram — alternativa por código<input id="telegram-phone" type="tel" autocomplete="off" placeholder="+55 DDD e número, sem espaços" pattern="\+[1-9][0-9]{7,14}" maxlength="16" required></label>
+          <div class="setup-actions"><button id="send-code" type="submit" class="secondary" disabled>Receber código de conexão</button></div>
+        </form>
+      </details>
+      <div id="qr-connection" class="qr-connection" hidden>
+        <div><h3>Conectar pelo celular</h3><p>No Telegram do celular, abra <b>Configurações → Dispositivos → Conectar dispositivo</b>. Escaneie este QR Code e confirme a conexão.</p><p id="qr-status" role="status">Preparando QR Code…</p><div class="setup-actions"><button id="retry-qr" hidden>Gerar novo QR Code</button><button type="button" class="secondary cancel-connection">Cancelar conexão</button></div><p class="hint">O QR Code é atualizado automaticamente enquanto você aguarda. Sua senha de duas etapas poderá ser solicitada após escanear.</p></div>
+        <img id="qr-image" width="260" height="260" alt="QR Code para conectar sua conta do Telegram" hidden>
+      </div>
+      <form id="code-form" class="setup-form" hidden autocomplete="off"><label>Código recebido no Telegram<input id="telegram-code" inputmode="numeric" type="text" pattern="[0-9]{4,10}" maxlength="10" autocomplete="one-time-code" required></label><div class="setup-actions"><button id="verify-code" type="submit">Confirmar código</button><button type="button" class="secondary cancel-connection">Cancelar conexão</button></div></form>
+      <form id="password-form" class="setup-form" hidden autocomplete="off"><label>Senha de verificação em duas etapas<input id="telegram-password" type="password" maxlength="256" autocomplete="off" required></label><p class="hint">Digite sua senha existente do Telegram. O painel não guarda a senha.</p><div class="setup-actions"><button id="verify-password" type="submit">Concluir conexão</button><button type="button" class="secondary cancel-connection">Cancelar conexão</button></div></form>
+      <div id="connected-actions" class="setup-actions" hidden><button id="load-groups">Carregar meus grupos</button><button id="disconnect-account" class="secondary">Desconectar Telegram</button></div>
+      <div id="group-setup" hidden>
+        <hr><h2>Prepare sua comunidade privada</h2><p>Escolha grupos que você administra. Os clientes podem conversar normalmente no grupo de destino.</p>
+        <div class="setup-grid"><label>Consultar participantes de<select id="setup-source"></select></label><label>Minha comunidade de destino<select id="setup-target"></select></label></div>
+        <div class="setup-actions"><button id="check-privacy" class="secondary">Conferir privacidade do destino</button></div>
+        <div id="privacy-report" class="privacy-report" aria-live="polite"><p>Confira o destino antes de ativar a conexão real.</p></div>
+        <button id="open-protect" class="secondary" disabled>Aplicar proteções ao destino</button>
+        <p class="hint privacy-explanation">Privado controla a entrada; ocultar membros protege a lista quando o Telegram permite. Quem publica mensagens continua visível. Restringir o salvamento reduz o compartilhamento, mas nenhuma dessas opções garante impedir toda coleta ou cópia.</p>
+        <label class="participants-field">Participantes que autorizaram a interação<textarea id="setup-participants" maxlength="18000" placeholder="@usuario_um, @usuario_dois ou IDs numéricos"></textarea></label>
+        <p class="hint">Até 500 participantes neste piloto. Informe somente quem autorizou. Depois registre a referência da autorização para o destino na lista abaixo.</p>
+        <div class="setup-actions"><button id="activate-live" disabled>Salvar grupos e usar conexão real</button><span id="live-config-hint" class="hint"></span></div>
+      </div>
+    </section>
+    <section class="metrics" aria-label="Resumo da operação">
+      <article><span>Na lista</span><strong id="count-total">0</strong><small>Participantes únicos</small></article>
+      <article><span>Prontos para inclusão</span><strong id="count-ready">0</strong><small>Selecionados e autorizados</small></article>
+      <article><span>Inclusões confirmadas</span><strong id="count-added">0</strong><small>Adicionados na operação</small></article>
+      <article><span>Já participavam</span><strong id="count-existing">0</strong><small>Sem novo envio</small></article>
+    </section>
+    <section class="panel flow"><div class="step">1</div><div class="flow-content"><h2>Escolha os grupos</h2><p>Consulte os participantes cadastrados para sua operação.</p><div class="controls"><label>Grupo de origem<select id="source" disabled></select></label><span class="arrow" aria-hidden="true">→</span><label>Grupo de destino<select id="target" disabled></select></label><button id="collect" disabled>Consultar participantes</button></div><p id="mode-help" class="hint"></p></div></section>
+    <section class="panel">
+      <div class="section-heading"><div><h2>2. Revise sua lista</h2><p>Registre a referência da autorização e selecione quem vai participar.</p></div><div class="actions"><a href="/api/telegram/export/contacts.csv" class="text-link" title="Uma linha por pessoa, origem e destino autorizado">Baixar lista CSV</a><button id="select-ready" class="secondary" disabled title="Seleciona todos os autorizados da origem atual, inclusive fora da busca">Selecionar autorizados</button></div></div>
+      <label class="search-label">Buscar participante<input id="search" type="search" placeholder="Nome, usuário ou ID"></label>
+      <div class="table-scroll"><table><thead><tr><th scope="col">Selecionar</th><th scope="col">Participante</th><th scope="col">Autorização no destino</th><th scope="col">Último resultado</th><th scope="col">Ações</th></tr></thead><tbody id="contacts"><tr><td colspan="5" class="empty">Consulte a origem para montar sua lista.</td></tr></tbody></table></div>
+      <div class="list-footer"><span id="selection-label">Nenhum participante selecionado.</span><button id="start" disabled>Iniciar inclusão</button></div>
+    </section>
+    <section class="panel">
+      <div class="section-heading"><div><h2>3. Acompanhe a operação</h2><p>Resultado individual, sem confundir tentativa com inclusão confirmada.</p></div><div id="job-actions" class="actions"></div></div>
+      <div id="job-summary" class="empty">Sua próxima operação aparecerá aqui.</div>
+      <div class="table-scroll"><table><thead><tr><th scope="col">Participante</th><th scope="col">Resultado</th><th scope="col">Detalhes</th></tr></thead><tbody id="results"></tbody></table></div>
+    </section>
+    <footer>BFF Fitness · Growth · Acesso restrito a administradores · Sessão e chaves criptografadas</footer>
+  </main>
+  <dialog id="consent-dialog"><form id="consent-form"><h2>Registrar autorização</h2><p id="consent-person"></p><label>Referência da autorização<textarea id="evidence" required minlength="8" maxlength="500" placeholder="Ex.: solicitação recebida em 01/11, protocolo 123"></textarea></label><p class="hint">Registre uma autorização existente para entrar no destino selecionado. Evite copiar conversas ou dados desnecessários.</p><div class="actions"><button type="button" id="close-dialog" class="secondary">Voltar</button><button type="submit">Salvar autorização</button></div></form></dialog>
+  <dialog id="protect-dialog"><h2>Proteger minha comunidade</h2><p id="protect-group-name"></p><p>Ao aplicar, o sistema retira os endereços públicos do grupo, tenta ocultar a lista de membros e ativa a restrição de salvamento de conteúdo.</p><p>Os endereços públicos anteriores deixam de funcionar. Os membros atuais permanecem e podem continuar conversando, conforme as permissões do grupo. Convites existentes precisam ser revisados no Telegram.</p><p class="hint">Ocultar membros depende da disponibilidade liberada pelo Telegram. O painel confere o resultado de cada proteção.</p><div class="actions"><button id="close-protect" class="secondary">Voltar</button><button id="confirm-protect">Aplicar proteções</button></div></dialog>
+</body>
+</html>
+
