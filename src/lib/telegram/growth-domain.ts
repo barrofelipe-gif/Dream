@@ -208,13 +208,23 @@ export function summarize(
   // e tentativas de convite não são aquisição. A origem é a do trabalho real.
   const acquired = new Map<number, { at: Date; source: string }>();
   const jobs = new Map(data.jobs.map((j) => [j.id, j]));
-  const origins = new Map(data.sources.map((s) => [s.id, s.name]));
+  // Older jobs have no name snapshot. Resolve only identities already known
+  // to the workspace; current configuration takes precedence for those jobs.
+  const origins = new Map(
+    [...(data.prospects || []), ...data.groups, ...data.sources].map((group) => [
+      group.id,
+      group.name,
+    ]),
+  );
   for (const result of data.results) {
     if (result.state !== "added") continue;
     const job = jobs.get(result.job_id);
     if (!job) continue;
     const at = new Date(result.updated_at * 1000);
-    const sourceName = origins.get(job.source_id) || `Grupo ${job.source_id}`;
+    const sourceName =
+      (typeof job.source_name === "string" && job.source_name.trim()
+        ? job.source_name
+        : origins.get(job.source_id)) || `Grupo ${job.source_id}`;
     if (!acquired.has(result.user_id) || acquired.get(result.user_id)!.at > at)
       acquired.set(result.user_id, { at, source: sourceName });
   }

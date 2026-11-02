@@ -17,6 +17,19 @@ test("detects the exact active tracker tag and normal HTML attribute forms", () 
   assert.equal(hasTrackerScript(`<script src=${TRACKER_SOURCE}></script>`), true);
 });
 
+test("module tags cannot mark the currentScript-based tracker installed", async (t) => {
+  const moduleTag = `<script type="module" src="${TRACKER_SOURCE}"></script>`;
+  assert.equal(hasTrackerScript(moduleTag), false);
+  assert.equal(hasTrackerScript(moduleTag.replace('type="module"', 'type="MoDuLe"')), false);
+  assert.equal(hasTrackerScript(moduleTag + tag), true);
+  t.mock.method(globalThis, "fetch", async () => new Response(moduleTag, {
+    headers: { "Content-Type": "text/html" },
+  }));
+  const result = await verifyStorefrontTracker();
+  assert.equal(result.installed, false);
+  assert.equal(result.reason, "missing");
+});
+
 test("does not mistake comments, raw text, templates or data scripts for installation", () => {
   for (const html of [
     `<!-- ${tag} -->`,

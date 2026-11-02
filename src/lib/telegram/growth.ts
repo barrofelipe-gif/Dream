@@ -388,15 +388,32 @@ export async function syncSales(userId?: string) {
     matched = 0,
     detailReads = 0,
     partial = false;
+  const maxDetailReads = 80, historyLimit = 20, gaLimit = 20;
+  const attempted = new Set<string>();
+  async function readOrder(orderId: string): Promise<AttributedOrder | undefined> {
+    if (attempted.has(orderId) || detailReads >= maxDetailReads) {
+      partial = true;
+      return;
+    }
+    attempted.add(orderId);
+    detailReads++;
+    try {
+      const result = await trayGet<{ Order: AttributedOrder }>(
+        `orders/${encodeURIComponent(orderId)}`,
+      );
+      if (String(result.Order?.id) === orderId) return result.Order;
+    } catch {
+      // A failed individual read never changes a previously confirmed conversion.
+    }
+    partial = true;
+  }
   const hashes = new Set(eligible.map((c) => c.sessionHash));
   // Revalida pedidos já atribuídos, inclusive cancelamentos posteriores ao período.
-  // A leitura é limitada e a cobertura parcial aparece no dashboard.
-  for (const item of missing.slice(0, 40)) {
-    const result = await trayGet<{ Order: AttributedOrder }>(
-      `orders/${encodeURIComponent(item.orderId)}`,
-    );
-    detailReads++;
-    orders.push(result.Order);
+  // Cotas separadas deixam capacidade para novas evidências GA e sessões nativas.
+  if (missing.length > historyLimit) partial = true;
+  for (const item of missing.slice(0, historyLimit)) {
+    const order = await readOrder(item.orderId);
+    if (order) orders.push(order);
   }
   const knownClicks = new Set(gaClicks.map((c) => c.id));
   const gaOrderIds = [
@@ -408,30 +425,22 @@ export async function syncSales(userId?: string) {
   ];
   // Um evento Google só pode virar venda depois de conferir o pedido real.
   // Nunca cria conversão por proximidade de datas, valor ou clique aleatório.
+  let gaReads = 0;
   for (const orderId of gaOrderIds) {
     // Os já atribuídos são revisados pelo lote priorizado por checkedAt;
     // repetir os primeiros IDs Google consumiria o orçamento indefinidamente.
     if (priorOrders.has(orderId)) continue;
     const index = orders.findIndex((o) => String(o.id) === orderId);
     if (index >= 0 && orders[index].hour) continue;
-    if (detailReads >= 40) {
+    if (gaReads >= gaLimit || detailReads >= maxDetailReads) {
       partial = true;
       break;
     }
-    detailReads++;
-    try {
-      const full = await trayGet<{ Order: AttributedOrder }>(
-        `orders/${encodeURIComponent(orderId)}`,
-      );
-      if (String(full.Order?.id) !== orderId) {
-        partial = true;
-        continue;
-      }
-      if (index >= 0) orders[index] = full.Order;
-      else orders.push(full.Order);
-    } catch {
-      partial = true;
-    }
+    gaReads++;
+    const full = await readOrder(orderId);
+    if (!full) continue;
+    if (index >= 0) orders[index] = full;
+    else orders.push(full);
   }
   const gaReconciled = reconcileGaPurchases(ga.evidence, gaClicks, orders);
   gaMeta.ambiguous = gaReconciled.ambiguous;
@@ -449,16 +458,9 @@ export async function syncSales(userId?: string) {
       continue;
     checked++;
     if (!prior && !order.hour) {
-      if (detailReads >= 80) {
-        partial = true;
-        continue;
-      }
-      order = (
-        await trayGet<{ Order: AttributedOrder }>(
-          `orders/${encodeURIComponent(order.id)}`,
-        )
-      ).Order;
-      detailReads++;
+      const full = await readOrder(String(order.id));
+      if (!full) continue;
+      order = full;
     }
     if (
       !prior &&
@@ -502,7 +504,7 @@ export async function syncSales(userId?: string) {
     matched++;
   }
   const truncated =
-    list.truncated || missing.length > 40 || partial || ga.partial;
+    list.truncated || partial || ga.partial;
   const config: GrowthConfig = {
     syncedAt: new Date().toISOString(),
     truncated,

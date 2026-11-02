@@ -246,15 +246,17 @@ export default function TelegramDashboard() {
           </div>
         </div>
         <div className={s.headerActions}>
-          <button className={s.connection} onClick={() => go("community")}>
+          <button className={s.connection} aria-busy={!data} onClick={() => go("community")}>
             <span
               className={
                 data?.connection === "connected" ? s.greenDot : s.grayDot
               }
             />
-            {data?.connection === "connected"
-              ? "Telegram conectado"
-              : "Conectar Telegram"}
+            {!data
+              ? "Verificando conexão…"
+              : data.connection === "connected"
+                ? "Telegram conectado"
+                : "Conectar Telegram"}
           </button>
           <button className={s.primary} onClick={newLink} disabled={!data}>
             + Criar link rastreado

@@ -5,7 +5,8 @@ export const TRACKER_SOURCE =
 export const STOREFRONT_URL = "https://www.bfffitnessatacado.com.br/";
 const MAX_HTML_BYTES = 2 * 1024 * 1024;
 const JAVASCRIPT_TYPES = new Set([
-  "", "module", "text/javascript", "application/javascript",
+  // The tracker uses document.currentScript, which is unavailable in modules.
+  "", "text/javascript", "application/javascript",
   "text/ecmascript", "application/ecmascript",
 ]);
 

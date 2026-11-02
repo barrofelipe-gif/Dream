@@ -13,13 +13,13 @@
       record = { token: incoming, expires: Date.now() + 30 * 86400000 };
       // A verificação técnica não substitui uma atribuição real já salva.
       if (new URL(location.href).searchParams.get("bff_validation") !== "1") {
-        try { localStorage.setItem(storageKey, JSON.stringify(record)); } catch (_) { /* no storage still confirms this landing */ }
+        try { localStorage.setItem(storageKey, JSON.stringify(record)); } catch { /* no storage still confirms this landing */ }
       }
     } else {
-      try { record = JSON.parse(localStorage.getItem(storageKey) || "null"); } catch (_) { /* no attribution */ }
+      try { record = JSON.parse(localStorage.getItem(storageKey) || "null"); } catch { /* no attribution */ }
     }
     if (!record || record.expires < Date.now()) return;
-  } catch (_) { return; }
+  } catch { return; }
   async function confirm() {
     if (running || document.visibilityState === "hidden") return;
     running = true;
@@ -34,7 +34,7 @@
       var response = await fetch(endpoint, { method: "POST", credentials: "omit", mode: "cors", keepalive: true,
         headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: JSON.stringify({ token: record.token, session: sessionDigest }) });
       if (response.ok) sent = record.token + ":" + sessionDigest;
-    } catch (_) { /* Tracking failure never interrupts the store. */ }
+    } catch { /* Tracking failure never interrupts the store. */ }
     finally { running = false; }
   }
   document.documentElement.addEventListener("tray-session-loaded", confirm);

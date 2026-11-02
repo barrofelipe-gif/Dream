@@ -11,8 +11,8 @@ function loader(mocks = {}) {
   function load(file) {
     file = path.resolve(file);
     if (cache.has(file)) return cache.get(file).exports;
-    const module = { exports: {} };
-    cache.set(file, module);
+    const loaded = { exports: {} };
+    cache.set(file, loaded);
     const code = transformSync(readFileSync(file, "utf8"), {
       loader: "ts",
       format: "cjs",
@@ -32,10 +32,10 @@ function loader(mocks = {}) {
     }
     new Function("require", "module", "exports", code)(
       require,
-      module,
-      module.exports,
+      loaded,
+      loaded.exports,
     );
-    return module.exports;
+    return loaded.exports;
   }
   return load;
 }

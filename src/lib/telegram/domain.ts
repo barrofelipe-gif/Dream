@@ -85,6 +85,7 @@ export type Result = {
 export type Job = {
   id: string;
   source_id: number;
+  source_name?: string;
   target_id: number;
   state: string;
   total: number;
@@ -266,6 +267,7 @@ export function enqueue(
   const job: Job = {
     id: randomUUID(),
     source_id: sourceId,
+    source_name: data.sources.find((group) => group.id === sourceId)!.name,
     target_id: targetId,
     state: "queued",
     total: users.length,

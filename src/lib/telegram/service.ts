@@ -77,13 +77,51 @@ function recordError(row: Workspace, error: TelegramError) {
     row.authExpiresAt = null;
   }
 }
+type SessionUpdate = <T>(change: (current: Workspace) => T) => Promise<T>;
+function connectionStamp(row: Workspace) {
+  return {
+    token: row.busyToken,
+    until: row.busyUntil?.getTime() ?? null,
+    attempt: row.authAttempt,
+    state: row.authState,
+    account: row.parsed.account?.id ?? null,
+    credentials: row.credentialsEnc,
+    session: row.sessionEnc,
+  };
+}
+function sameConnection(row: Workspace, stamp: ReturnType<typeof connectionStamp>) {
+  const current = connectionStamp(row);
+  return Object.keys(stamp).every(
+    (key) => current[key as keyof typeof current] === stamp[key as keyof typeof stamp],
+  ) && (stamp.until === null || stamp.until > Date.now());
+}
 async function clientFor<T>(
   userId: string,
-  work: (driver: TelegramDriver, row: Workspace) => Promise<T>,
+  work: (driver: TelegramDriver, row: Workspace, update: SessionUpdate) => Promise<T>,
   required = true,
+  persistSession = true,
 ) {
   const { token, row } = await lease(userId);
   let driver: TelegramDriver | undefined;
+  let active = true;
+  let stamp: ReturnType<typeof connectionStamp> = { ...connectionStamp(row), token };
+  const update: SessionUpdate = async (change) => {
+    let next = stamp;
+    const result = await mutate(userId, (current) => {
+      if (!active || !sameConnection(current, stamp))
+        throw new TelegramError(
+          "busy",
+          "A conexão mudou ou a consulta terminou. Confira o estado antes de repetir.",
+          0,
+          409,
+        );
+      const value = change(current);
+      next = connectionStamp(current);
+      return value;
+    });
+    stamp = next;
+    return result;
+  };
   try {
     if (required) usable(row);
     const key = secret<Credentials>(row.credentialsEnc);
@@ -94,27 +132,21 @@ async function clientFor<T>(
       );
     driver = new TelegramDriver(key, secret<string>(row.sessionEnc) || "");
     await driver.connect(required);
-    const result = await deadline(work(driver, row));
-    const saved = driver.save();
-    await mutate(userId, (current) => {
-      if (
-        current.busyToken !== token ||
-        current.authAttempt !== row.authAttempt
-      )
-        throw new TelegramError(
-          "busy",
-          "A conexão mudou. Confira o estado antes de repetir.",
-          0,
-          409,
-        );
-      current.sessionEnc = seal(saved);
-    });
+    const result = await deadline(work(driver, row, update));
+    if (persistSession) {
+      const saved = driver.save();
+      await update((current) => { current.sessionEnc = seal(saved); });
+    }
     return result;
   } catch (error) {
+    active = false;
     const safe = mapError(error);
-    await mutate(userId, (current) => recordError(current, safe));
+    await mutate(userId, (current) => {
+      if (sameConnection(current, stamp)) recordError(current, safe);
+    });
     throw safe;
   } finally {
+    active = false;
     if (driver) await driver.close();
     await release(userId, token);
   }
@@ -149,6 +181,7 @@ export async function state(userId: string) {
             result.state = "uncertain";
             result.message =
               "Processamento interrompido. Confira no Telegram antes de repetir.";
+            result.updated_at = Date.now() / 1000;
           }
         job.state = "interrupted";
         job.message =
@@ -245,9 +278,9 @@ export async function begin(
   try {
     await clientFor(
       userId,
-      async (driver) => {
+      async (driver, _row, update) => {
         if (await driver.client.checkAuthorization()) {
-          await connected(userId, attempt, driver);
+          await connected(userId, attempt, driver, update);
           return;
         }
         const key = driver.credentials;
@@ -264,7 +297,7 @@ export async function begin(
             "login",
             "Confira a conexão pelo Telegram oficial antes de tentar novamente.",
           );
-        await mutate(userId, (row) => {
+        await update((row) => {
           if (row.authAttempt !== attempt)
             throw new TelegramError("cancelled", "Conexão cancelada.");
           row.authState = "code";
@@ -291,18 +324,46 @@ export async function connected(
   userId: string,
   attempt: string | null,
   driver: TelegramDriver,
+  update: SessionUpdate,
 ) {
-  const account = await driver.me();
-  await mutate(userId, (row) =>
-    finishConnection(row, attempt, account, driver.save()),
-  );
+  let adopted = false;
+  try {
+    const account = await driver.me();
+    await update((row) => {
+      if (["code", "password", "qr"].includes(row.authState) &&
+          (!row.authExpiresAt || row.authExpiresAt.getTime() < Date.now()))
+        throw new TelegramError("cancelled", "A conexão expirou. Inicie novamente.", 0, 409);
+      finishConnection(row, attempt, account, driver.save());
+    });
+    adopted = true;
+  } finally {
+    if (!adopted) await discardAuthorizedSession(userId, attempt, driver);
+  }
+}
+async function discardAuthorizedSession(userId: string, attempt: string | null, driver: TelegramDriver) {
+  try {
+    const saved = driver.save();
+    const retained = async () => {
+      const current = await load(userId);
+      // A pending old login stores its auth key before becoming authorized.
+      return secret<string>(current.sessionEnc) === saved &&
+        (current.authState === "connected" || current.authAttempt !== attempt);
+    };
+    // Another attempt may already be using this exact MTProto session.
+    if (await retained()) return;
+    if (driver.client.connected === false) await deadline(driver.connect(false), 5000);
+    if (await retained()) return;
+    await deadline(driver.client.logOut(), 5000);
+  } catch (error) {
+    console.warn("[telegram] sessão descartada: limpeza não confirmada", { code: mapError(error).code });
+  }
 }
 export async function restore(userId: string) {
   const row = await load(userId);
   idle(row.parsed);
   await clientFor(
     userId,
-    async (driver) => {
+    async (driver, _leased, update) => {
       if (!(await driver.client.checkAuthorization()))
         throw new TelegramError(
           "auth_required",
@@ -310,7 +371,7 @@ export async function restore(userId: string) {
           0,
           409,
         );
-      await connected(userId, row.authAttempt, driver);
+      await connected(userId, row.authAttempt, driver, update);
     },
     false,
   );
@@ -349,7 +410,7 @@ export async function verify(
     login = secret<Login>(row.loginEnc);
   await clientFor(
     userId,
-    async (driver) => {
+    async (driver, _row, update) => {
       try {
         if (password)
           await driver.client.signInWithPassword(driver.credentials, {
@@ -374,11 +435,11 @@ export async function verify(
               "Use uma conta Telegram já existente.",
             );
         }
-        await connected(userId, attempt, driver);
+        await connected(userId, attempt, driver, update);
       } catch (error) {
         const safe = mapError(error);
         if (safe.code !== "password_required") throw safe;
-        await mutate(userId, (current) => {
+        await update((current) => {
           if (current.authAttempt === attempt) {
             current.authState = "password";
             current.sessionEnc = seal(driver.save());
@@ -410,28 +471,31 @@ export async function cancel(userId: string) {
 export async function disconnect(userId: string) {
   const row = await load(userId);
   idle(row.parsed);
-  await clientFor(userId, async (driver) => {
+  await clientFor(userId, async (driver, _leased, update) => {
     await driver.client.logOut();
-  });
-  await mutate(userId, (current) => {
-    current.authState = "disconnected";
-    current.authAttempt = null;
-    current.authExpiresAt = null;
-    current.sessionEnc = null;
-    current.loginEnc = null;
-    current.parsed.groups = [];
-    current.parsed.sources = [];
-    current.parsed.targets = [];
-    current.parsed.account = undefined;
-    current.parsed.privacy = undefined;
-  });
+    await update((current) => {
+      current.authState = "disconnected";
+      current.authAttempt = null;
+      current.authExpiresAt = null;
+      current.sessionEnc = null;
+      current.loginEnc = null;
+      current.parsed.groups = [];
+      current.parsed.sources = [];
+      current.parsed.targets = [];
+      current.parsed.account = undefined;
+      current.parsed.privacy = undefined;
+      current.parsed.discovery = undefined;
+      current.parsed.authorizedIds = [];
+      for (const contact of current.parsed.contacts) contact.selected = false;
+    });
+  }, true, false);
   return { ok: true };
 }
 export async function groups(userId: string) {
-  return clientFor(userId, async (driver, row) => {
+  return clientFor(userId, async (driver, row, update) => {
     idle(row.parsed);
     const result = await driver.groups();
-    await mutate(userId, (current) => {
+    await update((current) => {
       current.parsed.groups = result;
     });
     return { groups: result };
@@ -439,11 +503,11 @@ export async function groups(userId: string) {
 }
 export async function discover(userId: string, input: Record<string, unknown>) {
   const query = groupSearch(input.query);
-  return clientFor(userId, async (driver, row) => {
+  return clientFor(userId, async (driver, row, update) => {
     idle(row.parsed);
     limits(row.parsed);
     const groups = await driver.searchGroups(query, input.include_channels === true);
-    await mutate(userId, current => { current.parsed.discovery = { groups, query: query.text, at: Date.now() }; });
+    await update(current => { current.parsed.discovery = { groups, query: query.text, at: Date.now() }; });
     return { query: query.text, groups };
   });
 }
@@ -469,7 +533,7 @@ export async function refreshProspect(userId: string, input: Record<string, unkn
   limits(workspace.parsed);
   const prospect = normalizeProspect(workspace.parsed.prospects?.find(p => p.id === id));
   if (!prospect) throw new TelegramError("input", "Salve o público antes de consultar novamente.", 0, 404);
-  return clientFor(userId, async (driver, row) => {
+  return clientFor(userId, async (driver, row, update) => {
     idle(row.parsed);
     limits(row.parsed);
     let live: Awaited<ReturnType<typeof driver.inspectPublicGroup>> | undefined;
@@ -479,9 +543,7 @@ export async function refreshProspect(userId: string, input: Record<string, unkn
     } catch (error) {
       failure = mapError(error);
     }
-    await mutate(userId, current => {
-      if (current.busyToken !== row.busyToken || current.authAttempt !== row.authAttempt)
-        throw new TelegramError("busy", "A conexão mudou. Confira o estado antes de repetir.", 0, 409);
+    await update(current => {
       // Uma remoção feita durante a consulta não pode ressuscitar o público.
       if (!current.parsed.prospects?.some(p => p.id === id))
         throw new TelegramError("input", "Este público não está mais na lista monitorada.", 0, 404);
@@ -497,7 +559,7 @@ export async function privacy(
   protect = false,
 ) {
   const id = numeric(groupId);
-  return clientFor(userId, async (driver, row) => {
+  return clientFor(userId, async (driver, row, update) => {
     idle(row.parsed);
     if (!row.parsed.groups.some((g) => g.id === id))
       throw new TelegramError(
@@ -505,7 +567,7 @@ export async function privacy(
         "Escolha um dos grupos da sua conta.",
       );
     const result = await (protect ? driver.protect(id) : driver.privacy(id));
-    await mutate(userId, (current) => {
+    await update((current) => {
       current.parsed.privacy = result;
       for (const group of current.parsed.groups)
         if (group.id === id) group.private = result.private;
@@ -525,7 +587,7 @@ export async function configure(
       "Escolha uma origem diferente do destino.",
     );
   idle((await load(userId)).parsed);
-  await clientFor(userId, async (driver, row) => {
+  await clientFor(userId, async (driver, row, update) => {
     idle(row.parsed);
     const groups = await driver.groups();
     const s = groups.find((g) => g.id === source),
@@ -541,7 +603,7 @@ export async function configure(
         "permission",
         "A comunidade de destino precisa ser privada.",
       );
-    await mutate(userId, (current) => {
+    await update((current) => {
       idle(current.parsed);
       current.parsed.sources = [s];
       current.parsed.targets = [t];
@@ -551,14 +613,12 @@ export async function configure(
   return { ok: true };
 }
 export async function collect(userId: string, input: Record<string, unknown>) {
-  return clientFor(userId, async (driver, row) => {
+  return clientFor(userId, async (driver, row, update) => {
     idle(row.parsed);
     limits(row.parsed);
     const ids = pair(row.parsed, input.source_id, input.target_id);
     const people = await driver.collect(ids.sourceId, ids.targetId);
-    const run = await mutate(userId, (current) => {
-      if (current.busyToken !== row.busyToken || current.authAttempt !== row.authAttempt)
-        throw new TelegramError("busy", "A conexão mudou. Confira o estado antes de repetir.", 0, 409);
+    const run = await update((current) => {
       return recordCollection(current.parsed, ids.sourceId, ids.targetId, people);
     });
     return { received: run.received, newContacts: run.newContacts, collectedAt: run.collectedAt };

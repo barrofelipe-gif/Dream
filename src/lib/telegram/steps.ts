@@ -177,6 +177,7 @@ export async function queueStep(
           if (r.job_id === jobId && r.state === "in_progress") {
             r.state = "uncertain";
             r.message = job.message;
+            r.updated_at = Date.now() / 1000;
           }
         recount(data, job);
         return null;
@@ -193,6 +194,7 @@ export async function queueStep(
         result.state = "revoked";
         result.message =
           "Participante fora da seleção. Nenhum convite enviado.";
+        result.updated_at = Date.now() / 1000;
         recount(data, job);
         return { skip: true } as const;
       }
@@ -231,6 +233,7 @@ export async function queueStep(
         result.state = "waiting";
         result.message =
           "Nenhum convite iniciado; operação pausada ou cancelada.";
+        result.updated_at = Date.now() / 1000;
         job.lease = undefined;
         job.lease_until = undefined;
         return null;
@@ -276,9 +279,16 @@ export async function queueStep(
   } catch (error) {
     const safe = mapError(error);
     if (safe.code === "busy" && !token) return true;
-    await mutate(userId, (row) => {
+    const handled = await mutate(userId, (row) => {
       const job = row.parsed.jobs.find((j) => j.id === jobId);
-      if (!job) return;
+      if (!job) return false;
+      // A worker rejected before lease acquisition cannot release another worker's job.
+      if ((row.busyToken && row.busyToken !== token) ||
+          (job.lease && job.lease !== token)) return false;
+      const ownsJob = !!token && job.lease === token;
+      if (!ownsJob && (!['queued', 'running'].includes(job.state) ||
+          row.parsed.results.some(r => r.job_id === jobId && r.state === "in_progress")))
+        return false;
       const cancelled = job.state === "cancelled";
       const result = row.parsed.results.find(
         (r) => r.job_id === jobId && r.user_id === selectedId,
@@ -308,9 +318,10 @@ export async function queueStep(
       job.lease = undefined;
       job.lease_until = undefined;
       recount(row.parsed, job);
+      return true;
     });
     console.info("[telegram] fila: ocorrência", { code: safe.code });
-    return safe.code === "privacy";
+    return handled && safe.code === "privacy";
   } finally {
     if (driver) await driver.close();
     if (token) await release(userId, token);

@@ -17,7 +17,7 @@
     <div class="intro"><div><p class="eyebrow">CONSULTA + INCLUSÃO</p><h1>Comunidade Telegram</h1><p>Organize participantes, revise a lista e acompanhe cada inclusão.</p></div><a class="button secondary" href="/api/telegram/export/results.csv">Exportar resultados</a></div>
     <div id="notice" role="status" aria-live="polite" hidden></div>
     <section class="panel setup-panel" aria-labelledby="connection-title">
-      <div class="section-heading"><div><p class="eyebrow">SUA CONTA + COMUNIDADE PRIVADA</p><h2 id="connection-title">Conecte seu Telegram</h2><p id="connection-summary">Carregando sua conexão…</p></div><span id="connection-badge" class="pill">Desconectado</span></div>
+      <div class="section-heading"><div><p class="eyebrow">SUA CONTA + COMUNIDADE PRIVADA</p><h2 id="connection-title">Conecte seu Telegram</h2><p id="connection-summary">Carregando sua conexão…</p></div><span id="connection-badge" class="pill">Verificando conexão…</span></div>
       <p id="connection-error" role="status" hidden></p>
       <div id="saved-session" class="setup-actions" hidden><button id="restore-session" disabled>Usar sessão salva</button><p class="hint">Confirma sua conta no Telegram sem solicitar outro código.</p></div>
       <aside id="app-setup-guide" class="app-setup-guide" aria-labelledby="app-setup-title" hidden>
@@ -42,7 +42,7 @@
           <p class="hint">Conclua essa etapa no site oficial. Se você já tiver um aplicativo cadastrado, use as chaves existentes.</p>
         </details>
       </aside>
-      <details id="connection-details"><summary id="connection-form-summary">Conectar minha conta</summary>
+      <details id="connection-details" hidden><summary id="connection-form-summary">Conectar minha conta</summary>
         <form id="connect-form" class="setup-form" autocomplete="off">
           <div id="api-fields" class="setup-grid"><label>API ID do aplicativo<input id="api-id" name="telegram_api_id" type="number" inputmode="numeric" min="1" max="2147483647" step="1" autocomplete="off" required></label><label>API Hash do aplicativo<input id="api-hash" name="telegram_api_hash" type="password" minlength="32" maxlength="32" pattern="[0-9a-fA-F]{32}" autocomplete="new-password" required></label></div>
           <label id="saved-credentials-label" class="check-label" hidden><input id="use-saved-credentials" type="checkbox"> Usar as chaves já salvas no app</label>

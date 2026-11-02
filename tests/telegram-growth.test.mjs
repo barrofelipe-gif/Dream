@@ -11,8 +11,8 @@ function loader(mocks = {}) {
   function load(file) {
     file = path.resolve(file);
     if (cache.has(file)) return cache.get(file).exports;
-    const module = { exports: {} };
-    cache.set(file, module);
+    const loaded = { exports: {} };
+    cache.set(file, loaded);
     const code = transformSync(readFileSync(file, "utf8"), {
       loader: "ts",
       format: "cjs",
@@ -32,11 +32,11 @@ function loader(mocks = {}) {
     }
     new Function("require", "module", "exports", "fetch", code)(
       localRequire,
-      module,
-      module.exports,
+      loaded,
+      loaded.exports,
       mocks.$fetch || globalThis.fetch,
     );
-    return module.exports;
+    return loaded.exports;
   }
   return load;
 }
@@ -886,4 +886,138 @@ test("sync confirms a paid GA4-referenced order without a native session, dedupl
   await service.syncSales("owner");
   assert.equal(conversions.get("1270558:123").status, "cancelled");
   assert.equal(detailRequests, 3); // one detail read per sync, including old-order review
+});
+
+function boundedSyncFixture({ historical = 0, ga = 0, native = 0, fail = [], invalid = [] } = {}) {
+  const gaModule = loader({ googleapis: { google: {} } })("src/lib/telegram/ga-attribution.ts");
+  const placedAt = new Date(Date.now() - 3600000);
+  const older = new Date(placedAt.getTime() - 40 * 86400000);
+  const local = (date) => new Date(date.getTime() - 3 * 3600000).toISOString();
+  const orderAt = (id, date, extra = {}) => ({
+    id, date: local(date).slice(0, 10), hour: local(date).slice(11, 19),
+    total: "10.00", has_payment: "1", status: "PAGO", ...extra,
+  });
+  const conversions = new Map(), fullOrders = new Map(), listedOrders = [];
+  const gaClicks = [], nativeClicks = [], evidence = [], calls = [], writes = [];
+  const savedConfig = {};
+  for (let i = 0; i < historical; i++) {
+    const id = String(1000 + i);
+    fullOrders.set(id, orderAt(id, older));
+    conversions.set(`1270558:${id}`, {
+      orderId: id, orderKey: `1270558:${id}`, clickId: `old-click-${i}`,
+      amountCents: 1000, status: "paid", placedAt: older, checkedAt: older,
+    });
+  }
+  const addListed = (order) => {
+    fullOrders.set(order.id, order);
+    const stub = { ...order };
+    delete stub.hour;
+    listedOrders.push(stub);
+  };
+  for (let i = 0; i < ga; i++) {
+    const orderId = String(2000 + i);
+    const click = {
+      id: `89cf5990-82fb-4437-aef9-${String(i + 1).padStart(12, "0")}`,
+      linkId: "ga-link", link: { slug: "abcdefgh1234" },
+      createdAt: new Date(placedAt.getTime() - 3600000),
+    };
+    gaClicks.push(click);
+    evidence.push({ orderId, clickId: click.id, slug: click.link.slug,
+      purchaseMinute: new Date(Math.floor(placedAt.getTime() / 60000) * 60000) });
+    addListed(orderAt(orderId, placedAt));
+  }
+  for (let i = 0; i < native; i++) {
+    const session = `store-session-${i}`;
+    nativeClicks.push({
+      id: `native-click-${i}`, sessionHash: domain.hash(`session:${domain.digest(session)}`),
+      createdAt: new Date(placedAt.getTime() - 3600000),
+      visitedAt: new Date(placedAt.getTime() - 1800000),
+    });
+    addListed(orderAt(String(3000 + i), placedAt, { session_id: session }));
+  }
+  const prisma = {
+    $queryRaw: async () => [1, 2, 3].map(() => ({ safe: true })),
+    trayConnection: { findFirst: async () => ({ storeId: "1270558" }) },
+    telegramGrowthClick: { findMany: async ({ where }) => where.id ? gaClicks : nativeClicks },
+    telegramGrowthConversion: {
+      findMany: async () => [...conversions.values()].sort((a, b) => a.checkedAt - b.checkedAt),
+      upsert: async ({ where, create, update }) => {
+        writes.push(where.orderKey);
+        const prior = conversions.get(where.orderKey);
+        conversions.set(where.orderKey, prior ? { ...prior, ...update } : create);
+      },
+    },
+    telegramGrowthLink: { findMany: async () => [{ userId: "owner" }] },
+  };
+  const growth = loader({
+    "@/lib/prisma": { prisma },
+    "@/lib/tray": { trayGet: async (resource) => {
+      const id = resource.split("/")[1];
+      calls.push(id);
+      if (fail.includes(id)) throw new Error("Isolated order read failed");
+      if (invalid.includes(id)) return { Order: { ...fullOrders.get(id), id: "other-order" } };
+      assert.ok(fullOrders.has(id), "tests never request a live order");
+      return { Order: fullOrders.get(id) };
+    } },
+    "@/lib/traySales": { fetchOrdersSince: async () => ({ orders: listedOrders.map((order) => ({ ...order })), truncated: false }) },
+    "./ga-attribution": { ...gaModule, readGaPurchases: async () => ({
+      status: "ready", configured: true, connected: true, checkedAt: new Date().toISOString(),
+      timeZone: "America/Rio_Branco", partial: false, evidence, linkOnly: 0, invalid: 0,
+    }) },
+    "./store": { mutate: async (_id, fn) => fn({ parsed: savedConfig }) },
+    "./access": {},
+  })("src/lib/telegram/growth.ts");
+  return { growth, conversions, savedConfig, calls, writes };
+}
+
+test("a failed or wrong-identity historical read preserves its conversion and does not block recent paid orders", async () => {
+  const fixture = boundedSyncFixture({ historical: 2, native: 1, fail: ["1000"], invalid: ["1001"] });
+  const before = structuredClone([...fixture.conversions.entries()]);
+  const result = await fixture.growth.syncSales("owner");
+  for (const [key, value] of before) assert.deepEqual(fixture.conversions.get(key), value);
+  assert.equal(fixture.conversions.get("1270558:3000").status, "paid");
+  assert.equal(fixture.conversions.get("1270558:3000").amountCents, 1000);
+  assert.deepEqual(fixture.writes, ["1270558:3000"]);
+  assert.equal(result.truncated, true);
+  assert.equal(fixture.savedConfig.growth.truncated, true);
+  assert.ok(fixture.savedConfig.growth.syncedAt);
+});
+
+test("forty historical conversions cannot starve new GA and native paid attribution", async () => {
+  const fixture = boundedSyncFixture({ historical: 40, ga: 1, native: 1 });
+  const result = await fixture.growth.syncSales("owner");
+  assert.equal(fixture.conversions.get("1270558:2000").status, "paid");
+  assert.equal(fixture.conversions.get("1270558:3000").status, "paid");
+  assert.equal(fixture.calls.filter((id) => id.startsWith("1")).length, 20);
+  assert.equal(fixture.savedConfig.growth.gaAttribution.matched, 1);
+  assert.equal(result.truncated, true, "remaining historical reviews are explicitly partial");
+});
+
+test("historical, GA and native detail requests share a strict total budget while each new path can progress", async () => {
+  const fixture = boundedSyncFixture({ historical: 50, ga: 30, native: 60 });
+  const result = await fixture.growth.syncSales("owner");
+  assert.equal(fixture.calls.length, 80);
+  assert.equal(new Set(fixture.calls).size, 80, "no order is fetched twice in one sync");
+  assert.equal(fixture.calls.filter((id) => id.startsWith("1")).length, 20);
+  assert.equal(fixture.calls.filter((id) => id.startsWith("2")).length, 20);
+  assert.equal(fixture.calls.filter((id) => id.startsWith("3")).length, 40);
+  assert.equal(fixture.writes.filter((key) => key.startsWith("1270558:2")).length, 20);
+  assert.equal(fixture.writes.filter((key) => key.startsWith("1270558:3")).length, 40);
+  assert.equal(result.truncated, true);
+  assert.equal(fixture.savedConfig.growth.truncated, true);
+});
+
+test("failed detail attempts count against the same budget and do not abort the rest of the sync", async () => {
+  const fail = [
+    ...Array.from({ length: 50 }, (_, i) => String(1000 + i)),
+    ...Array.from({ length: 30 }, (_, i) => String(2000 + i)),
+    ...Array.from({ length: 60 }, (_, i) => String(3000 + i)),
+  ];
+  const fixture = boundedSyncFixture({ historical: 50, ga: 30, native: 60, fail });
+  const result = await fixture.growth.syncSales("owner");
+  assert.equal(fixture.calls.length, 80);
+  assert.equal(fixture.writes.length, 0);
+  assert.equal(fixture.conversions.size, 50, "all existing financial records remain unchanged");
+  assert.equal(result.truncated, true);
+  assert.ok(fixture.savedConfig.growth.syncedAt);
 });
