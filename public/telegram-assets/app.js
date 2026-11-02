@@ -101,6 +101,7 @@ function render() {
   setHTML('job-summary',job ? `${pill(job.state)} <b>${job.processed} de ${job.total} processado(s)</b> · ${job.success} participação(ões) confirmada(s) · ${job.failed} ocorrência(s)<div class="progress"><progress max="${job.total}" value="${job.processed}" aria-label="Progresso da operação"></progress></div><span>${escapeHTML(job.message)}</span>${job.not_before>Date.now()/1000?`<p class="hint">Retomada disponível após ${escapeHTML(new Date(job.not_before*1000).toLocaleString('pt-BR'))}. A fila não retoma sozinha.</p>`:''}` : 'Sua próxima operação aparecerá aqui.');
   setHTML('results',results.map(r=>`<tr><td>${escapeHTML(r.name)}<small>${r.user_id}</small></td><td>${pill(r.state)}</td><td>${escapeHTML(r.message)}</td></tr>`).join(''));
   if (typeof renderSetup==='function') renderSetup(active);
+  if (typeof renderDiscovery==='function') renderDiscovery(active,limited);
 }
 $('collect').addEventListener('click',()=>act(async()=>{const r=await request('/api/collect',pair());notice(`${r.received} participante(s) encontrado(s). Revise a lista abaixo.`);}));
 $('source').addEventListener('change',render); $('target').addEventListener('change',render); $('search').addEventListener('input',render);

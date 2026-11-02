@@ -10,6 +10,41 @@ export class TelegramError extends Error {
     super(message);
   }
 }
+export type GroupSearch = { text: string; username?: string };
+export type PublicGroup = {
+  id: number;
+  name: string;
+  username: string;
+  url: string;
+  members: number | null;
+  sponsored: boolean;
+};
+export function groupSearch(value: unknown): GroupSearch {
+  if (typeof value !== "string" || value.length > 200)
+    throw new TelegramError(
+      "input",
+      "Pesquise por nome ou assunto, ou informe um @usuário ou link público t.me.",
+    );
+  const text = value.trim().replace(/\s+/g, " ");
+  if (
+    text.length < 3 ||
+    text.length > 100 ||
+    /[\u0000-\u001f\u007f-\u009f]/.test(text)
+  )
+    throw new TelegramError(
+      "input",
+      "Use entre 3 e 100 caracteres na pesquisa.",
+    );
+  const handle = /^@([A-Za-z0-9_]{3,32})$/.exec(text);
+  const link = /^(?:https:\/\/)?t\.me\/([A-Za-z0-9_]{3,32})\/?$/i.exec(text);
+  if (handle || link) return { text, username: (handle || link)![1] };
+  if (/@|:\/\/|\bt\.me\//i.test(text))
+    throw new TelegramError(
+      "input",
+      "Use o @usuário ou um link público https://t.me/nomedogrupo. Convites privados não entram nesta busca.",
+    );
+  return { text };
+}
 export type Group = {
   id: number;
   name: string;

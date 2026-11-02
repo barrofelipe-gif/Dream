@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { runInNewContext } from "node:vm";
+import { runInNewContext, createContext, runInContext } from "node:vm";
 import { transformSync } from "esbuild";
 
 // Execute the actual TypeScript modules with explicit, isolated boundary fakes.
@@ -44,6 +44,35 @@ function loader(mocks = {}) {
   return load;
 }
 const domain = loader()("src/lib/telegram/domain.ts");
+test("group search accepts topics, exact handles and public links", () => {
+  assert.deepEqual(domain.groupSearch("  biquíni   atacado  "), {
+    text: "biquíni atacado",
+  });
+  assert.equal(
+    domain.groupSearch("@fitness_atacado").username,
+    "fitness_atacado",
+  );
+  assert.equal(
+    domain.groupSearch("https://t.me/fitness_atacado/").username,
+    "fitness_atacado",
+  );
+  assert.equal(domain.groupSearch("t.me/moda_praia").username, "moda_praia");
+});
+test("group search rejects private invites, malformed links and excessive input", () => {
+  for (const input of [
+    null,
+    123,
+    "ab",
+    "a".repeat(101),
+    "https://t.me/+private",
+    "https://t.me/joinchat/private",
+    "https://evil.test/group",
+    "https://t.me/name?next=evil",
+    "@<script>",
+    "abc\u0000def",
+  ])
+    assert.throws(() => domain.groupSearch(input));
+});
 test("slow cloud responses render and polling does not overlap requests", async () => {
   const elements = new Map(),
     timers = new Map();
@@ -615,4 +644,312 @@ test("failed workflow start returns resumed job to paused instead of leaving it 
     (e) => e.code === "workflow",
   );
   assert.equal(job.state, "paused");
+});
+
+function searchDriver() {
+  const { Api } = native("teleproto"),
+    bigInt = native("big-integer");
+  const driver = loader()("src/lib/telegram/driver.ts");
+  const instance = new driver.TelegramDriver({
+    apiId: 1,
+    apiHash: "a".repeat(32),
+  });
+  const channel = (id, extra = {}) =>
+    new Api.Channel({
+      id: bigInt(id),
+      accessHash: bigInt(987654321),
+      title: "Grupo " + id,
+      username: "grupo_" + id,
+      photo: new Api.ChatPhotoEmpty(),
+      date: 0,
+      megagroup: true,
+      left: true,
+      ...extra,
+    });
+  const peer = (id) => new Api.PeerChannel({ channelId: bigInt(id) });
+  return { Api, instance, channel, peer, driver, bigInt };
+}
+test("public discovery returns only valid public groups, without membership changes or secrets", async () => {
+  const { Api, instance, channel, peer } = searchDriver();
+  const calls = [];
+  const chats = [
+    channel(1, { participantsCount: 123 }),
+    channel(2, { username: undefined }),
+    channel(3, { broadcast: true, megagroup: false }),
+    channel(4, { scam: true }),
+    channel(5, { username: "bad/username" }),
+    channel(6, {
+      username: undefined,
+      usernames: [new Api.Username({ username: "collectible", active: true })],
+    }),
+  ];
+  instance.client.invoke = async (request) => {
+    calls.push(request);
+    if (request instanceof Api.contacts.Search)
+      return new Api.contacts.Found({
+        myResults: [],
+        results: [
+          ...chats.map((_, i) => peer(i + 1)),
+          peer(1),
+          new Api.PeerUser({ userId: native("big-integer")(99) }),
+        ],
+        chats,
+        users: [],
+      });
+    if (request instanceof Api.contacts.GetSponsoredPeers)
+      return new Api.contacts.SponsoredPeersEmpty();
+    throw new Error("Unexpected mutating call");
+  };
+  const groups = await instance.searchGroups(
+    domain.groupSearch("fitness atacado"),
+  );
+  assert.deepEqual(
+    groups.map((g) => g.username),
+    ["grupo_1", "collectible"],
+  );
+  assert.equal(groups[0].members, 123);
+  assert.equal(groups[1].members, null);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].limit, 30);
+  assert.ok(!JSON.stringify(groups).includes("accessHash"));
+  assert.ok(!JSON.stringify(groups).includes("987654321"));
+  await instance.close();
+});
+test("discovery keeps Telegram result order and labels sponsored groups", async () => {
+  const { Api, instance, channel, peer } = searchDriver();
+  instance.client.invoke = async (request) =>
+    request instanceof Api.contacts.Search
+      ? new Api.contacts.Found({
+          myResults: [peer(1)],
+          results: [peer(3), peer(1)],
+          chats: [channel(1), channel(3)],
+          users: [],
+        })
+      : new Api.contacts.SponsoredPeers({
+          peers: [
+            new Api.SponsoredPeer({
+              randomId: Buffer.from("fake"),
+              peer: peer(2),
+            }),
+          ],
+          chats: [channel(2)],
+          users: [],
+        });
+  const groups = await instance.searchGroups({ text: "atacado" });
+  assert.deepEqual(
+    groups.map((g) => g.username),
+    ["grupo_1", "grupo_2", "grupo_3"],
+  );
+  assert.deepEqual(
+    groups.map((g) => g.sponsored),
+    [false, true, false],
+  );
+  await instance.close();
+});
+test("exact lookup does not return auxiliary chats or turn users and channels into groups", async () => {
+  const { Api, instance, channel, peer } = searchDriver();
+  let calls = 0;
+  instance.client.invoke = async (request) => {
+    calls++;
+    assert.ok(request instanceof Api.contacts.ResolveUsername);
+    assert.equal(request.username, "grupo_exato");
+    return new Api.contacts.ResolvedPeer({
+      peer: peer(2),
+      chats: [channel(1), channel(2)],
+      users: [],
+    });
+  };
+  assert.equal(
+    (await instance.searchGroups(domain.groupSearch("@grupo_exato")))[0]
+      .username,
+    "grupo_2",
+  );
+  assert.equal(calls, 1);
+  instance.client.invoke = async () =>
+    new Api.contacts.ResolvedPeer({
+      peer: new Api.PeerUser({ userId: native("big-integer")(2) }),
+      chats: [channel(2)],
+      users: [],
+    });
+  assert.deepEqual(
+    await instance.searchGroups({ text: "@user", username: "user" }),
+    [],
+  );
+  await instance.close();
+});
+test("discovery refuses a disconnected session before constructing a Telegram client", async () => {
+  const row = {
+    parsed: domain.initialData(),
+    authState: "disconnected",
+    sessionEnc: null,
+    credentialsEnc: null,
+  };
+  let constructed = 0,
+    released = 0;
+  const service = loader({
+    "./domain": domain,
+    "./access": { csrf: () => "" },
+    "./driver": {
+      TelegramDriver: class {
+        constructor() {
+          constructed++;
+        }
+      },
+      mapError: (e) => e,
+    },
+    "./store": {
+      lease: async () => ({ token: "token", row }),
+      mutate: async (_id, fn) => fn(row),
+      release: async () => {
+        released++;
+      },
+    },
+    "workflow/api": { start: async () => {} },
+    "@/workflows/telegram": {},
+  })("src/lib/telegram/service.ts");
+  await assert.rejects(
+    service.discover("owner", { query: "fitness atacado" }),
+    (e) => e.code === "auth_required",
+  );
+  assert.equal(constructed, 0);
+  assert.equal(released, 1);
+});
+function discoveryUI(connected = true) {
+  const elements = new Map(),
+    requests = [];
+  const getElementById = (id) => {
+    if (!elements.has(id))
+      elements.set(id, {
+        value: "",
+        dataset: {},
+        open: false,
+        listeners: {},
+        textContent: "",
+        innerHTML: "",
+        addEventListener(name, fn) {
+          this.listeners[name] = fn;
+        },
+        setAttribute() {},
+        focus() {},
+        reportValidity() {
+          return true;
+        },
+      });
+    return elements.get(id);
+  };
+  const d = domain.initialData();
+  const snapshot = {
+    ...domain.publicSnapshot(d),
+    csrf_token: "TEST-TOKEN",
+    sources: [],
+    targets: [],
+    mode: "live",
+    connection: {
+      state: connected ? "connected" : "disconnected",
+      account: { id: 1 },
+      configured: false,
+    },
+  };
+  const response = (body) => ({
+    ok: true,
+    redirected: false,
+    json: async () => body,
+  });
+  let resolveSearch;
+  const context = createContext({
+    document: { hidden: false, getElementById, querySelectorAll: () => [] },
+    AbortController,
+    URL,
+    setTimeout: () => 1,
+    clearTimeout() {},
+    fetch: async (url, options) => {
+      requests.push({ url, options });
+      if (url.endsWith("/state")) return response(snapshot);
+      return new Promise((resolve) => {
+        resolveSearch = (body) => resolve(response(body));
+      });
+    },
+  });
+  runInContext(readFileSync("public/telegram-assets/app.js", "utf8"), context);
+  runInContext(
+    readFileSync("public/telegram-assets/discovery.js", "utf8"),
+    context,
+  );
+  return {
+    elements,
+    getElementById,
+    requests,
+    resolve: (body) => resolveSearch(body),
+    context,
+    drain: async () => {
+      for (let i = 0; i < 16; i++) await Promise.resolve();
+    },
+  };
+}
+test("discovery UI requires connection and never sends a search while disconnected", async () => {
+  const ui = discoveryUI(false);
+  await ui.drain();
+  assert.equal(ui.getElementById("discovery-submit").disabled, true);
+  await ui
+    .getElementById("discovery-form")
+    .listeners.submit({ preventDefault() {} });
+  assert.equal(ui.requests.length, 1);
+});
+test("discovery UI shows real response, escapes names and builds only Telegram links", async () => {
+  const ui = discoveryUI();
+  await ui.drain();
+  ui.getElementById("discovery-query").value = "fitness atacado";
+  const pending = ui
+    .getElementById("discovery-form")
+    .listeners.submit({ preventDefault() {} });
+  await ui.drain();
+  assert.equal(ui.getElementById("collect").disabled, true);
+  assert.equal(ui.requests[1].url, "/api/telegram/discover");
+  assert.equal(ui.requests[1].options.headers["X-CSRF-Token"], "TEST-TOKEN");
+  ui.resolve({
+    query: "fitness atacado",
+    groups: [
+      {
+        name: "<img src=x onerror=evil()>",
+        username: "fitness_atacado",
+        members: 200,
+        url: "javascript:evil()",
+      },
+      { name: "Invalid", username: "bad/<script>", members: 2 },
+    ],
+  });
+  await pending;
+  const html = ui.getElementById("discovery-results").innerHTML;
+  assert.ok(html.includes("&lt;img"));
+  assert.ok(!html.includes("<img"));
+  assert.ok(!html.includes("javascript:"));
+  assert.ok(html.includes('href="https://t.me/fitness_atacado"'));
+  assert.ok(!html.includes("bad/"));
+  assert.equal(ui.getElementById("discovery-submit").disabled, false);
+});
+test("discovery UI renders empty results honestly and discards results after account change", async () => {
+  const ui = discoveryUI();
+  await ui.drain();
+  ui.getElementById("discovery-query").value = "biquíni atacado";
+  let pending = ui
+    .getElementById("discovery-form")
+    .listeners.submit({ preventDefault() {} });
+  await ui.drain();
+  ui.resolve({ query: "biquíni atacado", groups: [] });
+  await pending;
+  assert.match(
+    ui.getElementById("discovery-status").textContent,
+    /Nenhum grupo público/,
+  );
+  pending = ui
+    .getElementById("discovery-form")
+    .listeners.submit({ preventDefault() {} });
+  await ui.drain();
+  runInContext("state.connection.account.id=2;render();", ui.context);
+  ui.resolve({
+    query: "old",
+    groups: [{ name: "old", username: "old_group", members: 1 }],
+  });
+  await pending;
+  assert.equal(ui.getElementById("discovery-results").innerHTML, "");
 });

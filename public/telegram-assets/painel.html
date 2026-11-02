@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/telegram-assets/setup.css">
   <script src="/telegram-assets/app.js" defer></script>
   <script src="/telegram-assets/setup.js" defer></script>
+  <script src="/telegram-assets/discovery.js" defer></script>
   <script src="/telegram-assets/frame.js" defer></script>
 </head>
 <body>
@@ -47,6 +48,20 @@
         <p class="hint">Até 500 participantes neste piloto. Informe somente quem autorizou. Depois registre a referência da autorização para o destino na lista abaixo.</p>
         <div class="setup-actions"><button id="activate-live" disabled>Salvar grupos e usar conexão real</button><span id="live-config-hint" class="hint"></span></div>
       </div>
+    </section>
+    <section class="panel discovery-panel" aria-labelledby="discovery-title">
+      <p class="eyebrow">ENCONTRE SUA ÁREA DE INTERESSE</p>
+      <h2 id="discovery-title">Pesquisar grupos públicos</h2>
+      <p>Procure por assunto, nome, @usuário ou link público t.me. Abra o resultado no Telegram para avaliar o grupo e entrar.</p>
+      <form id="discovery-form" class="discovery-form" autocomplete="off">
+        <label for="discovery-query">O que você quer encontrar?</label>
+        <div class="discovery-controls"><input id="discovery-query" name="telegram_group_search" type="search" minlength="3" maxlength="100" placeholder="Ex.: roupa fitness no atacado" required><button id="discovery-submit" type="submit" disabled>Pesquisar grupos</button></div>
+      </form>
+      <div class="discovery-examples" aria-label="Sugestões de pesquisa"><span>Experimente:</span><button type="button" class="secondary" data-discovery-term="fitness atacado">Fitness no atacado</button><button type="button" class="secondary" data-discovery-term="biquíni atacado">Biquíni no atacado</button><button type="button" class="secondary" data-discovery-term="moda praia atacado">Moda praia no atacado</button></div>
+      <p id="discovery-hint" class="hint">Conecte sua conta acima para pesquisar no Telegram.</p>
+      <p id="discovery-status" role="status" aria-live="polite"></p>
+      <div id="discovery-results" class="discovery-results" aria-busy="false"></div>
+      <p class="hint">A busca mostra os grupos públicos retornados pelo Telegram e pode trazer poucos resultados. Tente termos curtos ou o @usuário exato. Grupos privados por convite não aparecem aqui. Para consultar participantes no painel, use uma origem que você administra e as autorizações da operação.</p>
     </section>
     <section class="metrics" aria-label="Resumo da operação">
       <article><span>Na lista</span><strong id="count-total">0</strong><small>Participantes únicos</small></article>

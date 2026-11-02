@@ -85,7 +85,8 @@ export async function POST(request: Request, context: Context) {
     const data = await body(request);
     const route = "/" + (await context.params).path.join("/");
     let result: unknown;
-    if (route === "/connection/qr")
+    if (route === "/discover") result = await telegram.discover(userId, data);
+    else if (route === "/connection/qr")
       result = await telegram.begin(userId, data, true);
     else if (route === "/connection/start")
       result = await telegram.begin(userId, data, false);

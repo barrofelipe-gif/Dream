@@ -3,7 +3,14 @@ import { TelegramClient, Api, utils } from "teleproto";
 import { StringSession } from "teleproto/sessions";
 import { Logger } from "teleproto/extensions";
 import bigInt from "big-integer";
-import { TelegramError, type Group, type Person, type Privacy } from "./domain";
+import {
+  TelegramError,
+  type Group,
+  type Person,
+  type Privacy,
+  type GroupSearch,
+  type PublicGroup,
+} from "./domain";
 
 export type Credentials = { apiId: number; apiHash: string };
 class QuietLogger extends Logger {
@@ -34,6 +41,18 @@ export function mapError(error: unknown): TelegramError {
     name?: string;
   };
   const code = e?.errorMessage || "";
+  if (/QUERY_TOO_SHORT|SEARCH_QUERY_EMPTY/.test(code))
+    return new TelegramError(
+      "input",
+      "Tente uma pesquisa mais específica, com pelo menos 3 caracteres.",
+    );
+  if (/USERNAME_INVALID|USERNAME_NOT_OCCUPIED/.test(code))
+    return new TelegramError(
+      "group_not_found",
+      "Não encontramos um grupo público com esse @usuário. Confira o nome ou pesquise por assunto.",
+      0,
+      404,
+    );
   if (/FLOOD_WAIT|SLOWMODE_WAIT/.test(code) || e?.seconds)
     return new TelegramError(
       "flood_wait",
@@ -220,6 +239,82 @@ export class TelegramDriver {
       if (e.left || (e instanceof Api.Chat && e.deactivated)) return [];
       return [this.groupInfo(e)];
     });
+  }
+  publicGroup(
+    entity: Api.TypeChat,
+    sponsored = false,
+  ): PublicGroup | undefined {
+    if (
+      !(entity instanceof Api.Channel) ||
+      !entity.megagroup ||
+      entity.broadcast ||
+      entity.scam ||
+      entity.fake
+    )
+      return;
+    const username =
+      entity.username || entity.usernames?.find((u) => u.active)?.username;
+    const id = Number(utils.getPeerId(entity));
+    if (
+      !username ||
+      !/^[A-Za-z0-9_]{3,32}$/.test(username) ||
+      !Number.isSafeInteger(id)
+    )
+      return;
+    const count = entity.participantsCount;
+    return {
+      id,
+      name: entity.title.slice(0, 200),
+      username,
+      url: `https://t.me/${username}`,
+      members:
+        typeof count === "number" && Number.isSafeInteger(count) && count >= 0
+          ? count
+          : null,
+      sponsored,
+    };
+  }
+  async searchGroups(query: GroupSearch): Promise<PublicGroup[]> {
+    if (query.username) {
+      const resolved = await this.client.invoke(
+        new Api.contacts.ResolveUsername({ username: query.username }),
+      );
+      if (!(resolved.peer instanceof Api.PeerChannel)) return [];
+      const channelId = resolved.peer.channelId;
+      const entity = resolved.chats.find(
+        (c) => c instanceof Api.Channel && c.id.equals(channelId),
+      );
+      const group = entity && this.publicGroup(entity);
+      return group ? [group] : [];
+    }
+    const found = await this.client.invoke(
+      new Api.contacts.Search({ q: query.text, limit: 30 }),
+    );
+    const ads = await this.client.invoke(
+      new Api.contacts.GetSponsoredPeers({ q: query.text }),
+    );
+    const sponsored =
+      ads instanceof Api.contacts.SponsoredPeers ? ads : undefined;
+    const chats = [...found.chats, ...(sponsored?.chats || [])];
+    const results: PublicGroup[] = [],
+      seen = new Set<number>();
+    const add = (peers: Api.TypePeer[], isAd: boolean) => {
+      for (const peer of peers) {
+        if (!(peer instanceof Api.PeerChannel)) continue;
+        const entity = chats.find(
+          (c) => c instanceof Api.Channel && c.id.equals(peer.channelId),
+        );
+        const group = entity && this.publicGroup(entity, isAd);
+        if (group && !seen.has(group.id)) {
+          seen.add(group.id);
+          results.push(group);
+        }
+      }
+    };
+    add(found.myResults, false);
+    add(sponsored?.peers.map((p) => p.peer) || [], true);
+    add(found.results, false);
+    return results.slice(0, 30);
   }
   async group(id: number, invite = false) {
     const dialogs = await this.client.getDialogs({});

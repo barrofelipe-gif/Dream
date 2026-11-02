@@ -33,6 +33,7 @@ import {
   publicSnapshot,
   recount,
   TelegramError,
+  groupSearch,
 } from "./domain";
 import { connectTelegramQR, runTelegramQueue } from "@/workflows/telegram";
 
@@ -434,6 +435,14 @@ export async function groups(userId: string) {
       current.parsed.groups = result;
     });
     return { groups: result };
+  });
+}
+export async function discover(userId: string, input: Record<string, unknown>) {
+  const query = groupSearch(input.query);
+  return clientFor(userId, async (driver, row) => {
+    idle(row.parsed);
+    limits(row.parsed);
+    return { query: query.text, groups: await driver.searchGroups(query) };
   });
 }
 export async function privacy(
