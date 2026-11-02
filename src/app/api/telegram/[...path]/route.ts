@@ -16,7 +16,21 @@ const headers = {
 type Context = { params: Promise<{ path: string[] }> };
 function failure(error: unknown) {
   const safe = error instanceof TelegramError ? error : mapError(error);
-  console.warn("[telegram] api", { code: safe.code });
+  const diagnostic = error as {
+    code?: unknown;
+    name?: unknown;
+    meta?: { code?: unknown };
+  };
+  console.warn("[telegram] api", {
+    code: safe.code,
+    kind: typeof diagnostic?.name === "string" ? diagnostic.name : undefined,
+    database:
+      typeof diagnostic?.code === "string" ? diagnostic.code : undefined,
+    sqlstate:
+      typeof diagnostic?.meta?.code === "string"
+        ? diagnostic.meta.code
+        : undefined,
+  });
   return Response.json(
     { error: safe.message, code: safe.code },
     { status: safe.status, headers },

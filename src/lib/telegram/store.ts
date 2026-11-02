@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import type { Prisma, TelegramWorkspace } from "@prisma/client";
+import { Prisma, type TelegramWorkspace } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt } from "@/lib/crypto";
 import { initialData, TelegramError, type Data } from "./domain";
@@ -39,7 +39,15 @@ export async function mutate<T>(
   await load(userId);
   return prisma.$transaction(
     async (tx) => {
-      await tx.$queryRaw`SELECT "userId" FROM "TelegramWorkspace" WHERE "userId"=${userId} FOR UPDATE`;
+      const schema =
+        new URL(process.env.DATABASE_URL!).searchParams.get("schema") ||
+        "public";
+      const table = Prisma.raw(
+        '"' + schema.replaceAll('"', '""') + '"."TelegramWorkspace"',
+      );
+      await tx.$queryRaw(
+        Prisma.sql`SELECT "userId" FROM ${table} WHERE "userId"=${userId} FOR UPDATE`,
+      );
       const row = await tx.telegramWorkspace.findUniqueOrThrow({
         where: { userId },
       });
