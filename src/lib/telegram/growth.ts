@@ -6,7 +6,13 @@ import { fetchOrdersSince, type TraySaleOrder } from "@/lib/traySales";
 import { load, mutate } from "./store";
 import { csrf } from "./access";
 import { canRestoreTray, googleAnalytics } from "./analytics";
-import { TelegramError } from "./domain";
+import {
+  readGaPurchases,
+  reconcileGaPurchases,
+  type GaAttributionReport,
+} from "./ga-attribution";
+import { TelegramError, type Data } from "./domain";
+import { verifyStorefrontTracker } from "./tracker-install";
 import {
   ATTRIBUTION_DAYS,
   cents,
@@ -17,14 +23,10 @@ import {
   orderStatus,
   period,
   summarize,
+  validationToken,
 } from "./growth-domain";
 
-type GrowthConfig = {
-  installedAt?: string;
-  syncedAt?: string;
-  truncated?: boolean;
-  checked?: number;
-};
+type GrowthConfig = NonNullable<Data["growth"]>;
 let checkedStorage = false;
 export async function checkGrowthStorage() {
   if (checkedStorage) return;
@@ -49,7 +51,7 @@ export async function dashboard(userId: string, input: URLSearchParams) {
     : 30;
   const source = (input.get("source") || "").slice(0, 100);
   const range = period(days);
-  const [workspace, links, clicks, sales, connection, lastVisit] =
+  const [workspace, links, clicks, sales, connection, lastVisit, lastTest] =
     await Promise.all([
       load(userId),
       prisma.telegramGrowthLink.findMany({
@@ -59,6 +61,7 @@ export async function dashboard(userId: string, input: URLSearchParams) {
       prisma.telegramGrowthClick.findMany({
         where: {
           link: { userId },
+          NOT: { visitorHash: { startsWith: "test:" } },
           OR: [
             { createdAt: { gte: range.previous } },
             { visitedAt: { gte: range.previous } },
@@ -75,7 +78,10 @@ export async function dashboard(userId: string, input: URLSearchParams) {
       }),
       prisma.telegramGrowthConversion.findMany({
         where: {
-          click: { link: { userId } },
+          click: {
+            link: { userId },
+            NOT: { visitorHash: { startsWith: "test:" } },
+          },
           placedAt: { gte: range.previous },
         },
         select: {
@@ -87,12 +93,28 @@ export async function dashboard(userId: string, input: URLSearchParams) {
       }),
       prisma.trayConnection.findFirst({ select: { id: true } }),
       prisma.telegramGrowthClick.findFirst({
-        where: { link: { userId }, visitedAt: { not: null } },
+        where: {
+          link: { userId },
+          visitedAt: { not: null },
+          NOT: { visitorHash: { startsWith: "test:" } },
+        },
+        orderBy: { visitedAt: "desc" },
+        select: { visitedAt: true },
+      }),
+      prisma.telegramGrowthClick.findFirst({
+        where: {
+          link: { userId },
+          visitorHash: { startsWith: "test:" },
+          visitedAt: { not: null },
+        },
         orderBy: { visitedAt: "desc" },
         select: { visitedAt: true },
       }),
     ]);
   const config = workspace.parsed.growth || {};
+  const testLink = links.find(
+    (l) => l.active && (!source || l.sourceName === source),
+  );
   const analytics = await googleAnalytics(
     days,
     source
@@ -110,11 +132,16 @@ export async function dashboard(userId: string, input: URLSearchParams) {
       links: links.length,
       installed: !!config.installedAt,
       lastVisit: lastVisit?.visitedAt?.toISOString() || null,
+      lastTestAt: lastTest?.visitedAt?.toISOString() || null,
+      testUrl: testLink
+        ? `/t/${testLink.slug}?bff_test=${validationToken(testLink.slug)}`
+        : null,
       trayConnected: !!connection,
       canRestoreTray: canRestoreTray(),
       syncedAt: config.syncedAt || null,
       truncated: config.truncated || false,
       attributionDays: ATTRIBUTION_DAYS,
+      gaAttribution: config.gaAttribution || null,
     },
     prospects: workspace.parsed.prospects || [],
   };
@@ -160,22 +187,25 @@ export async function installTracker(userId: string, origin: string) {
       "Instale o rastreamento pelo endereço oficial do app BFF.",
     );
   const source = `${url.origin}/api/telegram-growth/tracker.js`;
-  const found = await prisma.$transaction(
-    async (tx) => {
-      const [lock] = await tx.$queryRaw<
-        { locked: boolean }[]
-      >`SELECT pg_try_advisory_xact_lock(760311341) AS locked`;
-      if (!lock?.locked)
-        throw new TelegramError(
-          "busy",
-          "A instalação já está em andamento. Aguarde alguns segundos.",
-          0,
-          409,
-        );
-      return ensureTracker(source);
-    },
-    { timeout: 45000, maxWait: 5000 },
-  );
+  const proof = await verifyStorefrontTracker();
+  const found =
+    proof.installed ||
+    (await prisma.$transaction(
+      async (tx) => {
+        const [lock] = await tx.$queryRaw<
+          { locked: boolean }[]
+        >`SELECT pg_try_advisory_xact_lock(760311341) AS locked`;
+        if (!lock?.locked)
+          throw new TelegramError(
+            "busy",
+            "A instalação já está em andamento. Aguarde alguns segundos.",
+            0,
+            409,
+          );
+        return ensureTracker(source);
+      },
+      { timeout: 45000, maxWait: 5000 },
+    ));
   await mutate(userId, (row) => {
     row.parsed.growth = {
       ...row.parsed.growth,
@@ -242,37 +272,6 @@ type AttributedOrder = TraySaleOrder & {
 export async function syncSales(userId?: string) {
   await checkGrowthStorage();
   const since = new Date(Date.now() - ATTRIBUTION_DAYS * 86400000);
-  // A Tray é da empresa. Atribuição precisa comparar todos os operadores,
-  // inclusive em sincronização manual, para preservar o último clique global.
-  const scope = {};
-  // Pedidos dos últimos 30 dias podem vir de um clique até 30 dias ANTES deles;
-  // 60 dias de cliques são necessários para não perder pagamentos recentes.
-  const eligible = await prisma.telegramGrowthClick.findMany({
-    where: {
-      link: scope,
-      sessionHash: { not: null },
-      visitedAt: { not: null },
-      createdAt: {
-        gte: new Date(since.getTime() - ATTRIBUTION_DAYS * 86400000),
-      },
-    },
-    select: { id: true, sessionHash: true, createdAt: true, visitedAt: true },
-    orderBy: { createdAt: "desc" },
-  });
-  const existing = await prisma.telegramGrowthConversion.findMany({
-    where: { click: { link: scope } },
-    select: { orderId: true, orderKey: true, clickId: true, placedAt: true },
-    orderBy: { checkedAt: "asc" },
-  });
-  if (!eligible.length && !existing.length) {
-    if (userId)
-      await saveSync(userId, {
-        syncedAt: new Date().toISOString(),
-        truncated: false,
-        checked: 0,
-      });
-    return { matched: 0, checked: 0, truncated: false };
-  }
   const connection = await prisma.trayConnection.findFirst({
     select: { storeId: true },
     orderBy: { createdAt: "desc" },
@@ -284,6 +283,93 @@ export async function syncSales(userId?: string) {
       0,
       409,
     );
+  // Esta propriedade Google pertence à BFF, não a qualquer loja que venha a
+  // ser conectada no futuro pelo OAuth da empresa.
+  const ga: GaAttributionReport =
+    connection.storeId === "1270558"
+      ? await readGaPurchases(ATTRIBUTION_DAYS)
+      : {
+          status: process.env.BFF_GA_SERVICE_ACCOUNT_JSON
+            ? "unavailable"
+            : "unconfigured",
+          configured: !!process.env.BFF_GA_SERVICE_ACCOUNT_JSON,
+          connected: false,
+          checkedAt: new Date().toISOString(),
+          timeZone: null,
+          partial: false,
+          evidence: [],
+          linkOnly: 0,
+          invalid: 0,
+        };
+  const gaMeta: NonNullable<GrowthConfig["gaAttribution"]> = {
+    status: ga.status,
+    checkedAt: ga.checkedAt,
+    timeZone: ga.timeZone,
+    partial: ga.partial,
+    matched: 0,
+    ambiguous: 0,
+    unmatched: 0,
+    linkOnly: ga.linkOnly,
+    invalid: ga.invalid,
+  };
+  const gaIds = [
+    ...new Set(ga.evidence.flatMap((e) => (e.clickId ? [e.clickId] : []))),
+  ];
+  const gaClicks = gaIds.length
+    ? (
+        await prisma.telegramGrowthClick.findMany({
+          where: {
+            id: { in: gaIds },
+            NOT: { visitorHash: { startsWith: "test:" } },
+          },
+          select: {
+            id: true,
+            linkId: true,
+            createdAt: true,
+            link: { select: { slug: true } },
+          },
+        })
+      ).map((c) => ({
+        id: c.id,
+        linkId: c.linkId,
+        createdAt: c.createdAt,
+        slug: c.link.slug,
+      }))
+    : [];
+  // A Tray é da empresa. Atribuição precisa comparar todos os operadores,
+  // inclusive em sincronização manual, para preservar o último clique global.
+  const scope = {};
+  // Pedidos dos últimos 30 dias podem vir de um clique até 30 dias ANTES deles;
+  // 60 dias de cliques são necessários para não perder pagamentos recentes.
+  const eligible = await prisma.telegramGrowthClick.findMany({
+    where: {
+      link: scope,
+      NOT: { visitorHash: { startsWith: "test:" } },
+      sessionHash: { not: null },
+      visitedAt: { not: null },
+      createdAt: {
+        gte: new Date(since.getTime() - ATTRIBUTION_DAYS * 86400000),
+      },
+    },
+    select: { id: true, sessionHash: true, createdAt: true, visitedAt: true },
+    orderBy: { createdAt: "desc" },
+  });
+  const existing = await prisma.telegramGrowthConversion.findMany({
+    where: {
+      click: { link: scope, NOT: { visitorHash: { startsWith: "test:" } } },
+    },
+    select: { orderId: true, orderKey: true, clickId: true, placedAt: true },
+    orderBy: { checkedAt: "asc" },
+  });
+  if (!eligible.length && !existing.length && !gaClicks.length) {
+    await saveSyncForOwners(userId, {
+      syncedAt: new Date().toISOString(),
+      truncated: ga.partial,
+      checked: 0,
+      gaAttribution: gaMeta,
+    });
+    return { matched: 0, checked: 0, truncated: ga.partial };
+  }
   const list = await fetchOrdersSince(day(since), 1000);
   const orders = list.orders as AttributedOrder[];
   const storePrefix = `${connection.storeId}:`;
@@ -305,12 +391,55 @@ export async function syncSales(userId?: string) {
     detailReads++;
     orders.push(result.Order);
   }
+  const knownClicks = new Set(gaClicks.map((c) => c.id));
+  const gaOrderIds = [
+    ...new Set(
+      ga.evidence
+        .filter((e) => e.clickId && knownClicks.has(e.clickId))
+        .map((e) => e.orderId),
+    ),
+  ];
+  // Um evento Google só pode virar venda depois de conferir o pedido real.
+  // Nunca cria conversão por proximidade de datas, valor ou clique aleatório.
+  for (const orderId of gaOrderIds) {
+    // Os já atribuídos são revisados pelo lote priorizado por checkedAt;
+    // repetir os primeiros IDs Google consumiria o orçamento indefinidamente.
+    if (priorOrders.has(orderId)) continue;
+    const index = orders.findIndex((o) => String(o.id) === orderId);
+    if (index >= 0 && orders[index].hour) continue;
+    if (detailReads >= 40) {
+      partial = true;
+      break;
+    }
+    detailReads++;
+    try {
+      const full = await trayGet<{ Order: AttributedOrder }>(
+        `orders/${encodeURIComponent(orderId)}`,
+      );
+      if (String(full.Order?.id) !== orderId) {
+        partial = true;
+        continue;
+      }
+      if (index >= 0) orders[index] = full.Order;
+      else orders.push(full.Order);
+    } catch {
+      partial = true;
+    }
+  }
+  const gaReconciled = reconcileGaPurchases(ga.evidence, gaClicks, orders);
+  gaMeta.ambiguous = gaReconciled.ambiguous;
+  gaMeta.unmatched = gaReconciled.unmatched;
+  const gaByOrder = new Map(
+    gaReconciled.conversions.map((c) => [c.orderId, c]),
+  );
   for (let order of orders) {
     const prior = priorOrders.get(String(order.id));
     const sessionHash = order.session_id
       ? hash(`session:${digest(order.session_id)}`)
       : null;
-    if (!prior && (!sessionHash || !hashes.has(sessionHash))) continue;
+    const gaMatch = gaByOrder.get(String(order.id));
+    if (!prior && !gaMatch && (!sessionHash || !hashes.has(sessionHash)))
+      continue;
     checked++;
     if (!prior && !order.hour) {
       if (detailReads >= 80) {
@@ -344,7 +473,7 @@ export async function syncSales(userId?: string) {
             c.visitedAt! <= placedAt &&
             placedAt.getTime() - c.createdAt.getTime() <=
               ATTRIBUTION_DAYS * 86400000,
-        );
+        ) || (gaMatch ? { id: gaMatch.clickId } : undefined);
     if (!match) continue;
     const record = {
       amountCents: cents(order.total),
@@ -362,14 +491,24 @@ export async function syncSales(userId?: string) {
       },
       update: record,
     });
+    if (gaMatch?.clickId === match.id) gaMeta.matched++;
     matched++;
   }
-  const truncated = list.truncated || missing.length > 40 || partial;
+  const truncated =
+    list.truncated || missing.length > 40 || partial || ga.partial;
   const config: GrowthConfig = {
     syncedAt: new Date().toISOString(),
     truncated,
     checked,
+    gaAttribution: gaMeta,
   };
+  await saveSyncForOwners(userId, config);
+  return { matched, checked, truncated };
+}
+async function saveSyncForOwners(
+  userId: string | undefined,
+  config: GrowthConfig,
+) {
   const owners = [
     ...new Set([
       ...(userId ? [userId] : []),
@@ -382,7 +521,6 @@ export async function syncSales(userId?: string) {
     ]),
   ];
   for (const owner of owners) await saveSync(owner, config);
-  return { matched, checked, truncated };
 }
 async function saveSync(userId: string, config: GrowthConfig) {
   await mutate(userId, (row) => {

@@ -52,8 +52,30 @@ export default function TelegramSources({
               <dt>Rastreador do site</dt>
               <dd>
                 {data.tracking.installed
-                  ? "Registrado na Tray"
+                  ? "Ativo na loja"
                   : "Aguardando ativação"}
+              </dd>
+            </div>
+            <div>
+              <dt>Conferência Google + Tray</dt>
+              <dd>
+                {data.tracking.gaAttribution?.status === "ready"
+                  ? "Disponível"
+                  : data.tracking.gaAttribution?.status === "unavailable"
+                    ? "Consulta indisponível"
+                    : "Aguardando conferência"}
+              </dd>
+            </div>
+            <div>
+              <dt>Último teste do rastreador</dt>
+              <dd>
+                {data.tracking.lastTestAt
+                  ? new Date(data.tracking.lastTestAt).toLocaleString("pt-BR", {
+                      timeZone: "America/Sao_Paulo",
+                      dateStyle: "short",
+                      timeStyle: "short",
+                    })
+                  : "Ainda não realizado"}
               </dd>
             </div>
           </dl>
@@ -74,6 +96,16 @@ export default function TelegramSources({
               )
             ) : (
               <>
+                {data.tracking.installed && data.tracking.testUrl && (
+                  <a
+                    className={s.secondary}
+                    href={data.tracking.testUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Testar rastreamento ↗
+                  </a>
+                )}
                 {!data.tracking.installed && (
                   <button
                     className={s.primary}
@@ -121,6 +153,10 @@ export default function TelegramSources({
               <dd>Telegram e referências t.me</dd>
             </div>
             <div>
+              <dt>Fuso da propriedade</dt>
+              <dd>{ga.timeZone || "Não informado"}</dd>
+            </div>
+            <div>
               <dt>Última verificação</dt>
               <dd>
                 {new Date(ga.checkedAt).toLocaleString("pt-BR", {
@@ -139,13 +175,9 @@ export default function TelegramSources({
             <span className={s.sourcePending}>Sincronização pendente</span>
           </div>
           <p className={s.sourceDescription}>
-            A integração de métricas deste painel ainda não está ativa. A
-            conexão do assistente foi reconhecida na empresa BFF Fitness, mas o
-            serviço de consultas retornou “ferramenta não encontrada”.
-          </p>
-          <p className={s.sourceDescription}>
-            Os resultados da Solomon só aparecerão aqui depois que a consulta
-            puder ser validada.
+            A Solomon ainda não está sincronizando dados com este painel. O
+            serviço de consulta está indisponível. Tray e Google Analytics
+            continuam disponíveis.
           </p>
           <div className={s.sourceActions}>
             <a
@@ -166,7 +198,9 @@ export default function TelegramSources({
             <h3>Resultados registrados no site</h3>
           </div>
           <span className={s.muted}>
-            {data.source || "Todas as origens Telegram"} · {data.days} dias
+            {data.source || "Todas as origens Telegram"} ·{" "}
+            {ga.from.split("-").reverse().join("/")} a{" "}
+            {ga.to.split("-").reverse().join("/")}
           </span>
         </div>
         <div className={s.gaMetrics}>
@@ -200,11 +234,12 @@ export default function TelegramSources({
         )}
         <p className={s.sourceDescription}>
           Estes números seguem a atribuição e o processamento do Google
-          Analytics. O dia de hoje é parcial e o Google pode processar os
-          eventos com atraso; consultas ficam em cache por até cinco minutos.
-          Compras registradas no GA4 não comprovam pagamento. A confirmação de
-          vendas pagas continua vindo da Tray. As duas fontes são exibidas
-          separadamente e não são somadas.
+          Analytics, no fuso {ga.timeZone || "configurado na propriedade"}. O
+          dia de hoje é parcial e o Google pode processar os eventos com atraso;
+          consultas ficam em cache por até cinco minutos. Compras registradas no
+          GA4 não comprovam pagamento. A confirmação de vendas pagas continua
+          vindo da Tray. As duas fontes são exibidas separadamente e não são
+          somadas.
         </p>
         {data.source && (
           <p className={s.sourceDescription}>

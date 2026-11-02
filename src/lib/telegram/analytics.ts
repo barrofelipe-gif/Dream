@@ -19,6 +19,7 @@ export type Analytics = {
   configured: boolean;
   propertyId: string;
   checkedAt: string;
+  timeZone: string | null;
   from: string;
   to: string;
   sessions: number;
@@ -42,6 +43,7 @@ type Report = {
   }[];
   rowCount?: number;
   metadata?: {
+    timeZone?: string;
     currencyCode?: string;
     subjectToThresholding?: boolean;
     dataLossFromOtherRow?: boolean;
@@ -49,7 +51,6 @@ type Report = {
   };
 };
 export function analyticsRequest(days: number, slugs?: string[]) {
-  const { start } = period(days);
   const expressions: unknown[] = [
     {
       filter: {
@@ -72,7 +73,7 @@ export function analyticsRequest(days: number, slugs?: string[]) {
       },
     });
   return {
-    dateRanges: [{ startDate: day(start), endDate: "today" }],
+    dateRanges: [{ startDate: `${days - 1}daysAgo`, endDate: "today" }],
     dimensions: [{ name: "date" }],
     metrics: [
       { name: "sessions" },
@@ -149,6 +150,7 @@ async function queryAnalytics(
     configured: !!process.env.BFF_GA_SERVICE_ACCOUNT_JSON,
     propertyId: PROPERTY,
     checkedAt: new Date().toISOString(),
+    timeZone: null,
     from: day(period(days).start),
     to: day(new Date()),
     sessions: 0,
@@ -184,9 +186,23 @@ async function queryAnalytics(
       timeout: 15000,
       retry: false,
     });
+    const timeZone = result.data.metadata?.timeZone || null;
+    const to = timeZone
+      ? new Intl.DateTimeFormat("en-CA", {
+          timeZone,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date())
+      : base.to;
+    const first = new Date(`${to}T12:00:00Z`);
+    first.setUTCDate(first.getUTCDate() - days + 1);
     return {
       ...base,
       ...analyticsSummary(result.data),
+      timeZone,
+      to,
+      from: first.toISOString().slice(0, 10),
       connected: true,
       checkedAt: new Date().toISOString(),
     };

@@ -20,6 +20,8 @@ export function destination(value: unknown) {
     if (/^\/(?:auth|admin|mvc\/adm|checkout)(?:[/.]|$)/i.test(url.pathname))
       throw new Error();
     url.searchParams.delete("bff_tg");
+    url.searchParams.delete("bff_validation");
+    url.searchParams.delete("bff_test");
     return url.toString();
   } catch {
     throw new TelegramError(
@@ -80,6 +82,24 @@ export function verifyClick(value: unknown) {
     ? id
     : null;
 }
+export function validationToken(slug: string, now = Date.now()) {
+  const stamp = Math.floor(now / 1000);
+  return `${stamp}.${hash(`validation:${slug}:${stamp}`).slice(0, 32)}`;
+}
+export function verifyValidation(
+  slug: string,
+  token: string,
+  now = Date.now(),
+) {
+  if (!/^\d{10}\.[a-f0-9]{32}$/.test(token)) return false;
+  const stamp = Number(token.split(".")[0]) * 1000;
+  if (stamp > now + 60000 || now - stamp > 900000) return false;
+  const expected = Buffer.from(validationToken(slug, stamp)),
+    supplied = Buffer.from(token);
+  return (
+    expected.length === supplied.length && timingSafeEqual(expected, supplied)
+  );
+}
 export function trackedDestination(
   link: {
     destination: string;
@@ -88,13 +108,21 @@ export function trackedDestination(
     slug: string;
   },
   token?: string,
+  validation = false,
 ) {
   const url = new URL(destination(link.destination));
-  url.searchParams.set("utm_source", "telegram");
-  url.searchParams.set("utm_medium", "community");
+  url.searchParams.set(
+    "utm_source",
+    validation ? "bff_validation" : "telegram",
+  );
+  url.searchParams.set(
+    "utm_medium",
+    validation ? "internal_test" : "community",
+  );
   url.searchParams.set("utm_campaign", link.campaign);
   url.searchParams.set("utm_content", link.slug);
   if (token) url.searchParams.set("bff_tg", token);
+  if (validation) url.searchParams.set("bff_validation", "1");
   return url.toString();
 }
 export function isPreview(headers: Headers) {
@@ -171,7 +199,9 @@ export function summarize(
   const range = period(days, now);
   const filteredLinks = links.filter((l) => !source || l.sourceName === source);
   const ids = new Set(filteredLinks.map((l) => l.id));
-  const scopedClicks = clicks.filter((c) => ids.has(c.linkId));
+  const scopedClicks = clicks.filter(
+    (c) => ids.has(c.linkId) && !c.visitorHash.startsWith("test:"),
+  );
   const clickMap = new Map(scopedClicks.map((c) => [c.id, c]));
   const scopedSales = sales.filter((s) => clickMap.has(s.clickId));
   // A pessoa conta uma vez, na primeira inclusão confirmada. "Já participava"

@@ -7,6 +7,7 @@ import {
   isPreview,
   signClick,
   trackedDestination,
+  verifyValidation,
 } from "@/lib/telegram/growth-domain";
 
 export const runtime = "nodejs";
@@ -19,13 +20,22 @@ export async function GET(request: NextRequest, context: Context) {
   await checkGrowthStorage();
   const link = await prisma.telegramGrowthLink.findUnique({ where: { slug } });
   if (!link) return new Response("Link não encontrado.", { status: 404 });
+  const test = request.nextUrl.searchParams.get("bff_test");
+  if (test !== null && !verifyValidation(slug, test))
+    return new Response("Reabra o dashboard para gerar um novo teste.", {
+      status: 400,
+    });
+  const validation = test !== null;
   // Pausar desliga a medição, mas preserva links já publicados.
   let token: string | undefined, visitor: string | undefined;
   if (link.active && !isPreview(request.headers)) {
     visitor = request.cookies.get("__Host-bff-tg-v")?.value;
     if (!visitor || !/^[0-9a-f-]{36}$/.test(visitor)) visitor = randomUUID();
     try {
-      const visitorHash = hash(`visitor:${visitor}`);
+      // O prefixo reservado nunca é gerado por um clique normal. Estes eventos
+      // de validação são excluídos da audiência, das visitas e das conversões.
+      const visitorHash =
+        (validation ? "test:" : "") + hash(`visitor:${visitor}`);
       const today = new Date();
       today.setUTCHours(0, 0, 0, 0);
       const count = await prisma.telegramGrowthClick.count({
@@ -41,7 +51,10 @@ export async function GET(request: NextRequest, context: Context) {
       console.warn("[telegram-growth] click unavailable");
     }
   }
-  const response = NextResponse.redirect(trackedDestination(link, token), 302);
+  const response = NextResponse.redirect(
+    trackedDestination(link, token, validation),
+    302,
+  );
   response.headers.set("Cache-Control", "no-store, max-age=0");
   response.headers.set("Referrer-Policy", "no-referrer");
   if (visitor)

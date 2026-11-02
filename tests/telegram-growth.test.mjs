@@ -262,6 +262,9 @@ test("tracker installation serializes concurrent calls and leaves other store sc
     },
     "@/lib/traySales": {},
     "./access": {},
+    "./tracker-install": {
+      verifyStorefrontTracker: async () => ({ installed: false }),
+    },
     "./store": { mutate: async (_id, fn) => fn({ parsed: state }) },
     $fetch: async (_url, request) => {
       creations++;
@@ -337,6 +340,74 @@ test("click signatures reject tampering; previews and speculative requests never
     domain.isPreview(new Headers({ "user-agent": "Mozilla/5.0" })),
     false,
   );
+});
+
+test("internal tracking validation is signed, short-lived, and excluded from Telegram analytics", () => {
+  const now = Date.now(),
+    slug = "abcdefgh1234",
+    token = domain.validationToken(slug, now);
+  assert.equal(domain.verifyValidation(slug, token, now), true);
+  assert.equal(domain.verifyValidation("another12345", token, now), false);
+  assert.equal(domain.verifyValidation(slug, token, now + 901000), false);
+  const target = new URL(
+    domain.trackedDestination(
+      {
+        destination: "https://www.bfffitnessatacado.com.br/",
+        campaign: "test",
+        sourceName: "BFF",
+        slug,
+      },
+      "signed",
+      true,
+    ),
+  );
+  assert.equal(target.searchParams.get("utm_source"), "bff_validation");
+  assert.equal(target.searchParams.get("bff_validation"), "1");
+});
+
+test("QA redirect records only an internal event and rejects an invalid validation signature", async () => {
+  const { NextRequest } = native("next/server");
+  let captured = null;
+  const link = {
+    id: "l",
+    slug: "abcdefgh1234",
+    active: true,
+    destination: "https://www.bfffitnessatacado.com.br/",
+    campaign: "BFF",
+    sourceName: "BFF",
+  };
+  const prisma = {
+    telegramGrowthLink: { findUnique: async () => link },
+    telegramGrowthClick: {
+      count: async () => 0,
+      create: async ({ data }) => {
+        captured = data;
+        return { id: "89cf5990-82fb-4437-aef9-2f6add0220dc" };
+      },
+    },
+  };
+  const route = loader({
+    "@/lib/prisma": { prisma },
+    "@/lib/telegram/growth": { checkGrowthStorage: async () => {} },
+  })("src/app/t/[slug]/route.ts");
+  const context = { params: Promise.resolve({ slug: link.slug }) };
+  const request = (token) =>
+    new NextRequest(
+      `https://app.bfffitnessatacado.com.br/t/${link.slug}?bff_test=${token}`,
+      { headers: { "user-agent": "Mozilla/5.0" } },
+    );
+  assert.equal((await route.GET(request("invalid"), context)).status, 400);
+  assert.equal(captured, null);
+  const response = await route.GET(
+    request(domain.validationToken(link.slug)),
+    context,
+  );
+  assert.equal(response.status, 302);
+  assert.match(captured.visitorHash, /^test:/);
+  const target = new URL(response.headers.get("location"));
+  assert.equal(target.searchParams.get("utm_source"), "bff_validation");
+  assert.equal(target.searchParams.get("bff_validation"), "1");
+  assert.ok(domain.verifyClick(target.searchParams.get("bff_tg")));
 });
 test("public redirect records a click, previews and HEAD do not; paused links and logging failure still open the store", async () => {
   const { NextRequest } = native("next/server");
@@ -441,8 +512,16 @@ test("periods use Brasília midnight and separate new acquisitions, clicks, conf
       visitedAt: null,
     },
     { id: "c3", linkId: "l2", visitorHash: "v2", createdAt: at, visitedAt: at },
+    {
+      id: "qa",
+      linkId: "l1",
+      visitorHash: "test:validation",
+      createdAt: at,
+      visitedAt: at,
+    },
   ];
   const sales = [
+    { clickId: "qa", status: "paid", amountCents: 10000000, placedAt: at },
     { clickId: "c1", status: "paid", amountCents: 12345, placedAt: at },
     { clickId: "c2", status: "pending", amountCents: 555, placedAt: at },
     { clickId: "c1", status: "cancelled", amountCents: 999, placedAt: at },
@@ -630,6 +709,25 @@ test("store tracker confirms only signed referrals, hashes session before sendin
   runInNewContext(source, blank);
   await new Promise((resolve) => setTimeout(resolve, 5));
   assert.equal(sent.length, 1);
+  let writes = 0;
+  const qa = {
+    ...context,
+    window: { crypto: context.window.crypto },
+    location: {
+      ...context.location,
+      href: context.location.href + "&bff_validation=1",
+    },
+    localStorage: {
+      getItem: () => null,
+      setItem: () => {
+        writes++;
+      },
+    },
+  };
+  runInNewContext(source, qa);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(sent.length, 2);
+  assert.equal(writes, 0);
 });
 test("order sync attributes last eligible click once and revalidates cancellation without contact data", async () => {
   const conversions = new Map(),
@@ -696,4 +794,96 @@ test("order sync attributes last eligible click once and revalidates cancellatio
   assert.ok(
     !JSON.stringify([...conversions.values()]).includes("store-session"),
   );
+});
+
+test("sync confirms a paid GA4-referenced order without a native session, deduplicates it, and rechecks cancellations", async () => {
+  const gaModule = loader({ googleapis: { google: {} } })(
+    "src/lib/telegram/ga-attribution.ts",
+  );
+  const placedAt = new Date(Date.now() - 3600000);
+  const local = new Date(placedAt.getTime() - 3 * 3600000).toISOString();
+  let order = {
+    id: "123",
+    date: local.slice(0, 10),
+    hour: local.slice(11, 19),
+    total: "500.50",
+    has_payment: "1",
+    status: "PAGO",
+  };
+  const click = {
+    id: "89cf5990-82fb-4437-aef9-2f6add0220dc",
+    linkId: "l1",
+    createdAt: new Date(placedAt.getTime() - 3600000),
+    link: { slug: "abcdefgh1234" },
+  };
+  const config = {},
+    conversions = new Map();
+  let detailRequests = 0;
+  const evidence = [
+    {
+      orderId: "123",
+      clickId: click.id,
+      slug: click.link.slug,
+      purchaseMinute: new Date(Math.floor(placedAt.getTime() / 60000) * 60000),
+    },
+  ];
+  const prisma = {
+    $queryRaw: async () => [1, 2, 3].map(() => ({ safe: true })),
+    telegramGrowthClick: {
+      findMany: async ({ where }) => (where.id ? [click] : []),
+    },
+    telegramGrowthConversion: {
+      findMany: async () => [...conversions.values()],
+      upsert: async ({ where, create, update }) =>
+        conversions.set(
+          where.orderKey,
+          conversions.has(where.orderKey)
+            ? { ...conversions.get(where.orderKey), ...update }
+            : create,
+        ),
+    },
+    telegramGrowthLink: { findMany: async () => [{ userId: "owner" }] },
+    trayConnection: { findFirst: async () => ({ storeId: "1270558" }) },
+  };
+  const service = loader({
+    "@/lib/prisma": { prisma },
+    "@/lib/traySales": {
+      fetchOrdersSince: async () => ({ orders: [], truncated: false }),
+    },
+    "@/lib/tray": {
+      trayGet: async (resource) => {
+        assert.equal(resource, "orders/123");
+        detailRequests++;
+        return { Order: order };
+      },
+    },
+    "./ga-attribution": {
+      ...gaModule,
+      readGaPurchases: async () => ({
+        status: "ready",
+        connected: true,
+        configured: true,
+        checkedAt: new Date().toISOString(),
+        timeZone: "America/Rio_Branco",
+        partial: false,
+        evidence,
+        linkOnly: 0,
+        invalid: 0,
+      }),
+    },
+    "./store": { mutate: async (_id, fn) => fn({ parsed: config }) },
+    "./access": {},
+  })("src/lib/telegram/growth.ts");
+  await service.syncSales("owner");
+  await service.syncSales("owner");
+  assert.equal(conversions.size, 1);
+  assert.equal(conversions.get("1270558:123").clickId, click.id);
+  assert.equal(conversions.get("1270558:123").amountCents, 50050);
+  assert.equal(conversions.get("1270558:123").status, "paid");
+  assert.equal(config.growth.gaAttribution.status, "ready");
+  assert.equal(config.growth.gaAttribution.matched, 1);
+  order = { ...order, status: "CANCELADO" };
+  await service.syncSales("owner");
+  assert.equal(conversions.get("1270558:123").status, "cancelled");
+  assert.equal(detailRequests, 3); // one detail read per sync, including old-order review
 });

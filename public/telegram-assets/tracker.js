@@ -11,7 +11,10 @@
     var incoming = new URL(location.href).searchParams.get("bff_tg");
     if (incoming && /^[0-9a-f-]{36}\.[0-9a-f]{32}$/.test(incoming)) {
       record = { token: incoming, expires: Date.now() + 30 * 86400000 };
-      try { localStorage.setItem(storageKey, JSON.stringify(record)); } catch (_) { /* no storage still confirms this landing */ }
+      // A verificação técnica não substitui uma atribuição real já salva.
+      if (new URL(location.href).searchParams.get("bff_validation") !== "1") {
+        try { localStorage.setItem(storageKey, JSON.stringify(record)); } catch (_) { /* no storage still confirms this landing */ }
+      }
     } else {
       try { record = JSON.parse(localStorage.getItem(storageKey) || "null"); } catch (_) { /* no attribution */ }
     }

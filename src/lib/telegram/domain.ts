@@ -104,7 +104,23 @@ export type Privacy = {
   notes?: string[];
 };
 export type Data = {
-  growth?: { installedAt?: string; syncedAt?: string; truncated?: boolean; checked?: number };
+  growth?: {
+    installedAt?: string;
+    syncedAt?: string;
+    truncated?: boolean;
+    checked?: number;
+    gaAttribution?: {
+      status: "ready" | "unconfigured" | "unavailable";
+      checkedAt: string;
+      timeZone: string | null;
+      partial: boolean;
+      matched: number;
+      ambiguous: number;
+      unmatched: number;
+      linkOnly: number;
+      invalid: number;
+    };
+  };
   prospects?: (PublicGroup & { savedAt: string; query: string })[];
   discovery?: { groups: PublicGroup[]; query: string; at: number };
   sources: Group[];

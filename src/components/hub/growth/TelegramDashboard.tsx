@@ -86,7 +86,12 @@ function ready(data: Dashboard, metric: Metric) {
   return (
     !!data.tracking.syncedAt &&
     data.tracking.trayConnected &&
-    (data.tracking.installed || !!data.tracking.lastVisit)
+    (data.tracking.installed ||
+      !!data.tracking.lastVisit ||
+      data.tracking.gaAttribution?.status === "ready" ||
+      data.totals.sales > 0 ||
+      data.totals.pending > 0 ||
+      data.previous.sales > 0)
   );
 }
 export default function TelegramDashboard() {
@@ -643,10 +648,13 @@ export default function TelegramDashboard() {
                   Como funciona a atribuição e quais são os limites?
                 </summary>
                 <p>
-                  Janela de 30 dias, último clique elegível antes do pedido na
-                  mesma sessão da loja. Cada pedido conta uma vez. Receita
-                  inclui o total dos pedidos com pagamento confirmado pela Tray,
-                  com frete e descontos. Cancelamentos são retirados na próxima
+                  Janela de 30 dias. O painel usa o último clique confirmado
+                  pela sessão da loja. Quando essa correlação não está
+                  disponível, pode usar a referência assinada do link registrada
+                  na compra do Google Analytics, após conferir o mesmo pedido e
+                  horário na Tray. Cada pedido conta uma vez. Receita inclui o
+                  total dos pedidos com pagamento confirmado pela Tray, com
+                  frete e descontos. Cancelamentos são retirados na próxima
                   sincronização. Os pedidos são conferidos diariamente e pelo
                   botão acima.
                 </p>
