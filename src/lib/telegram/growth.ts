@@ -5,6 +5,7 @@ import { trayGet, getValidAccessToken } from "@/lib/tray";
 import { fetchOrdersSince, type TraySaleOrder } from "@/lib/traySales";
 import { load, mutate } from "./store";
 import { csrf } from "./access";
+import { canRestoreTray, googleAnalytics } from "./analytics";
 import { TelegramError } from "./domain";
 import {
   ATTRIBUTION_DAYS,
@@ -92,9 +93,17 @@ export async function dashboard(userId: string, input: URLSearchParams) {
       }),
     ]);
   const config = workspace.parsed.growth || {};
+  const analytics = await googleAnalytics(
+    days,
+    source
+      ? links.filter((l) => l.sourceName === source).map((l) => l.slug)
+      : undefined,
+    input.get("fresh") === "1",
+  );
   return {
     ...summarize(links, clicks, sales, workspace.parsed, days, source),
     csrf: csrf(userId),
+    analytics,
     connection: workspace.authState,
     updatedAt: new Date().toISOString(),
     tracking: {
@@ -102,6 +111,7 @@ export async function dashboard(userId: string, input: URLSearchParams) {
       installed: !!config.installedAt,
       lastVisit: lastVisit?.visitedAt?.toISOString() || null,
       trayConnected: !!connection,
+      canRestoreTray: canRestoreTray(),
       syncedAt: config.syncedAt || null,
       truncated: config.truncated || false,
       attributionDays: ATTRIBUTION_DAYS,

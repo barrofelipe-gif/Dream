@@ -43,8 +43,183 @@ function loader(mocks = {}) {
 process.env.AUTH_SECRET = "test-only-telegram-growth";
 process.env.DATABASE_URL =
   "postgresql://test:test@127.0.0.1:5432/test?schema=painel_bff";
+process.env.TOKEN_ENCRYPTION_KEY =
+  "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 const domain = loader()("src/lib/telegram/growth-domain.ts");
 const initialData = loader()("src/lib/telegram/domain.ts").initialData;
+
+test("Google Analytics filters only BFF hosts and Telegram and scopes an origin by tracked link slug", () => {
+  const analytics = loader({
+    googleapis: { google: {} },
+    "@/lib/prisma": { prisma: {} },
+  })("src/lib/telegram/analytics.ts");
+  const query = analytics.analyticsRequest(7, ["abc123"]);
+  const filters = query.dimensionFilter.andGroup.expressions.map(
+    (e) => e.filter,
+  );
+  assert.deepEqual(
+    filters.find((f) => f.fieldName === "hostName").inListFilter.values,
+    ["www.bfffitnessatacado.com.br", "bfffitnessatacado.com.br"],
+  );
+  assert.ok(
+    filters
+      .find((f) => f.fieldName === "sessionSource")
+      .inListFilter.values.includes("telegram"),
+  );
+  assert.deepEqual(
+    filters.find((f) => f.fieldName === "sessionManualAdContent").inListFilter
+      .values,
+    ["abc123"],
+  );
+  const report = {
+    dimensionHeaders: [{ name: "date" }],
+    metricHeaders: [
+      { name: "sessions" },
+      { name: "ecommercePurchases" },
+      { name: "purchaseRevenue" },
+    ],
+    rows: [
+      {
+        dimensionValues: [{ value: "20261101" }],
+        metricValues: [
+          { value: "50" },
+          { value: "2" },
+          { value: "100.989999" },
+        ],
+      },
+    ],
+    rowCount: 1,
+  };
+  const summary = analytics.analyticsSummary(report);
+  assert.equal(summary.sessions, 50);
+  assert.equal(summary.purchases, 2);
+  assert.equal(summary.revenue, 100.99);
+  assert.equal(summary.partial, false);
+  assert.equal(
+    analytics.analyticsSummary({
+      ...report,
+      metadata: { subjectToThresholding: true },
+    }).partial,
+    true,
+  );
+  assert.throws(() => analytics.analyticsSummary({ rows: [] }));
+});
+test("GA4 connection uses read-only scope, never returns credentials, and isolates a real zero from an API failure", async () => {
+  let fail = false,
+    calls = 0;
+  process.env.BFF_GA_SERVICE_ACCOUNT_JSON = JSON.stringify({
+    type: "service_account",
+    client_email: "test@example.invalid",
+    private_key: "never-output-this-key",
+  });
+  const analytics = loader({
+    "@/lib/prisma": { prisma: {} },
+    googleapis: {
+      google: {
+        auth: {
+          GoogleAuth: class {
+            constructor(options) {
+              assert.deepEqual(options.scopes, [
+                "https://www.googleapis.com/auth/analytics.readonly",
+              ]);
+            }
+            async getClient() {
+              return {
+                request: async (options) => {
+                  calls++;
+                  assert.match(options.url, /properties\/419011003:runReport$/);
+                  if (fail) throw Error("credential secret details");
+                  return {
+                    data: {
+                      dimensionHeaders: [{ name: "date" }],
+                      metricHeaders: [
+                        { name: "sessions" },
+                        { name: "ecommercePurchases" },
+                        { name: "purchaseRevenue" },
+                      ],
+                      rows: [],
+                      rowCount: 0,
+                    },
+                  };
+                },
+              };
+            }
+          },
+        },
+      },
+    },
+  })("src/lib/telegram/analytics.ts");
+  try {
+    const ok = await analytics.googleAnalytics(7);
+    assert.equal(ok.connected, true);
+    assert.equal(ok.sessions, 0);
+    await analytics.googleAnalytics(7);
+    assert.equal(calls, 1);
+    fail = true;
+    const failed = await analytics.googleAnalytics(7, undefined, true);
+    assert.equal(failed.connected, false);
+    assert.ok(failed.error);
+    assert.ok(!JSON.stringify(failed).includes("secret"));
+    assert.ok(!JSON.stringify(ok).includes("never-output-this-key"));
+  } finally {
+    delete process.env.BFF_GA_SERVICE_ACCOUNT_JSON;
+  }
+});
+test("restoring the BFF Tray grant validates the store, encrypts tokens, and preserves an existing connection", async () => {
+  const plain = "test_token_for_bff_only_12345";
+  let saved,
+    probes = 0;
+  const conn = {
+    findFirst: async () => (saved ? { id: "existing" } : null),
+    create: async ({ data }) => {
+      saved = data;
+    },
+  };
+  const config = {
+    apiAddress: "https://www.bfffitnessatacado.com.br/web_api",
+    storeId: "1270558",
+    accessToken: plain,
+    refreshToken: plain + "_refresh",
+    accessExpiresAt: new Date(Date.now() + 3600000).toISOString(),
+    refreshExpiresAt: new Date(Date.now() + 86400000).toISOString(),
+  };
+  process.env.BFF_TRAY_CONNECTION_BOOTSTRAP = JSON.stringify(config);
+  const analytics = loader({
+    googleapis: { google: {} },
+    "@/lib/prisma": {
+      prisma: {
+        trayConnection: conn,
+        $transaction: async (fn) =>
+          fn({
+            $queryRaw: async () => [{ locked: true }],
+            trayConnection: conn,
+          }),
+      },
+    },
+    $fetch: async () => {
+      probes++;
+      return { ok: true, json: async () => ({ Orders: [] }) };
+    },
+  })("src/lib/telegram/analytics.ts");
+  try {
+    const result = await analytics.restoreTray("owner");
+    assert.equal(result.restored, true);
+    assert.equal(saved.connectedByUserId, "owner");
+    assert.notEqual(saved.accessToken, plain);
+    assert.ok(!saved.accessToken.includes(plain));
+    assert.equal((await analytics.restoreTray("owner")).restored, false);
+    assert.equal(probes, 1);
+    saved = null;
+    process.env.BFF_TRAY_CONNECTION_BOOTSTRAP = JSON.stringify({
+      ...config,
+      apiAddress: "https://wrong.example/web_api",
+    });
+    await assert.rejects(analytics.restoreTray("owner"));
+    assert.equal(probes, 1);
+  } finally {
+    delete process.env.BFF_TRAY_CONNECTION_BOOTSTRAP;
+  }
+});
 
 test("tracker installation serializes concurrent calls and leaves other store scripts untouched", async () => {
   const scripts = [

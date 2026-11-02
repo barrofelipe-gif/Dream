@@ -2,11 +2,12 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import TelegramCommunity from "./TelegramCommunity";
 import TelegramDiscovery from "./TelegramDiscovery";
+import TelegramSources from "./TelegramSources";
 import type { dashboard } from "@/lib/telegram/growth";
 import s from "./telegram-dashboard.module.css";
 
 export type Dashboard = Awaited<ReturnType<typeof dashboard>>;
-type Tab = "overview" | "links" | "discovery" | "community";
+type Tab = "overview" | "links" | "discovery" | "community" | "sources";
 type Metric = "audience" | "clicks" | "visits" | "sales" | "revenue";
 const labels: Record<Metric, string> = {
   audience: "Público adquirido",
@@ -113,7 +114,7 @@ export default function TelegramDashboard() {
   useEffect(() => {
     const controller = new AbortController();
     fetch(
-      `/api/telegram/growth?days=${days}&source=${encodeURIComponent(source)}`,
+      `/api/telegram/growth?days=${days}&source=${encodeURIComponent(source)}${refresh ? "&fresh=1" : ""}`,
       { cache: "no-store", signal: controller.signal },
     )
       .then(async (r) => {
@@ -261,6 +262,7 @@ export default function TelegramDashboard() {
             ["overview", "Visão geral"],
             ["links", "Links e vendas"],
             ["discovery", "Descobrir públicos"],
+            ["sources", "Integrações"],
             ["community", "Conta e comunidade"],
           ] as [Tab, string][]
         ).map(([id, title]) => (
@@ -289,7 +291,9 @@ export default function TelegramDashboard() {
             <h2>
               {tab === "overview"
                 ? "Seu crescimento, em um só lugar"
-                : "Os links por trás dos resultados"}
+                : tab === "sources"
+                  ? "Suas fontes de dados, conectadas"
+                  : "Os links por trás dos resultados"}
             </h2>
             <p>
               {data
@@ -541,6 +545,31 @@ export default function TelegramDashboard() {
                 </div>
               </div>
             </div>
+          )}
+          {tab === "sources" && (
+            <TelegramSources
+              data={data}
+              busy={busy}
+              reconnect={() =>
+                action(
+                  "tray",
+                  "growth/reconnect-tray",
+                  {},
+                  "Loja BFF reconectada. Agora você pode ativar o rastreamento e conferir as vendas.",
+                )
+              }
+              install={() =>
+                action(
+                  "install",
+                  "growth/install",
+                  {},
+                  "Rastreador registrado na loja Tray.",
+                )
+              }
+              sync={() =>
+                action("sync", "growth/sync", {}, "Pedidos conferidos na Tray.")
+              }
+            />
           )}
           {tab === "links" && (
             <div aria-busy={loading}>

@@ -5,6 +5,7 @@ import * as telegram from "@/lib/telegram/service";
 import { mapError } from "@/lib/telegram/driver";
 import { TelegramError } from "@/lib/telegram/domain";
 import * as growth from "@/lib/telegram/growth";
+import { restoreTray } from "@/lib/telegram/analytics";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -87,7 +88,8 @@ export async function POST(request: Request, context: Context) {
     const data = await body(request);
     const route = "/" + (await context.params).path.join("/");
     let result: unknown;
-    if (route === "/growth/links") result = await growth.createLink(userId, data);
+    if (route === "/growth/reconnect-tray") result = await restoreTray(userId);
+    else if (route === "/growth/links") result = await growth.createLink(userId, data);
     else if (route === "/growth/link") result = await growth.toggleLink(userId, data);
     else if (route === "/growth/install") result = await growth.installTracker(userId, new URL(request.url).origin);
     else if (route === "/growth/sync") result = await growth.syncSales(userId);

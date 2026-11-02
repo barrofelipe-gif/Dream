@@ -1,3 +1,111 @@
+.sourcesGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.sourceConnected,
+.sourcePending {
+  display: inline-flex;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 9px;
+  white-space: nowrap;
+  background: #edf9f2;
+  color: #167551;
+}
+.sourcePending {
+  background: #fff8e8;
+  color: #926919;
+}
+.sourceDescription {
+  font-size: 11px;
+  color: #7b8798;
+  margin-top: 14px !important;
+  line-height: 1.8 !important;
+}
+.sourceFacts {
+  margin-top: 18px;
+  display: grid;
+  gap: 10px;
+  font-size: 10px;
+}
+.sourceFacts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.sourceFacts dt {
+  color: #8b95a5;
+}
+.sourceFacts dd {
+  margin: 0;
+  text-align: right;
+  color: #52647d;
+}
+.sourceActions {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+.gaMetrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 23px;
+}
+.gaMetrics > div {
+  padding: 18px;
+  background: #f6f9fe;
+  border: 1px solid #e5edf9;
+  border-radius: 12px;
+  display: grid;
+  gap: 10px;
+}
+.gaMetrics span {
+  font-size: 11px;
+  color: #70829d;
+}
+.gaMetrics strong {
+  font-size: 26px;
+  letter-spacing: -0.5px;
+  font-variant-numeric: tabular-nums;
+  color: #21486e;
+}
+.gaMetrics small {
+  font-size: 10px;
+  color: #8a9bb2;
+}
+.gaDaily {
+  margin-top: 16px;
+  display: grid;
+  gap: 8px;
+  font-size: 11px;
+  overflow-x: auto;
+}
+.gaDaily > div {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(70px, 1fr));
+  gap: 12px;
+  padding: 8px;
+  border-bottom: 1px solid #edf1f8;
+}
+@media (max-width: 1100px) {
+  .sourcesGrid {
+    grid-template-columns: 1fr;
+  }
+  .gaMetrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .gaMetrics {
+    grid-template-columns: 1fr;
+  }
+  .sourceFacts > div {
+    flex-wrap: wrap;
+  }
+}
 .dashboard {
   --ink: #1b1f2b;
   --muted: #667085;
@@ -609,10 +717,9 @@
 .tableHeader,
 .linkRow {
   display: grid;
-  grid-template-columns: minmax(220px, 2.8fr) repeat(
-      3,
-      minmax(48px, 0.6fr)
-    ) minmax(90px, 1fr) minmax(65px, 0.75fr);
+  grid-template-columns:
+    minmax(220px, 2.8fr) repeat(3, minmax(48px, 0.6fr))
+    minmax(90px, 1fr) minmax(65px, 0.75fr);
   gap: 14px;
   align-items: center;
 }
@@ -1050,10 +1157,9 @@
   }
   .linkRow,
   .tableHeader {
-    grid-template-columns: minmax(180px, 2.6fr) repeat(
-        3,
-        minmax(40px, 0.6fr)
-      ) minmax(75px, 1fr) 62px;
+    grid-template-columns:
+      minmax(180px, 2.6fr) repeat(3, minmax(40px, 0.6fr))
+      minmax(75px, 1fr) 62px;
     gap: 10px;
   }
   .prospects {
