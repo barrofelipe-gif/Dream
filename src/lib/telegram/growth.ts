@@ -13,6 +13,8 @@ import {
 } from "./ga-attribution";
 import { TelegramError, type Data } from "./domain";
 import { verifyStorefrontTracker } from "./tracker-install";
+import { normalizeProspect } from "./prospects";
+import { collectionSummary } from "./collection-history";
 import {
   ATTRIBUTION_DAYS,
   cents,
@@ -143,7 +145,12 @@ export async function dashboard(userId: string, input: URLSearchParams) {
       attributionDays: ATTRIBUTION_DAYS,
       gaAttribution: config.gaAttribution || null,
     },
-    prospects: workspace.parsed.prospects || [],
+    prospects: (workspace.parsed.prospects || []).flatMap((value) => {
+      const prospect = normalizeProspect(value);
+      return prospect
+        ? [{ ...prospect, collection: collectionSummary(workspace.parsed, prospect.id) }]
+        : [];
+    }),
   };
 }
 export async function createLink(

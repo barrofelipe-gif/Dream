@@ -317,6 +317,37 @@ export class TelegramDriver {
     add(found.results, false);
     return results.slice(0, 30);
   }
+  async inspectPublicGroup(username: string, expectedId: number): Promise<PublicGroup> {
+    const handle = username.replace(/^@/, "");
+    if (!/^[A-Za-z0-9_]{3,32}$/.test(handle) ||
+        !Number.isSafeInteger(expectedId) || expectedId >= 0)
+      throw new TelegramError("input", "Escolha um grupo ou canal público salvo válido.");
+    const resolved = await this.client.invoke(
+      new Api.contacts.ResolveUsername({ username: handle }),
+    );
+    if (!(resolved.peer instanceof Api.PeerChannel))
+      throw new TelegramError("group_identity", "Este @usuário não pertence mais ao grupo ou canal salvo.");
+    const channelId = resolved.peer.channelId;
+    const entity = resolved.chats.find(
+      (chat): chat is Api.Channel => chat instanceof Api.Channel && chat.id.equals(channelId),
+    );
+    if (!entity)
+      throw new TelegramError("group_identity", "O Telegram não confirmou o grupo ou canal salvo.");
+    const group = this.publicGroup(entity, false, true);
+    if (!group || group.id !== expectedId)
+      throw new TelegramError("group_identity", "Este @usuário pertence a outro ID ou deixou de ser público. O histórico foi preservado.");
+    const full = await this.client.invoke(new Api.channels.GetFullChannel({ channel: entity }));
+    if (!(full.fullChat instanceof Api.ChannelFull) || !full.fullChat.id.equals(entity.id))
+      throw new TelegramError("group_identity", "O Telegram não confirmou a identidade do grupo ou canal salvo.");
+    const fresh = full.chats.find(
+      (chat): chat is Api.Channel => chat instanceof Api.Channel && chat.id.equals(entity.id),
+    );
+    const current = fresh && this.publicGroup(fresh, false, true);
+    if (!current || current.id !== expectedId)
+      throw new TelegramError("group_identity", "O grupo ou canal salvo deixou de estar público. O histórico foi preservado.");
+    const members = full.fullChat.participantsCount;
+    return { ...current, members: typeof members === "number" && Number.isSafeInteger(members) && members >= 0 ? members : null };
+  }
   async group(id: number, invite = false) {
     const dialogs = await this.client.getDialogs({});
     const entity = dialogs

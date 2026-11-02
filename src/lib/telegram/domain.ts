@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { SavedProspect } from "./prospects";
+import type { CollectionRun } from "./collection-history";
 
 export class TelegramError extends Error {
   constructor(
@@ -60,7 +62,12 @@ export type Person = {
   username: string;
   accessHash: string;
 };
-export type Contact = Person & { source_id: number; selected: boolean };
+export type Contact = Person & {
+  source_id: number;
+  selected: boolean;
+  firstCollectedAt?: string;
+  lastCollectedAt?: string;
+};
 export type Consent = {
   user_id: number;
   target_id: number;
@@ -121,7 +128,8 @@ export type Data = {
       invalid: number;
     };
   };
-  prospects?: (PublicGroup & { savedAt: string; query: string })[];
+  prospects?: SavedProspect[];
+  collectionRuns?: CollectionRun[];
   discovery?: { groups: PublicGroup[]; query: string; at: number };
   sources: Group[];
   targets: Group[];

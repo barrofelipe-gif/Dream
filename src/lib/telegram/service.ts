@@ -35,6 +35,8 @@ import {
   groupSearch,
 } from "./domain";
 import { connectTelegramQR, runTelegramQueue } from "@/workflows/telegram";
+import { normalizeProspect, recordProspectCheck, saveProspectRecord } from "./prospects";
+import { recordCollection } from "./collection-history";
 
 export type Login = {
   phone?: string;
@@ -446,17 +448,47 @@ export async function discover(userId: string, input: Record<string, unknown>) {
   });
 }
 export async function saveProspect(userId: string, input: Record<string, unknown>) {
+  const id = numeric(input.id);
   return mutate(userId, row => {
     const saved = row.parsed.prospects || [];
     if (input.remove === true) {
-      row.parsed.prospects = saved.filter(p => p.id !== input.id);
+      row.parsed.prospects = saved.filter(p => p.id !== id);
       return { ok: true };
     }
     const found = row.parsed.discovery;
-    const group = found?.groups.find(g => g.id === input.id);
+    const group = found?.groups.find(g => g.id === id);
     if (!group || !found || Date.now() - found.at > 86400000) throw new TelegramError("input", "Pesquise novamente para salvar este público.");
-    row.parsed.prospects = [{ ...group, query: found.query, savedAt: new Date().toISOString() }, ...saved.filter(p => p.id !== group.id)].slice(0, 100);
+    row.parsed.prospects = saveProspectRecord(saved, group, found.query, found.at);
     return { ok: true };
+  });
+}
+export async function refreshProspect(userId: string, input: Record<string, unknown>) {
+  const id = numeric(input.id);
+  const workspace = await load(userId);
+  idle(workspace.parsed);
+  limits(workspace.parsed);
+  const prospect = normalizeProspect(workspace.parsed.prospects?.find(p => p.id === id));
+  if (!prospect) throw new TelegramError("input", "Salve o público antes de consultar novamente.", 0, 404);
+  return clientFor(userId, async (driver, row) => {
+    idle(row.parsed);
+    limits(row.parsed);
+    let live: Awaited<ReturnType<typeof driver.inspectPublicGroup>> | undefined;
+    let failure: TelegramError | undefined;
+    try {
+      live = await driver.inspectPublicGroup(prospect.username, prospect.id);
+    } catch (error) {
+      failure = mapError(error);
+    }
+    await mutate(userId, current => {
+      if (current.busyToken !== row.busyToken || current.authAttempt !== row.authAttempt)
+        throw new TelegramError("busy", "A conexão mudou. Confira o estado antes de repetir.", 0, 409);
+      // Uma remoção feita durante a consulta não pode ressuscitar o público.
+      if (!current.parsed.prospects?.some(p => p.id === id))
+        throw new TelegramError("input", "Este público não está mais na lista monitorada.", 0, 404);
+      current.parsed.prospects = recordProspectCheck(current.parsed.prospects, id, live, failure?.message);
+    });
+    if (failure && ["auth_required", "flood_wait", "restricted"].includes(failure.code)) throw failure;
+    return { checked: failure ? 0 : 1, failed: failure ? 1 : 0 };
   });
 }
 export async function privacy(
@@ -524,21 +556,12 @@ export async function collect(userId: string, input: Record<string, unknown>) {
     limits(row.parsed);
     const ids = pair(row.parsed, input.source_id, input.target_id);
     const people = await driver.collect(ids.sourceId, ids.targetId);
-    await mutate(userId, (current) => {
-      for (const p of people) {
-        const old = current.parsed.contacts.find(
-          (c) => c.user_id === p.user_id && c.source_id === ids.sourceId,
-        );
-        if (old) Object.assign(old, p);
-        else
-          current.parsed.contacts.push({
-            ...p,
-            source_id: ids.sourceId,
-            selected: false,
-          });
-      }
+    const run = await mutate(userId, (current) => {
+      if (current.busyToken !== row.busyToken || current.authAttempt !== row.authAttempt)
+        throw new TelegramError("busy", "A conexão mudou. Confira o estado antes de repetir.", 0, 409);
+      return recordCollection(current.parsed, ids.sourceId, ids.targetId, people);
     });
-    return { received: people.length };
+    return { received: run.received, newContacts: run.newContacts, collectedAt: run.collectedAt };
   });
 }
 export async function localAction(
@@ -669,23 +692,26 @@ export async function csv(userId: string, results: boolean) {
     data = row.parsed;
   const rows: unknown[][] = results
     ? [
-        ["operacao", "participante_id", "nome", "estado", "detalhes"],
+        ["operacao", "participante_id", "nome", "estado", "detalhes", "atualizado_em"],
         ...data.results.map((r) => [
           r.job_id,
           r.user_id,
           r.name,
           r.state,
           r.message,
+          r.updated_at > 0 ? new Date(r.updated_at * 1000).toISOString() : "",
         ]),
       ]
     : [
-        ["participante_id", "nome", "usuario", "origem", "selecionado"],
+        ["participante_id", "nome", "usuario", "origem", "selecionado", "primeira_coleta_em", "ultima_coleta_em"],
         ...data.contacts.map((p) => [
           p.user_id,
           p.name,
           p.username,
           p.source_id,
           p.selected ? "sim" : "não",
+          p.firstCollectedAt || "",
+          p.lastCollectedAt || "",
         ]),
       ];
   return "\uFEFF" + rows.map((r) => r.map(csvCell).join(";")).join("\r\n");

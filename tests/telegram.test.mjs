@@ -829,10 +829,16 @@ test("configure, collect, bulk select and queue work without per-person authoriz
     await service.configure("owner", { source_id: -1, target_id: -2 }),
     { ok: true },
   );
-  assert.deepEqual(
-    await service.collect("owner", { source_id: -1, target_id: -2 }),
-    { received: 2 },
-  );
+  const firstCollection = await service.collect("owner", { source_id: -1, target_id: -2 });
+  assert.equal(firstCollection.received, 2);
+  assert.equal(firstCollection.newContacts, 2);
+  assert.ok(Number.isFinite(Date.parse(firstCollection.collectedAt)));
+  assert.ok(row.parsed.contacts.every(p => p.firstCollectedAt === firstCollection.collectedAt));
+  const repeatedCollection = await service.collect("owner", { source_id: -1, target_id: -2 });
+  assert.equal(repeatedCollection.newContacts, 0);
+  assert.equal(row.parsed.contacts.length, 2);
+  assert.equal(row.parsed.collectionRuns.length, 2);
+  assert.ok(row.parsed.contacts.every(p => p.firstCollectedAt === firstCollection.collectedAt));
   assert.ok(row.parsed.contacts.every((p) => !p.selected));
   assert.equal(
     (

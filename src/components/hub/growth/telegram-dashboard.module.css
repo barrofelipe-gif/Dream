@@ -1115,6 +1115,344 @@
   font-size: 11px;
   margin-top: 6px;
 }
+.discoverySummary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+.discoverySummary > div {
+  display: grid;
+  gap: 6px;
+  padding: 17px 19px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+}
+.discoverySummary span {
+  color: #78879c;
+  font-size: 11px;
+}
+.discoverySummary strong {
+  font-size: 23px;
+  font-weight: 650;
+  letter-spacing: -0.4px;
+  color: #294c75;
+  font-variant-numeric: tabular-nums;
+}
+.discoverySummary small {
+  font-size: 9px;
+  color: #94a0b0;
+  line-height: 1.6;
+}
+.monitorTools {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 17px;
+}
+.monitorTools label {
+  flex: 1;
+  max-width: 560px;
+}
+.monitorTools input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid #dfe6ef;
+  border-radius: 9px;
+  padding: 11px 13px;
+  background: #ffffff;
+  color: #3e526f;
+  font-size: 11px;
+}
+.monitorProgress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid #dbe7fa;
+  background: #edf5ff;
+  color: #376295;
+  border-radius: 11px;
+  padding: 13px 16px;
+  margin: 0 0 16px;
+}
+.monitorProgress strong {
+  font-size: 12px;
+  font-weight: 650;
+}
+.monitorProgress p {
+  margin-top: 3px;
+  color: #738aa6;
+  font-size: 11px;
+}
+.monitorProgressWarning {
+  border-color: #f3e2bd;
+  background: #fffaf0;
+  color: #98702d;
+}
+.monitorProgressWarning p {
+  color: #a18b68;
+}
+.discoverySearching {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 11px;
+  margin-top: 18px;
+  padding: 44px 20px;
+  border: 1px dashed #d6e3f4;
+  border-radius: 14px;
+  background: #f8fbff;
+}
+.discoverySearching > span {
+  color: #85a5d2;
+  font-size: 33px;
+}
+.discoverySearching strong {
+  font-size: 14px;
+  color: #536f94;
+}
+.discoverySearching p {
+  font-size: 11px;
+  color: #8e9db2;
+}
+.monitoredProspect {
+  border-color: #dce5f1;
+}
+.prospectBadges {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.reviewDue,
+.reviewCurrent {
+  display: inline-flex;
+  align-items: center;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 4px 7px;
+  border-radius: 5px;
+  background: #fff7e5;
+  color: #946f2d;
+}
+.reviewCurrent {
+  color: #62809b;
+  background: #eff5fb;
+}
+.prospectBalance {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 9px;
+  margin-bottom: 17px;
+}
+.prospectBalance strong {
+  font-size: 13px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.prospectBalance span {
+  color: #8b98aa;
+  font-size: 9px;
+  line-height: 1.5;
+}
+.balanceNeutral {
+  color: #5b7a9a;
+}
+.balanceNegative {
+  color: #a97166;
+}
+.prospectDates {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+}
+.prospectDates > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.prospectDates dt {
+  font-size: 10px;
+  color: #91a0b3;
+  max-width: 51%;
+  line-height: 1.5;
+}
+.prospectDates dd {
+  margin: 0;
+  color: #5e748f;
+  font-size: 10px;
+  line-height: 1.5;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.prospectQuery {
+  font-size: 9px;
+  color: #9aa7b8;
+  margin-top: 13px !important;
+  overflow-wrap: anywhere;
+}
+.prospectError {
+  margin-top: 14px;
+  padding: 11px 12px;
+  border: 1px solid #f3e1c5;
+  border-radius: 9px;
+  background: #fffaf2;
+  color: #9a793f;
+}
+.prospectError strong {
+  font-size: 10px;
+  font-weight: 650;
+}
+.prospectError p {
+  font-size: 10px;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+.prospectError small {
+  display: block;
+  font-size: 9px;
+  color: #ab9470;
+  margin-top: 7px;
+  line-height: 1.6;
+}
+.prospectCheck {
+  margin-top: 12px !important;
+  color: #6f91b9;
+  font-size: 10px;
+  line-height: 1.6 !important;
+}
+.prospectCheckFailed {
+  color: #a1793d;
+}
+.prospectHistory {
+  border-top: 1px solid #edf1f7;
+  padding-top: 12px;
+  margin-top: 13px;
+  font-size: 10px;
+}
+.prospectHistory summary {
+  color: #627c9e;
+  cursor: pointer;
+  font-weight: 600;
+  min-height: 22px;
+}
+.prospectHistory > p {
+  font-size: 10px;
+  color: #9aa7b8;
+  margin-top: 9px;
+  line-height: 1.7;
+}
+.prospectHistory .prospectDates {
+  margin-top: 12px;
+}
+.historyTable {
+  margin-top: 11px;
+  font-size: 9px;
+  max-height: 285px;
+  overflow-y: auto;
+}
+.historyTable > div {
+  display: grid;
+  grid-template-columns: minmax(92px, 1.7fr) minmax(46px, 1fr) minmax(
+      34px,
+      0.6fr
+    );
+  gap: 6px;
+  padding: 8px 0;
+  color: #71849e;
+  border-bottom: 1px solid #f0f3f8;
+  font-variant-numeric: tabular-nums;
+}
+.historyTable > div > span:not(:first-child) {
+  text-align: right;
+}
+.historyTable .historyHeader {
+  color: #9aabc0;
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.collectionHistory {
+  display: grid;
+  gap: 10px;
+  margin-top: 13px;
+  max-height: 285px;
+  overflow-y: auto;
+}
+.collectionHistory > div {
+  padding: 9px 11px;
+  background: #f7f9fc;
+  border-radius: 7px;
+}
+.collectionHistory strong {
+  font-size: 9px;
+  font-weight: 600;
+  color: #6d85a3;
+}
+.collectionHistory p {
+  font-size: 9px;
+  line-height: 1.7;
+  color: #8f9db0;
+  margin-top: 3px;
+}
+.removeProspect {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 7px 0;
+  font-size: 9px !important;
+  color: #9ca7b6;
+  background: none;
+  border: 0;
+}
+.removeProspect:hover {
+  color: #8e645d;
+}
+@media (max-width: 650px) {
+  .discoverySummary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .discoverySummary > div {
+    padding: 14px;
+  }
+  .discoverySummary > div:last-child {
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+  .discoverySummary > div:last-child small {
+    grid-column: 1 / -1;
+  }
+  .discoverySummary strong {
+    font-size: 22px;
+  }
+  .monitorTools {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .monitorTools label {
+    max-width: none;
+  }
+  .monitorTools > button {
+    align-self: flex-end;
+  }
+  .monitorProgress {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .prospectDates dt,
+  .prospectDates dd {
+    font-size: 10px;
+  }
+}
 @media (min-width: 1600px) {
   .dashboard {
     padding: 32px;
