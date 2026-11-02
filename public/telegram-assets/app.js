@@ -117,4 +117,3 @@ $('start').addEventListener('click',()=>{const body={...pair(),user_ids:particip
 $('job-actions').addEventListener('click',event=>{if(event.target.dataset.control)act(()=>request('/api/control',{job_id:state.jobs[0].id,action:event.target.dataset.control}));});
 refresh().catch(error=>notice(error.message,true));
 setInterval(()=>{if(!busy&&!$('consent-dialog').open)refresh().catch(()=>notice('Conexão com o painel interrompida. Confira se o servidor está aberto.',true));},1500);
-
