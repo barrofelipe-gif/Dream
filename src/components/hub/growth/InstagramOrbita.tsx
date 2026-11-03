@@ -1,3 +1,5 @@
+import { ORBITA_VERSION } from "@/lib/orbita-hosting";
+
 export default function InstagramOrbita() {
   return (
     <section
@@ -26,17 +28,20 @@ export default function InstagramOrbita() {
           Abrir painel da Órbita →
         </a>
         <a
-          href="/api/growth/orbita/orbita-0.15.0.zip"
+          href={`/api/growth/orbita/orbita-${ORBITA_VERSION}.zip`}
           className="inline-flex min-h-12 items-center justify-center rounded-xl border border-violet-200 bg-white px-5 py-3 text-sm font-semibold text-violet-800 hover:bg-violet-50"
         >
-          Baixar extensão 0.15.0
+          Baixar extensão {ORBITA_VERSION}
         </a>
       </div>
       <p className="max-w-2xl text-xs leading-6 text-slate-600">
         O painel abre aqui no app, com seu login. Use o modo manual para
         analisar relatórios; coleta e execução dependem da extensão instalada
         neste navegador. Os dados ficam locais e não são sincronizados entre
-        computadores. Dentro do painel, use “Voltar ao Growth” para retornar.
+        computadores. Cadastrar um @ cria o espaço da conta; a sessão do
+        Instagram é confirmada separadamente. No painel, “Instalação e conexão”
+        fica disponível mesmo no modo manual, e “Voltar ao Growth” traz você de
+        volta aqui.
       </p>
     </section>
   );

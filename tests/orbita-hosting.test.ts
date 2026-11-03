@@ -31,5 +31,5 @@ test("identidade não aceita HTML e nenhum arquivo arbitrário fica disponível"
     "toString",
   ])
     assert.equal(Object.hasOwn(ORBITA_ASSETS, value), false);
-  assert.ok(ORBITA_ASSETS["orbita-0.15.0.zip"]);
+  assert.ok(ORBITA_ASSETS["orbita-0.16.0.zip"]);
 });

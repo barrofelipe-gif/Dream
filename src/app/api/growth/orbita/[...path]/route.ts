@@ -35,13 +35,13 @@ export async function GET(
   if (parts.length !== 1)
     return new Response("Página não encontrada.", { status: 404, headers });
   const name = parts[0];
+  const scope = createHash("sha256")
+    .update(String(session.user.id))
+    .digest("hex")
+    .slice(0, 32);
   if (name === "session")
-    return Response.json({ ready: true, version: ORBITA_VERSION }, { headers });
+    return Response.json({ ready: true, version: ORBITA_VERSION, userScope: scope }, { headers });
   if (name === "painel") {
-    const scope = createHash("sha256")
-      .update(session.user.id)
-      .digest("hex")
-      .slice(0, 32);
     return new Response(orbitaPanel(scope), {
       headers: {
         ...headers,
