@@ -39,6 +39,7 @@ type Content = {
   kind: "post" | "carousel" | "reel" | "story";
   title: string;
   url?: string;
+  thumbnailUrl?: string;
   publishedAt: string;
   storyMedia?: "photo" | "video";
   metrics: Metrics;
@@ -252,6 +253,46 @@ function safeUrl(value: string | null): string | undefined {
     return undefined;
   }
 }
+function safeThumbnail(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length > 4096) return undefined;
+  try {
+    const url = new URL(value.trim());
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      (url.port && url.port !== "443") ||
+      !["cdninstagram.com", "fbcdn.net"].some(
+        (host) => url.hostname === host || url.hostname.endsWith(`.${host}`),
+      ) ||
+      /\.(mp4|m4v|mov|webm)(?:$|\/)/i.test(url.pathname)
+    )
+      return undefined;
+    url.hash = "";
+    return url.href;
+  } catch {
+    return undefined;
+  }
+}
+function mediaThumbnail(
+  media: Record<string, unknown>,
+  kind: Content["kind"],
+): string | undefined {
+  const thumbnail = safeThumbnail(media.thumbnail_url);
+  if (thumbnail) return thumbnail;
+  const image = safeThumbnail(media.media_url);
+  if (!image) return undefined;
+  if (media.media_type === "IMAGE") return image;
+  // A carousel URL can point to a video. Use a visibly image-shaped URL only;
+  // a Reel/video media_url is never treated as its cover.
+  if (
+    (kind === "post" || kind === "carousel") &&
+    media.media_type !== "VIDEO" &&
+    /\.(jpe?g|png|webp|avif|gif)$/i.test(new URL(image).pathname)
+  )
+    return image;
+  return undefined;
+}
 export function buildOfficialInsights(input: {
   account: OfficialAccount;
   username: string;
@@ -409,6 +450,8 @@ export function buildOfficialInsights(input: {
     };
     const url = safeUrl(row.permalink);
     if (url) item.url = url;
+    const thumbnailUrl = mediaThumbnail(media, kind);
+    if (thumbnailUrl) item.thumbnailUrl = thumbnailUrl;
     if (kind === "story") {
       if (media.media_type === "IMAGE") item.storyMedia = "photo";
       if (media.media_type === "VIDEO") item.storyMedia = "video";

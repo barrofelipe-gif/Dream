@@ -199,6 +199,85 @@ test("mídias mantêm lifetime, milissegundos são convertidos e nenhum total de
   assert.equal(r.content[0].metrics.follows, undefined);
   assert.equal(r.content[0].url, "https://www.instagram.com/reel/qa123/");
 });
+test("capas usam thumbnail oficial e media_url de imagem, sem confundir vídeo ou URL externa com miniatura", () => {
+  const image =
+      "https://scontent.test.cdninstagram.com/post.jpg?oh=signed&oe=123",
+    cover = "https://scontent.test.fbcdn.net/reel-cover.jpg?oh=cover",
+    video = "https://scontent.test.cdninstagram.com/reel.mp4?oh=video";
+  const cases = [
+    {
+      tipo: "reel",
+      media: { media_type: "VIDEO", thumbnail_url: cover, media_url: video },
+      expected: cover,
+    },
+    {
+      tipo: "foto",
+      media: { media_type: "IMAGE", media_url: image },
+      expected: image,
+    },
+    {
+      tipo: "carrossel",
+      media: { media_type: "CAROUSEL_ALBUM", media_url: image },
+      expected: image,
+    },
+    {
+      tipo: "reel",
+      media: { media_type: "VIDEO", media_url: video },
+      expected: undefined,
+    },
+    {
+      tipo: "carrossel",
+      media: { media_type: "CAROUSEL_ALBUM", media_url: video },
+      expected: undefined,
+    },
+    {
+      tipo: "foto",
+      media: {
+        media_type: "IMAGE",
+        thumbnail_url: "https://cdninstagram.com.evil.test/a.jpg",
+        media_url: image,
+      },
+      expected: image,
+    },
+    {
+      tipo: "reel",
+      media: {
+        media_type: "VIDEO",
+        thumbnail_url: "https://cdninstagram.com.evil.test/a.jpg",
+      },
+      expected: undefined,
+    },
+    {
+      tipo: "foto",
+      media: {
+        media_type: "IMAGE",
+        media_url: "http://scontent.test.fbcdn.net/a.jpg",
+      },
+      expected: undefined,
+    },
+    {
+      tipo: "foto",
+      media: {
+        media_type: "IMAGE",
+        media_url: "https://secret@scontent.test.fbcdn.net/a.jpg",
+      },
+      expected: undefined,
+    },
+  ];
+  for (const entry of cases) {
+    const p = post([], {
+      tipo: entry.tipo,
+      bruto: JSON.stringify({
+        midia: { id: "post-1", like_count: 2, ...entry.media },
+        insights: [],
+      }),
+    });
+    const content = result([], [p]).reports[0].content[0];
+    assert.equal(content.thumbnailUrl, entry.expected);
+    assert.equal(content.metrics.likes, 2);
+  }
+});
+
 test("likes/comments do payload oficial são aceitos; identificação de mídia divergente é recusada", () => {
   const p = post([], {
     bruto: JSON.stringify({
