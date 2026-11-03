@@ -1,64 +1,43 @@
-"use client";
-import { useEffect, useRef, useState } from "react";
-
 export default function InstagramOrbita() {
-  const frame = useRef<HTMLIFrameElement>(null);
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
   return (
     <section
-      className="min-w-0 space-y-3"
-      aria-label="Crescimento com a Órbita"
+      className="min-w-0 space-y-5 rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-emerald-50 p-6 sm:p-8"
+      aria-labelledby="orbita-growth-title"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-200 bg-gradient-to-r from-violet-50 via-blue-50 to-emerald-50 p-4">
-        <div>
-          <p className="text-sm font-semibold text-violet-900">
-            Crescimento · Órbita{" "}
-            <span className="text-xs font-normal">Teste inicial</span>
-          </p>
-          <p className="mt-1 text-xs text-slate-600">
-            Métricas, públicos e planos de melhoria por conta. Selecione o @
-            dentro da Órbita; a seleção é independente da empresa do
-            atendimento.
-          </p>
-        </div>
+      <p className="text-xs font-bold uppercase tracking-widest text-violet-700">
+        Crescimento · Órbita · Teste inicial
+      </p>
+      <h2
+        id="orbita-growth-title"
+        className="text-2xl font-semibold tracking-tight text-slate-900"
+      >
+        Seu próximo ciclo de crescimento começa aqui.
+      </h2>
+      <p className="max-w-2xl text-sm leading-7 text-slate-600">
+        Abra o dashboard para acompanhar engajamento, organizar públicos e
+        transformar seus resultados em planos de melhoria. BFF e Moranga têm
+        espaços separados por @.
+      </p>
+      <div className="flex flex-wrap gap-3">
         <a
-          className="rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-semibold text-violet-800"
           href="/api/growth/orbita/painel"
-          target="_blank"
-          rel="noreferrer"
+          className="inline-flex min-h-12 items-center justify-center rounded-xl bg-violet-700 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-violet-800 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-violet-600"
         >
-          Abrir em uma aba
+          Abrir painel da Órbita →
         </a>
-        <button
-          className="rounded-lg bg-violet-700 px-3 py-2 text-xs font-semibold text-white"
-          onClick={() => {
-            void frame.current?.requestFullscreen().catch(() => {});
-          }}
+        <a
+          href="/api/growth/orbita/orbita-0.15.0.zip"
+          className="inline-flex min-h-12 items-center justify-center rounded-xl border border-violet-200 bg-white px-5 py-3 text-sm font-semibold text-violet-800 hover:bg-violet-50"
         >
-          Tela cheia
-        </button>
+          Baixar extensão 0.15.0
+        </a>
       </div>
-      {mounted ? (
-        <iframe
-          ref={frame}
-          src="/api/growth/orbita/painel"
-          title="Órbita — dashboard e crescimento do Instagram"
-          className="h-[1100px] w-full rounded-2xl border border-slate-200 bg-white"
-          allow="fullscreen"
-          allowFullScreen
-          loading="eager"
-        />
-      ) : (
-        <div
-          role="status"
-          className="min-h-[240px] rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600"
-        >
-          Abrindo o painel da Órbita…
-        </div>
-      )}
+      <p className="max-w-2xl text-xs leading-6 text-slate-600">
+        O painel abre aqui no app, com seu login. Use o modo manual para
+        analisar relatórios; coleta e execução dependem da extensão instalada
+        neste navegador. Os dados ficam locais e não são sincronizados entre
+        computadores. Dentro do painel, use “Voltar ao Growth” para retornar.
+      </p>
     </section>
   );
 }

@@ -2,7 +2,7 @@
 
 Versão 0.15.0. Entrada: `/areas/growth/papeis/instagram#crescimento`.
 
-O componente `InstagramOrbita` incorpora `/api/growth/orbita/painel`. HTML, JavaScript, CSS, ícone, download e verificação de sessão exigem o login de administrador. A regra específica do Next permite iframe somente do próprio app; o restante mantém os cabeçalhos existentes. `outputFileTracingIncludes` inclui explicitamente os arquivos da integração no pacote serverless. Nenhuma tabela, credencial ou variável de ambiente nova.
+O componente `InstagramOrbita` oferece a entrada para `/api/growth/orbita/painel`, um painel completo no mesmo app e login, com link de volta ao Growth. A entrada não depende de iframe; uma falha de recarga observada na incorporação motivou essa escolha. HTML, JavaScript, CSS, ícone, download e verificação de sessão exigem o login de administrador. A regra específica do Next permite iframe somente do próprio app; o restante mantém os cabeçalhos existentes. `outputFileTracingIncludes` inclui explicitamente os arquivos da integração no pacote serverless. Nenhuma tabela, credencial ou variável de ambiente nova.
 
 Os arquivos compilados ficam em `assets/`, fora de `public/`, e são servidos por uma lista fixa no Route Handler. O painel hospedado usa um bundle único esbuild, sem import dinâmico de chunks externos. `setup.css` pertence à integração do app. O código-fonte completo da Órbita acompanha a pasta em `orbita-codigo-fonte-0.15.0.zip`; para atualizar, extraia em um checkout separado, instale com `npm ci` e execute `npm test` e `npm run build`. Copie `dist/hosted.js`, `dist/hosted.css`, `public/orbita.svg` e o ZIP da extensão para `assets/`. Atualize juntos a versão e a lista de arquivos em `src/lib/orbita-hosting.ts`.
 

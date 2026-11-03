@@ -3,3 +3,5 @@
 @media(min-width:701px){body:has(#root .sidebar) .hosted-mode{padding-left:257px}}
 @media(min-width:701px) and (max-width:1250px){body:has(#root .sidebar) .hosted-mode{padding-left:230px}}
 
+
+.hosted-mode{display:flex;align-items:center;flex-wrap:wrap;gap:10px 20px}.hosted-back{color:#e9d5ff;text-decoration:underline;text-underline-offset:3px;white-space:nowrap}.hosted-back:focus-visible{outline:3px solid #a5b4fc;outline-offset:4px}

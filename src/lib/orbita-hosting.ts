@@ -18,7 +18,7 @@ export const ORBITA_ASSETS: Record<
 export function orbitaPanel(userScope: string): string {
   if (!/^[a-f0-9]{32}$/.test(userScope)) throw new Error("Invalid user scope");
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="orbita-user" content="${userScope}"><title>Órbita · Crescimento do Instagram</title><link rel="stylesheet" href="/api/growth/orbita/hosted.css"><link rel="stylesheet" href="/api/growth/orbita/setup.css"></head><body>
-  <div id="connection-mode" class="hosted-mode" role="status">Órbita ${ORBITA_VERSION} · Growth do app BFF</div>
+  <div class="hosted-mode"><a class="hosted-back" href="/areas/growth/papeis/instagram#crescimento">← Voltar ao Growth</a><span id="connection-mode" role="status">Órbita ${ORBITA_VERSION} · Growth do app BFF</span></div>
   <section id="setup" class="hosted-setup" aria-labelledby="setup-title">
     <span class="hosted-eyebrow">CRESCIMENTO COM DIREÇÃO</span><h1 id="setup-title">Seu próximo passo começa aqui.</h1>
     <p>Dashboard, engajamento, Stories, horários, origens e planos de melhoria. Escolha como quer testar a Órbita neste navegador.</p>
