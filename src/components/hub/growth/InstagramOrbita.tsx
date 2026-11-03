@@ -1,8 +1,12 @@
 "use client";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function InstagramOrbita() {
   const frame = useRef<HTMLIFrameElement>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   return (
     <section
       className="min-w-0 space-y-3"
@@ -37,14 +41,24 @@ export default function InstagramOrbita() {
           Tela cheia
         </button>
       </div>
-      <iframe
-        ref={frame}
-        src="/api/growth/orbita/painel"
-        title="Órbita — dashboard e crescimento do Instagram"
-        className="h-[1100px] w-full rounded-2xl border border-slate-200 bg-white"
-        allow="fullscreen"
-        allowFullScreen
-      />
+      {mounted ? (
+        <iframe
+          ref={frame}
+          src="/api/growth/orbita/painel"
+          title="Órbita — dashboard e crescimento do Instagram"
+          className="h-[1100px] w-full rounded-2xl border border-slate-200 bg-white"
+          allow="fullscreen"
+          allowFullScreen
+          loading="eager"
+        />
+      ) : (
+        <div
+          role="status"
+          className="min-h-[240px] rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600"
+        >
+          Abrindo o painel da Órbita…
+        </div>
+      )}
     </section>
   );
 }
