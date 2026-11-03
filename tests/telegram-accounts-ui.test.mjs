@@ -81,3 +81,11 @@ test("account identity and labels are escaped before rendering the account choos
   assert.ok(!rendered.includes("<script>"));
   assert.match(rendered, /&lt;img/);
 });
+
+test("an old operation without account provenance is never attributed to an unconnected draft", async () => {
+  const initial = snapshot();
+  initial.connection.accounts.push({ id: "draft", label: "Felipe", account: null, active: false, state: "disconnected" });
+  initial.jobs = [{ id: "legacy", state: "completed", total: 1, processed: 1, success: 1, added: 1, failed: 0, message: "Historical confirmed operation" }];
+  const h = await harness(initial);
+  assert.ok(!h.element("job-summary").innerHTML.includes("Conta da operação: Felipe"));
+});
