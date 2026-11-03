@@ -1,4 +1,4 @@
-export const ORBITA_VERSION = "0.16.1";
+export const ORBITA_VERSION = "0.16.2";
 export const ORBITA_CSP =
   "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' https://cdninstagram.com https://*.cdninstagram.com https://fbcdn.net https://*.fbcdn.net; font-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
 export const ORBITA_ASSETS: Record<
@@ -10,6 +10,7 @@ export const ORBITA_ASSETS: Record<
   "hosted.css": { file: "hosted.css", type: "text/css; charset=utf-8" },
   "setup.css": { file: "setup.css", type: "text/css; charset=utf-8" },
   "orbita-0.15.0.zip": {file:"orbita-0.15.0.zip",type:"application/zip",download:"orbita-0.15.0.zip"},
+  "orbita-0.16.2.zip": {file:"orbita-0.16.2.zip",type:"application/zip",download:"orbita-0.16.2.zip"},
   "orbita-0.16.1.zip": {file:"orbita-0.16.1.zip",type:"application/zip",download:"orbita-0.16.1.zip"},
   "orbita-0.16.0.zip": {
     file: "orbita-0.16.0.zip",
