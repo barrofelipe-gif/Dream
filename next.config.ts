@@ -1,3 +1,4 @@
+import { ORBITA_CSP } from "./src/lib/orbita-hosting";
 import type { NextConfig } from "next";
 import { withWorkflow } from "workflow/next";
 
@@ -32,6 +33,9 @@ const securityHeaders = [
 const semCache = { key: "Cache-Control", value: "no-store, max-age=0" };
 
 const nextConfig: NextConfig = {
+  outputFileTracingIncludes: {
+    "/api/growth/orbita/[...path]": ["./integrations/orbita/assets/**/*"],
+  },
   async headers() {
     return [
       // /avaliacoes/... é o sistema de avaliações (repassado pelo proxy): o cache é o que ele mandar, porque o
@@ -40,6 +44,10 @@ const nextConfig: NextConfig = {
       { source: "/avaliacoes/:path*", headers: securityHeaders },
       // O painel Telegram é incorporado somente pelo próprio app. Esta regra
       // também precisa existir na configuração da CDN, além da Route Handler.
+      { source: "/api/growth/orbita/painel", headers: [
+        {key:"X-Frame-Options",value:"SAMEORIGIN"},
+        {key:"Content-Security-Policy",value:ORBITA_CSP},
+      ] },
       { source: "/api/telegram/painel", headers: [
         {key:"X-Frame-Options",value:"SAMEORIGIN"},
         {key:"Content-Security-Policy",value:"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'"},

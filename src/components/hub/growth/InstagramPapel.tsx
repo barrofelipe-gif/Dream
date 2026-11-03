@@ -1,3 +1,4 @@
+import InstagramOrbita from "./InstagramOrbita";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import InstagramInbox from "@/components/hub/growth/InstagramInbox";
@@ -128,6 +129,7 @@ export default async function InstagramPapel() {
   };
 
   const abas: Aba[] = [
+    { id: "crescimento", rotulo: "Crescimento · Órbita", grupo: "Início", ajuda: "Dashboard, públicos, engajamento e planos de melhoria. Conecte a extensão ou teste com dados importados.", conteudo: <InstagramOrbita /> },
     { id: "geral", rotulo: "Inicial", grupo: "Início", ajuda: "Resumo da semana, primeiros passos e as contas ligadas.", conteudo: <InstagramInicio d={inicio} /> },
     { id: "conversas", rotulo: "Conversas do Instagram", grupo: "Atendimento", contador: aguardando, ajuda: "Leia e responda o direct. Assuma a conversa para o robô parar e devolva quando terminar.", conteudo: <InstagramInbox /> },
     { id: "messenger", rotulo: "Conversas do Messenger", grupo: "Atendimento", ajuda: "Mensagens da Página do Facebook, com o mesmo jeito de assumir e responder.", conteudo: <MessengerInbox /> },
