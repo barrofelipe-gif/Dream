@@ -1,14 +1,14 @@
 # Órbita no Growth
 
-Versão 0.16.2. Entrada: `/areas/growth/papeis/instagram#crescimento`.
+Versão 0.16.3. Entrada: `/areas/growth/papeis/instagram#crescimento`.
 
 O componente `InstagramOrbita` oferece a entrada para `/api/growth/orbita/painel`, um painel completo no mesmo app e login, com link de volta ao Growth. A entrada não depende de iframe; uma falha de recarga observada na incorporação motivou essa escolha. HTML, JavaScript, CSS, ícone, download e verificação de sessão exigem o login de administrador. A regra específica do Next permite iframe somente do próprio app; o restante mantém os cabeçalhos existentes. `outputFileTracingIncludes` inclui explicitamente os arquivos da integração no pacote serverless. Nenhuma tabela, credencial ou variável de ambiente nova.
 
-Os arquivos compilados ficam em `assets/`, fora de `public/`, e são servidos por uma lista fixa no Route Handler. O painel hospedado usa um bundle único esbuild, sem import dinâmico de chunks externos. `setup.css` pertence à integração do app. O código-fonte completo da Órbita acompanha a pasta em `orbita-codigo-fonte-0.16.2.zip`; para atualizar, extraia em um checkout separado, instale com `npm ci` e execute `npm test` e `npm run build`. Copie `dist/hosted.js`, `dist/hosted.css`, `public/orbita.svg` e o ZIP da extensão para `assets/`. Atualize juntos a versão e a lista de arquivos em `src/lib/orbita-hosting.ts`.
+Os arquivos compilados ficam em `assets/`, fora de `public/`, e são servidos por uma lista fixa no Route Handler. O painel hospedado usa um bundle único esbuild, sem import dinâmico de chunks externos. `setup.css` pertence à integração do app. O código-fonte completo da Órbita acompanha a pasta em `orbita-codigo-fonte-0.16.3.zip`; para atualizar, extraia em um checkout separado, instale com `npm ci` e execute `npm test` e `npm run build`. Copie `dist/hosted.js`, `dist/hosted.css`, `public/orbita.svg` e o ZIP da extensão para `assets/`. Atualize juntos a versão e a lista de arquivos em `src/lib/orbita-hosting.ts`.
 
 ## Funcionamento e limites do teste
 
-- O usuário escolhe explicitamente extensão ou modo manual antes de ler os dados. A extensão 0.16.2 precisa ser instalada ou recarregada pelo usuário no Chrome/Edge. Não é uma instalação pela Chrome Web Store.
+- O usuário escolhe explicitamente extensão ou modo manual antes de ler os dados. A extensão 0.16.3 precisa ser instalada ou recarregada pelo usuário no Chrome/Edge. Não é uma instalação pela Chrome Web Store.
 - O conector é um content script em mundo isolado, restrito aos dois hosts HTTPS e à rota exata do painel; não há `externally_connectable`. Confere a sessão do app antes de cada mensagem. O worker também valida o remetente, a conta ativa e os controles já existentes de execução.
 - `chrome.storage.local` continua em `TRUSTED_CONTEXTS`. O conector envia somente avisos após confirmações. Leituras locais periódicas, a cada 15 segundos com o painel visível, refletem alarmes e alterações no painel nativo; não consultam o Instagram nem repetem ações.
 - A conexão usa as contas e os dados da extensão deste navegador. Não inicia a fila, não verifica por si só a sessão Instagram e não altera avisos/tentativas consumidas. Uma conta executa por vez. O @ selecionado na Órbita é independente da empresa selecionada no atendimento do app.
