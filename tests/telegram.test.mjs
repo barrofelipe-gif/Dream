@@ -1194,3 +1194,50 @@ test("group setup has no manual participant list requirement", async () => {
   ui.resolve({ ok: true });
   await ui.drain();
 });
+
+test("a prepared source accepts only trusted messages and known groups while preserving the chosen destination", async () => {
+  for (const id of [-3, -999]) {
+    const ui = discoveryUI(true, data());
+    await ui.drain();
+    const listeners = {}, parent = {};
+    ui.context.window = { parent, location: { origin: "https://app.example" }, addEventListener: (name, fn) => { listeners[name] = fn; } };
+    runInContext("state.connection.groups.push({id:-3,name:'Prepared fitness',can_invite:false},{id:-4,name:'Manually chosen destination',can_invite:true});", ui.context);
+    runInContext(readFileSync("public/telegram-assets/setup.js", "utf8"), ui.context);
+    runInContext("render();", ui.context);
+    ui.getElementById("setup-target").value = "-4";
+    listeners.message({ origin: "https://evil.example", source: parent, data: { type: "bff-telegram-source", id, accountId: 1, request: 1 } });
+    listeners.message({ origin: "https://app.example", source: {}, data: { type: "bff-telegram-source", id, accountId: 1, request: 1 } });
+    assert.equal(ui.getElementById("setup-source").value, "-1");
+    const message = { origin: "https://app.example", source: parent, data: { type: "bff-telegram-source", id, accountId: 1, request: 1 } };
+    listeners.message(message);
+    assert.equal(ui.getElementById("setup-source").value, String(id === -3 ? -3 : -1));
+    assert.equal(ui.getElementById("setup-target").value, "-4");
+    ui.getElementById("setup-source").value = "-1";
+    listeners.message(message);
+    runInContext("render();", ui.context);
+    assert.equal(ui.getElementById("setup-source").value, "-1");
+    listeners.message({ ...message, data: { ...message.data, request: 2 } });
+    assert.equal(ui.getElementById("setup-source").value, String(id === -3 ? -3 : -1));
+    assert.equal(ui.getElementById("setup-target").value, "-4");
+    assert.equal(ui.requests.filter((r) => r.options?.method === "POST").length, 0);
+  }
+});
+
+test("a pending prepared origin cannot survive disconnect or select a group in another account", async () => {
+  for (const disconnected of [false, true]) {
+    const ui = discoveryUI(true, data());
+    await ui.drain();
+    const listeners = {}, parent = {};
+    ui.context.window = { parent, location: { origin: "https://app.example" }, addEventListener: (name, fn) => { listeners[name] = fn; } };
+    runInContext(readFileSync("public/telegram-assets/setup.js", "utf8"), ui.context);
+    runInContext("render();", ui.context);
+    const message = { origin: "https://app.example", source: parent, data: { type: "bff-telegram-source", id: -30, accountId: 1, request: 1 } };
+    listeners.message(message);
+    assert.equal(ui.getElementById("setup-source").value, "-1");
+    if (disconnected) runInContext("state.connection.state='disconnected';render();", ui.context);
+    runInContext("state.connection.state='connected';state.connection.account.id=2;state.connection.groups.push({id:-30,name:'Other account source',can_invite:false});render();", ui.context);
+    listeners.message(message);
+    assert.equal(ui.getElementById("setup-source").value, "-1");
+    assert.equal(ui.requests.filter((r) => r.options?.method === "POST").length, 0);
+  }
+});

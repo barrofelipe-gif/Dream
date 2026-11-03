@@ -97,6 +97,7 @@ function ready(data: Dashboard, metric: Metric) {
 export default function TelegramDashboard() {
   const [tab, setTab] = useState<Tab>("overview"),
     [communityOpened, setCommunityOpened] = useState(false);
+  const [preparedSource, setPreparedSource] = useState<{ id: number; accountId: number; request: number }>();
   const [days, setDays] = useState(30),
     [source, setSource] = useState("");
   const [data, setData] = useState<Dashboard | null>(null),
@@ -675,7 +676,7 @@ export default function TelegramDashboard() {
                   A comparação usa os {days} dias anteriores. O histórico começa
                   com o uso dos links; não há recuperação retroativa de cliques.
                   A leitura cobre até 1.000 pedidos recentes e até 80 consultas
-                  de detalhes por sincronização e revisa até 40 pedidos antigos
+                  de detalhes por sincronização e revisa até 20 pedidos antigos
                   já atribuídos, priorizando os menos recentemente conferidos; a
                   tela informa quando a cobertura é parcial.
                 </p>
@@ -689,12 +690,16 @@ export default function TelegramDashboard() {
               notify={setNotice}
               onChanged={reload}
               connect={() => go("community")}
+              openCommunity={(sourceId, accountId) => {
+                setPreparedSource((previous) => ({ id: sourceId, accountId, request: (previous?.request || 0) + 1 }));
+                go("community");
+              }}
             />
           )}
         </>
       )}
       <div hidden={tab !== "community"}>
-        {communityOpened && <TelegramCommunity />}
+        {communityOpened && <TelegramCommunity selection={preparedSource} />}
       </div>
       {data && tab !== "community" && (
         <footer className={s.footer}>

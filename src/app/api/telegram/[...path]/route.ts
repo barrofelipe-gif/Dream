@@ -96,6 +96,8 @@ export async function POST(request: Request, context: Context) {
     else if (route === "/growth/prospect") result = await telegram.saveProspect(userId, data);
     else if (route === "/growth/prospects/refresh") result = await telegram.refreshProspect(userId, data);
     else if (route === "/discover") result = await telegram.discover(userId, data);
+    else if (route === "/connection/prepare-origin")
+      result = await telegram.prepareOrigin(userId, data);
     else if (route === "/connection/qr")
       result = await telegram.begin(userId, data, true);
     else if (route === "/connection/start")

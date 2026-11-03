@@ -285,7 +285,7 @@ export function enqueue(
     ...users.map((user_id) => ({
       job_id: job.id,
       user_id,
-      name: data.contacts.find((c) => c.user_id === user_id)!.name,
+      name: data.contacts.find((c) => c.user_id === user_id && c.source_id === sourceId)!.name,
       state: "waiting",
       message: "Aguardando processamento.",
       updated_at: Date.now() / 1000,

@@ -1,5 +1,14 @@
 'use strict';
 let setupLastStage = null, setupGroupsLoaded = false, setupProtectId = null;
+let setupPreferredSource = null, setupSourceRequest = 0;
+if (typeof window !== 'undefined') window.addEventListener('message',event=>{
+  const selected=event.data;
+  if (event.origin!==window.location.origin || event.source!==window.parent || selected?.type!=='bff-telegram-source' ||
+      !Number.isSafeInteger(selected.id) || !Number.isSafeInteger(selected.accountId) || !Number.isSafeInteger(selected.request) || selected.request<=setupSourceRequest ||
+      (setupPreferredSource && selected.request<=setupPreferredSource.request)) return;
+  setupPreferredSource={id:selected.id,accountId:selected.accountId,request:selected.request};
+  if (state?.connection) render();
+});
 const setupLabels = {disconnected:'Desconectado',saved:'Sessão salva',code:'Aguardando código',password:'Verificação em duas etapas',connected:'Conta conectada',qr:'Aguardando leitura do QR Code',qr_error:'QR Code encerrado'};
 function setupPair() { return {source_id:Number($('setup-source').value),target_id:Number($('setup-target').value)}; }
 function updateCredentialFields() {
@@ -11,6 +20,11 @@ function renderSetup(active) {
   const connection=state.connection;
   if (!connection) return;
   const stage=connection.state, connected=stage==='connected', blocked=busy||active;
+  if (setupPreferredSource && ((setupLastStage==='connected' && !connected) ||
+      (connected && connection.account?.id!==setupPreferredSource.accountId))) {
+    setupSourceRequest=setupPreferredSource.request;
+    setupPreferredSource=null;
+  }
   $('connection-badge').textContent=setupLabels[stage] || 'Desconectado';
   $('connection-badge').className='pill '+(connected?'good':stage==='disconnected'?'':'warn');
   const summaries={disconnected:'Conecte por QR Code ou código para carregar seus grupos e preparar uma comunidade privada.',saved:'Sua sessão está salva no app. Confirme a conexão para continuar.',code:`Digite o código recebido na conta com final ${connection.phone_hint}.`,password:'Sua conta solicita a senha de verificação em duas etapas.',connected:`${connection.account?.name || 'Conta conectada'}${connection.account?.username?' · @'+connection.account.username:''} — conexão protegida no app.`,qr:'Escaneie o QR Code pelo Telegram do seu celular e confirme a conexão.',qr_error:'A conexão por QR Code não foi concluída. Você pode tentar novamente ou cancelar.'};
@@ -53,6 +67,11 @@ function renderSetup(active) {
     $('setup-source').value=String((connection.configured?state.sources:saved.sources)[0]?.id || '');
     $('setup-target').value=String((connection.configured?state.targets:saved.targets)[0]?.id || '');
     setupGroupsLoaded=true;
+  }
+  if (connected && setupPreferredSource && connection.groups.some(g=>g.id===setupPreferredSource.id)) {
+    $('setup-source').value=String(setupPreferredSource.id);
+    setupSourceRequest=setupPreferredSource.request;
+    setupPreferredSource=null;
   }
   const selected=setupPair(), privacy=connection.privacy?.group_id===selected.target_id?connection.privacy:null;
   if (privacy) {

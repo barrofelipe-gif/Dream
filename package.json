@@ -12,7 +12,7 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "seed": "prisma db seed",
-    "test:telegram": "node --test tests/telegram.test.mjs tests/telegram-growth.test.mjs tests/telegram-ga-attribution.test.mjs tests/telegram-tracker-install.test.mjs tests/telegram-prospects.test.mjs tests/telegram-collection-history.test.mjs tests/telegram-monitoring.test.mjs tests/telegram-origin-history.test.mjs tests/telegram-session-races.test.mjs"
+    "test:telegram": "node --test tests/telegram.test.mjs tests/telegram-growth.test.mjs tests/telegram-ga-attribution.test.mjs tests/telegram-tracker-install.test.mjs tests/telegram-prospects.test.mjs tests/telegram-collection-history.test.mjs tests/telegram-monitoring.test.mjs tests/telegram-origin-history.test.mjs tests/telegram-session-races.test.mjs tests/telegram-prepare-origin.test.mjs tests/telegram-prepare-origin-ui.test.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.122.0",

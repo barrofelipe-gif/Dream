@@ -7,6 +7,8 @@ import s from "./telegram-dashboard.module.css";
 
 type MonitoredProspect = Dashboard["prospects"][number];
 type RefreshResult = {
+  accountId?: number;
+  source?: { id: number; name: string };
   groups?: PublicGroup[];
   query?: string;
   checked?: number;
@@ -55,6 +57,7 @@ export default function TelegramDiscovery({
   notify,
   onChanged,
   connect,
+  openCommunity,
 }: {
   data: Dashboard;
   post: (
@@ -64,6 +67,7 @@ export default function TelegramDiscovery({
   notify: (text: string) => void;
   onChanged: () => void;
   connect: () => void;
+  openCommunity: (sourceId: number, accountId: number) => void;
 }) {
   const monitored: MonitoredProspect[] = data.prospects;
   const [query, setQuery] = useState("fitness atacado");
@@ -71,6 +75,7 @@ export default function TelegramDiscovery({
   const [groups, setGroups] = useState<PublicGroup[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [preparing, setPreparing] = useState<number | null>(null);
   const [saving, setSaving] = useState<{ id: number; remove: boolean } | null>(
     null,
   );
@@ -98,7 +103,7 @@ export default function TelegramDiscovery({
   }, []);
   const connected = data.connection === "connected";
   const refreshing = !!progress && !progress.finished;
-  const locked = busy || saving !== null || refreshing;
+  const locked = busy || saving !== null || preparing !== null || refreshing;
   const reviewAt = new Date(data.updatedAt).getTime();
   const needsReview = monitored.filter((group) => due(group, reviewAt)).length;
   const savedById = new Map(monitored.map((group) => [group.id, group]));
@@ -185,6 +190,28 @@ export default function TelegramDiscovery({
     } finally {
       working.current = false;
       if (mounted.current) setSaving(null);
+    }
+  }
+  async function prepareOrigin(group: PublicGroup) {
+    if (!connected || working.current || group.kind === "channel") return;
+    working.current = true;
+    setPreparing(group.id);
+    setError("");
+    try {
+      const result = await post("connection/prepare-origin", { id: group.id });
+      if (!result.source || result.source.id !== group.id || !Number.isSafeInteger(result.accountId))
+        throw new Error("O Telegram não confirmou a origem. Atualize os grupos antes de continuar.");
+      if (mounted.current) {
+        notify(`Origem preparada: ${result.source.name}. Escolha o destino e consulte os participantes.`);
+        onChanged();
+        openCommunity(result.source.id, result.accountId!);
+      }
+    } catch (reason) {
+      if (mounted.current)
+        setError(reason instanceof Error ? reason.message : "Não foi possível preparar a origem.");
+    } finally {
+      working.current = false;
+      if (mounted.current) setPreparing(null);
     }
   }
   async function refresh(targets: SavedProspect[]) {
@@ -685,6 +712,15 @@ export default function TelegramDiscovery({
                   </p>
                 )}
                 <div className={s.prospectActions}>
+                  {group.kind !== "channel" && (
+                    <button
+                      className={s.primary}
+                      disabled={!connected || locked}
+                      onClick={() => prepareOrigin(group)}
+                    >
+                      {preparing === group.id ? "Entrando e verificando…" : "Entrar e preparar coleta"}
+                    </button>
+                  )}
                   <a
                     className={s.secondary}
                     href={`https://t.me/${encodeURIComponent(group.username)}`}

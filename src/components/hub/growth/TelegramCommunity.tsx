@@ -1,9 +1,17 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-export default function TelegramCommunity() {
+export default function TelegramCommunity({ selection }: { selection?: { id: number; accountId: number; request: number } }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(1500);
+  const selectSource = useCallback(() => {
+    if (selection)
+      frame.current?.contentWindow?.postMessage(
+        { type: "bff-telegram-source", ...selection },
+        window.location.origin,
+      );
+  }, [selection]);
+  useEffect(() => { selectSource(); }, [selectSource]);
   useEffect(() => {
     function resize(event: MessageEvent) {
       if (
@@ -41,6 +49,7 @@ export default function TelegramCommunity() {
         ref={frame}
         title="Telegram BFF — conexão e comunidade privada"
         src="/api/telegram/painel"
+        onLoad={selectSource}
         className="w-full rounded-xl border border-[#e3e5ea] bg-[#f3f6fa]"
         style={{ height }}
         referrerPolicy="no-referrer"

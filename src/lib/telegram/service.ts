@@ -511,6 +511,56 @@ export async function discover(userId: string, input: Record<string, unknown>) {
     return { query: query.text, groups };
   });
 }
+function originFrom(row: Workspace, id: number) {
+  const origin = row.parsed.prospects?.find((group) => group.id === id) ||
+    row.parsed.discovery?.groups.find((group) => group.id === id);
+  if (!origin)
+    throw new TelegramError("input", "Escolha um público descoberto ou salvo nesta conta.", 0, 404);
+  if (origin.kind === "channel")
+    throw new TelegramError("origin_kind", "Este público é um canal. A coleta atual aceita somente grupos e supergrupos.", 0, 409);
+  if (typeof origin.username !== "string" || !/^[A-Za-z0-9_]{3,32}$/.test(origin.username))
+    throw new TelegramError("input", "Pesquise novamente para confirmar o grupo público.");
+  return origin;
+}
+function originAccount(row: Workspace) {
+  const accountId = row.parsed.account?.id;
+  if (typeof accountId !== "number" || !Number.isSafeInteger(accountId) || accountId <= 0)
+    throw new TelegramError("auth_required", "Reconecte sua conta Telegram antes de preparar uma origem.", 0, 409);
+  return accountId;
+}
+export async function prepareOrigin(userId: string, input: Record<string, unknown>) {
+  const id = numeric(input.id);
+  const workspace = await load(userId);
+  idle(workspace.parsed);
+  limits(workspace.parsed);
+  const requestedAccount = originAccount(workspace);
+  originFrom(workspace, id);
+  return clientFor(userId, async (driver, row, update) => {
+    idle(row.parsed);
+    limits(row.parsed);
+    const accountId = originAccount(row);
+    if (accountId !== requestedAccount)
+      throw new TelegramError("busy", "A conta Telegram mudou. Prepare a origem novamente pela conta atual.", 0, 409);
+    const origin = originFrom(row, id);
+    const source = await driver.prepareOrigin(origin.username, id, () => update((current) => {
+      idle(current.parsed);
+      limits(current.parsed);
+      originFrom(current, id);
+    }));
+    if (source.id !== id)
+      throw new TelegramError("group_identity", "O Telegram retornou uma origem diferente da solicitada.");
+    const listed = await driver.groups();
+    // Self-membership was confirmed even if getDialogs has not refreshed yet.
+    const groups = listed.some((group) => group.id === id) ? listed : [...listed, source];
+    await update((current) => {
+      idle(current.parsed);
+      limits(current.parsed);
+      originFrom(current, id);
+      current.parsed.groups = groups;
+    });
+    return { accountId, source: groups.find((group) => group.id === id)!, groups };
+  });
+}
 export async function saveProspect(userId: string, input: Record<string, unknown>) {
   const id = numeric(input.id);
   return mutate(userId, row => {

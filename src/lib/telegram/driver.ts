@@ -53,6 +53,27 @@ export function mapError(error: unknown): TelegramError {
       0,
       404,
     );
+  if (code === "INVITE_REQUEST_SENT")
+    return new TelegramError(
+      "join_pending",
+      "O pedido de entrada foi enviado. Aguarde a aprovação dos administradores no Telegram antes de preparar a origem novamente.",
+      0,
+      409,
+    );
+  if (code === "CHANNELS_TOO_MUCH")
+    return new TelegramError(
+      "join_limit",
+      "Sua conta atingiu o limite de grupos e canais do Telegram. Revise suas participações no aplicativo oficial.",
+      0,
+      409,
+    );
+  if (code === "USER_BANNED_IN_CHANNEL")
+    return new TelegramError(
+      "permission",
+      "O Telegram não permite a entrada desta conta no grupo. Confira a situação no aplicativo oficial.",
+      0,
+      409,
+    );
   if (/FLOOD_WAIT|SLOWMODE_WAIT/.test(code) || e?.seconds)
     return new TelegramError(
       "flood_wait",
@@ -347,6 +368,61 @@ export class TelegramDriver {
       throw new TelegramError("group_identity", "O grupo ou canal salvo deixou de estar público. O histórico foi preservado.");
     const members = full.fullChat.participantsCount;
     return { ...current, members: typeof members === "number" && Number.isSafeInteger(members) && members >= 0 ? members : null };
+  }
+  async prepareOrigin(username: string, expectedId: number, beforeJoin?: () => Promise<unknown>): Promise<Group> {
+    const handle = username.replace(/^@/, "");
+    if (!/^[A-Za-z0-9_]{3,32}$/.test(handle) ||
+        !Number.isSafeInteger(expectedId) || expectedId >= 0)
+      throw new TelegramError("input", "Escolha um grupo público descoberto válido.");
+    const resolved = await this.client.invoke(new Api.contacts.ResolveUsername({ username: handle }));
+    if (!(resolved.peer instanceof Api.PeerChannel))
+      throw new TelegramError("group_identity", "Este @usuário não pertence mais ao grupo descoberto.");
+    const channelId = resolved.peer.channelId;
+    const entity = resolved.chats.find(
+      (chat): chat is Api.Channel => chat instanceof Api.Channel && chat.id.equals(channelId),
+    );
+    const current = entity && this.publicGroup(entity, false, true);
+    if (!entity || !current || current.id !== expectedId)
+      throw new TelegramError("group_identity", "O Telegram não confirmou a identidade pública do grupo. Pesquise novamente.");
+    if (!entity.megagroup || entity.broadcast)
+      throw new TelegramError("origin_kind", "Este público é um canal. A coleta atual aceita somente grupos e supergrupos.", 0, 409);
+    const selfMember = async () => {
+      try {
+        const result = await this.client.invoke(new Api.channels.GetParticipant({ channel: entity, participant: new Api.InputPeerSelf() }));
+        const participant = result.participant;
+        return participant instanceof Api.ChannelParticipant ||
+          participant instanceof Api.ChannelParticipantSelf ||
+          participant instanceof Api.ChannelParticipantCreator ||
+          participant instanceof Api.ChannelParticipantAdmin ||
+          (participant instanceof Api.ChannelParticipantBanned && !participant.left && !participant.bannedRights.viewMessages);
+      } catch (error) {
+        if ((error as { errorMessage?: string })?.errorMessage === "USER_NOT_PARTICIPANT") return false;
+        throw error;
+      }
+    };
+    if (entity.left || !(await selfMember())) {
+      // A timed-out/cancelled caller must not start a later membership change.
+      if (beforeJoin) await beforeJoin();
+      try {
+        const joined = await this.client.invoke(new Api.channels.JoinChannel({ channel: entity }), undefined, {
+          maxRetryCount: 0, floodSleepThreshold: 0, timeout: 15000,
+        });
+        if (joined instanceof Api.messages.ChatInviteJoinResultWebView)
+          throw new TelegramError("join_verification", "O Telegram exige uma verificação de entrada. Conclua pelo aplicativo oficial e prepare a origem novamente.", 0, 409);
+      } catch (error) {
+        if ((error as { errorMessage?: string })?.errorMessage !== "USER_ALREADY_PARTICIPANT") throw error;
+      }
+      if (!(await selfMember()))
+        throw new TelegramError(
+          entity.joinRequest ? "join_pending" : "join_unconfirmed",
+          entity.joinRequest
+            ? "A participação ainda não foi aprovada pelos administradores. Confira o pedido no Telegram."
+            : "O Telegram ainda não confirmou sua participação. Confira o grupo no aplicativo oficial antes de repetir.",
+          0,
+          409,
+        );
+    }
+    return this.groupInfo(entity);
   }
   async group(id: number, invite = false) {
     const dialogs = await this.client.getDialogs({});
