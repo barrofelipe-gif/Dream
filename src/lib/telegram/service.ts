@@ -19,6 +19,7 @@ import {
   secret,
   notBusy,
   finishConnection,
+  isAdministrator,
   type Workspace,
 } from "./store";
 import {
@@ -33,6 +34,9 @@ import {
   recount,
   TelegramError,
   groupSearch,
+  type ChannelCreation,
+  type ChannelTest,
+  type ChannelSetup,
 } from "./domain";
 import { connectTelegramQR, runTelegramQueue } from "@/workflows/telegram";
 import { normalizeProspect, recordProspectCheck, saveProspectRecord } from "./prospects";
@@ -151,6 +155,232 @@ async function clientFor<T>(
     await release(userId, token);
   }
 }
+function channelSetup(row: Workspace): ChannelSetup {
+  return row.parsed.channelSetup ??= { creations: [], tests: [], audit: [] };
+}
+function channelSetupSnapshot(row: Workspace) {
+  const accountId = row.parsed.account?.id;
+  const setup = row.parsed.channelSetup;
+  const creations = setup?.creations.filter((item) => item.accountId === accountId) || [];
+  const tests = setup?.tests.filter((item) => item.accountId === accountId) || [];
+  function visible<T extends ChannelCreation | ChannelTest>(item: T | undefined): T | null {
+    if (!item) return null;
+    const active = setup?.activeRequest?.requestId === item.requestId &&
+      setup.activeRequest.leaseToken === row.busyToken && !!row.busyUntil && row.busyUntil.getTime() > Date.now();
+    return item.status === "pending" && !active
+      ? { ...item, status: "uncertain", message: "A operação foi interrompida. Confira o canal no Telegram antes de tentar novamente." }
+      : { ...item };
+  }
+  return {
+    creation: visible(creations.at(-1)),
+    test: visible(tests.at(-1)),
+    channel: creations.findLast((item) => item.status === "confirmed")?.channel || null,
+  };
+}
+function channelRequestId(value: unknown): string {
+  if (typeof value !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value))
+    throw new TelegramError("input", "Identificador da solicitação inválido.");
+  return value.toLowerCase();
+}
+function channelTitle(value: unknown): string {
+  if (typeof value !== "string" || /[\u0000-\u001f\u007f-\u009f]/.test(value))
+    throw new TelegramError("input", "Informe um nome válido para o canal.");
+  const title = value.trim();
+  if (title.length < 3 || title.length > 128)
+    throw new TelegramError("input", "Use entre 3 e 128 caracteres no nome do canal.");
+  return title;
+}
+function channelUsername(value: unknown): string {
+  if (typeof value !== "string" || !/^@?[A-Za-z][A-Za-z0-9_]{2,31}$/.test(value.trim()))
+    throw new TelegramError("input", "Informe o @usuário público da conta de teste.");
+  return value.trim().replace(/^@/, "").toLowerCase();
+}
+function channelAudit(row: Workspace, action: "create" | "test", record: ChannelCreation | ChannelTest) {
+  channelSetup(row).audit.push({
+    action, requestId: record.requestId, accountId: record.accountId,
+    at: new Date().toISOString(), status: record.status,
+    ...("targetId" in record ? { targetId: record.targetId } : record.channel ? { targetId: record.channel.id } : {}),
+  });
+}
+function uncertainChannel(): never {
+  throw new TelegramError("uncertain", "Já existe uma solicitação sem confirmação. Confira o canal no Telegram; a operação não será repetida automaticamente.", 0, 409);
+}
+function creationResult(record: ChannelCreation) {
+  return { accountId: record.accountId, channelId: record.channel!.id, channel: record.channel!, privacy: record.privacy!, creation: structuredClone(record) };
+}
+function existingCreation(row: Workspace, requestId: string, title: string, accountId: number) {
+  const creations = row.parsed.channelSetup?.creations || [];
+  const prior = creations.find((item) => item.requestId === requestId);
+  if (prior && (prior.accountId !== accountId || prior.title !== title))
+    throw new TelegramError("input", "Esta solicitação pertence a outra conta ou nome de canal.", 0, 409);
+  const record = prior || creations.findLast((item) => item.accountId === accountId && item.title === title && item.status !== "failed");
+  if (!record) return;
+  if (record.status === "confirmed" && record.channel && record.privacy) return creationResult(record);
+  if (record.status === "failed")
+    throw new TelegramError("input", record.message || "A solicitação falhou antes da criação. Inicie uma nova solicitação.", 0, 409);
+  return uncertainChannel();
+}
+function ownedChannel(row: Workspace, targetId: number, accountId: number) {
+  const created = row.parsed.channelSetup?.creations.findLast((item) =>
+    item.accountId === accountId && item.status === "confirmed" && item.channel?.id === targetId,
+  );
+  if (!created?.channel?.owner || !created.channel.private || created.channel.kind !== "channel" ||
+      !created.privacy?.owner || !created.privacy.private || created.privacy.kind !== "channel")
+    throw new TelegramError("permission", "Escolha o canal privado criado e confirmado por esta conta neste painel.", 0, 403);
+  return created.channel;
+}
+function existingChannelTest(row: Workspace, requestId: string, targetId: number, username: string, accountId: number) {
+  const tests = row.parsed.channelSetup?.tests || [];
+  const prior = tests.find((item) => item.requestId === requestId);
+  if (prior && (prior.accountId !== accountId || prior.targetId !== targetId || prior.username !== username))
+    throw new TelegramError("input", "Esta solicitação pertence a outra conta, canal ou usuário.", 0, 409);
+  if (prior) {
+    if (["added", "already", "privacy"].includes(prior.status))
+      return { accountId, targetId, state: prior.status, user: prior.user, message: prior.message, test: structuredClone(prior) };
+    if (prior.status === "failed")
+      throw new TelegramError("input", prior.message || "A consulta falhou. Inicie uma nova solicitação.", 0, 409);
+    return uncertainChannel();
+  }
+  if (tests.some((item) => item.accountId === accountId && item.targetId === targetId && item.username === username && ["pending", "uncertain"].includes(item.status)))
+    return uncertainChannel();
+}
+async function channelDispatch(userId: string, update: SessionUpdate, accountId: number, action: "create" | "test", requestId: string) {
+  if (!(await isAdministrator(userId)))
+    throw new TelegramError("permission", "O operador não possui mais acesso de administrador.", 0, 403);
+  await update((current) => {
+    usable(current);
+    idle(current.parsed);
+    limits(current.parsed);
+    if (originAccount(current) !== accountId)
+      throw new TelegramError("busy", "A conta mudou. Nenhuma nova operação foi enviada.", 0, 409);
+    const record = action === "create"
+      ? channelSetup(current).creations.find((item) => item.requestId === requestId)
+      : channelSetup(current).tests.find((item) => item.requestId === requestId);
+    const active = channelSetup(current).activeRequest;
+    if (!record || record.status !== "pending" || record.dispatchedAt ||
+        active?.requestId !== requestId || active.leaseToken !== current.busyToken) return uncertainChannel();
+    if ("targetId" in record) ownedChannel(current, record.targetId, accountId);
+    record.dispatchedAt = new Date().toISOString();
+    channelAudit(current, action, record);
+  });
+}
+async function failChannelRequest(userId: string, requestId: string, action: "create" | "test", error: unknown) {
+  const safe = mapError(error);
+  await mutate(userId, (current) => {
+    const record = action === "create"
+      ? current.parsed.channelSetup?.creations.find((item) => item.requestId === requestId)
+      : current.parsed.channelSetup?.tests.find((item) => item.requestId === requestId);
+    if (!record || record.status !== "pending") return;
+    record.status = record.dispatchedAt ? "uncertain" : "failed";
+    record.finishedAt = new Date().toISOString();
+    record.message = record.dispatchedAt
+      ? "O Telegram pode ter concluído a operação, mas a confirmação não chegou. Confira o canal antes de continuar. Nenhuma tentativa será reenviada automaticamente."
+      : safe.message;
+    if (current.parsed.channelSetup?.activeRequest?.requestId === requestId)
+      delete current.parsed.channelSetup.activeRequest;
+    channelAudit(current, action, record);
+  });
+  throw safe;
+}
+export async function createChannel(userId: string, input: Record<string, unknown>) {
+  const requestId = channelRequestId(input.requestId), title = channelTitle(input.title);
+  const requested = await load(userId);
+  usable(requested);
+  const accountId = originAccount(requested);
+  const existing = existingCreation(requested, requestId, title, accountId);
+  if (existing) return existing;
+  idle(requested.parsed);
+  limits(requested.parsed);
+  let started = false;
+  try {
+    return await clientFor(userId, async (driver, row, update) => {
+      if (originAccount(row) !== accountId)
+        throw new TelegramError("busy", "A conta mudou. Confira a conexão antes de criar o canal.", 0, 409);
+      const repeated = existingCreation(row, requestId, title, accountId);
+      if (repeated) return repeated;
+      await update((current) => {
+        idle(current.parsed);
+        limits(current.parsed);
+        const record: ChannelCreation = { requestId, title, accountId, status: "pending", startedAt: new Date().toISOString() };
+        channelSetup(current).creations.push(record);
+        channelSetup(current).activeRequest = { requestId, leaseToken: current.busyToken! };
+        channelAudit(current, "create", record);
+      });
+      started = true;
+      const result = await driver.createPrivateChannel(title, () => channelDispatch(userId, update, accountId, "create", requestId));
+      if (result.channel.kind !== "channel" || !result.channel.owner || !result.channel.private ||
+          result.privacy.kind !== "channel" || !result.privacy.owner || !result.privacy.private || result.privacy.group_id !== result.channel.id)
+        throw new TelegramError("uncertain", "A criação ainda não confirmou um canal privado sob sua propriedade. Confira o Telegram.", 0, 409);
+      return update((current) => {
+        const record = channelSetup(current).creations.find((item) => item.requestId === requestId)!;
+        if (record.status !== "pending" || !record.dispatchedAt) return uncertainChannel();
+        record.status = "confirmed";
+        record.finishedAt = new Date().toISOString();
+        record.channel = result.channel;
+        record.privacy = result.privacy;
+        record.message = "Canal privado criado. Somente a conta criadora publica.";
+        delete channelSetup(current).activeRequest;
+        current.parsed.groups = [...current.parsed.groups.filter((group) => group.id !== result.channel.id), result.channel];
+        current.parsed.targets = [...current.parsed.targets.filter((group) => group.id !== result.channel.id), result.channel];
+        channelAudit(current, "create", record);
+        return creationResult(record);
+      });
+    });
+  } catch (error) {
+    if (!started) throw mapError(error);
+    return failChannelRequest(userId, requestId, "create", error);
+  }
+}
+export async function testChannel(userId: string, input: Record<string, unknown>) {
+  const requestId = channelRequestId(input.requestId), targetId = numeric(input.target_id), username = channelUsername(input.username);
+  const requested = await load(userId);
+  usable(requested);
+  const accountId = originAccount(requested);
+  ownedChannel(requested, targetId, accountId);
+  const existing = existingChannelTest(requested, requestId, targetId, username, accountId);
+  if (existing) return existing;
+  idle(requested.parsed);
+  limits(requested.parsed);
+  let started = false;
+  try {
+    return await clientFor(userId, async (driver, row, update) => {
+      if (originAccount(row) !== accountId)
+        throw new TelegramError("busy", "A conta mudou. Confira o canal antes do teste.", 0, 409);
+      ownedChannel(row, targetId, accountId);
+      const repeated = existingChannelTest(row, requestId, targetId, username, accountId);
+      if (repeated) return repeated;
+      await update((current) => {
+        idle(current.parsed);
+        limits(current.parsed);
+        ownedChannel(current, targetId, accountId);
+        const record: ChannelTest = { requestId, targetId, username, accountId, status: "pending", startedAt: new Date().toISOString() };
+        channelSetup(current).tests.push(record);
+        channelSetup(current).activeRequest = { requestId, leaseToken: current.busyToken! };
+        channelAudit(current, "test", record);
+      });
+      started = true;
+      const result = await driver.testChannelAccount(targetId, username, () => channelDispatch(userId, update, accountId, "test", requestId));
+      if (!["added", "already", "privacy"].includes(result.state))
+        throw new TelegramError("uncertain", "A participação da conta ainda não foi confirmada. Confira no Telegram.", 0, 409);
+      return update((current) => {
+        ownedChannel(current, targetId, accountId);
+        const record = channelSetup(current).tests.find((item) => item.requestId === requestId)!;
+        if (record.status !== "pending") return uncertainChannel();
+        if (result.state === "added" && !record.dispatchedAt) return uncertainChannel();
+        record.status = result.state;
+        record.finishedAt = new Date().toISOString();
+        record.user = { id: result.user.id, name: result.user.name, username: result.user.username };
+        record.message = result.message;
+        delete channelSetup(current).activeRequest;
+        channelAudit(current, "test", record);
+        return { accountId, targetId, state: result.state, user: record.user, message: record.message, test: structuredClone(record) };
+      });
+    });
+  } catch (error) {
+    if (!started) throw mapError(error);
+    return failChannelRequest(userId, requestId, "test", error);
+  }
+}
 export async function state(userId: string) {
   await mutate(userId, (row) => {
     if (
@@ -210,6 +440,7 @@ export async function state(userId: string) {
       groups: data.groups,
       privacy: data.privacy || null,
       saved_setup: null,
+      channel_setup: channelSetupSnapshot(row),
       qr:
         row.authState === "qr" && login?.image
           ? {
@@ -642,6 +873,8 @@ export async function configure(
     const groups = await driver.groups();
     const s = groups.find((g) => g.id === source),
       t = groups.find((g) => g.id === target);
+    if (s?.kind === "channel")
+      throw new TelegramError("origin_kind", "Canais não podem ser usados como origem da coleta. Escolha um grupo ou supergrupo.", 0, 409);
     if (!s || !t || !t.can_invite)
       throw new TelegramError(
         "permission",

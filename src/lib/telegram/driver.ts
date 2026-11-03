@@ -13,6 +13,13 @@ import {
 } from "./domain";
 
 export type Credentials = { apiId: number; apiHash: string };
+export type MembershipOutcome = {
+  state: "added" | "already" | "privacy";
+  message: string;
+};
+export type ChannelAccountTest = MembershipOutcome & {
+  user: { id: number; name: string; username: string };
+};
 class QuietLogger extends Logger {
   override log() {}
   override _log() {}
@@ -247,7 +254,8 @@ export class TelegramDriver {
       private: this.private(entity),
       owner: !!entity.creator,
       can_invite: !!(entity.creator || entity.adminRights?.inviteUsers),
-      supergroup: entity instanceof Api.Channel,
+      supergroup: entity instanceof Api.Channel && !!entity.megagroup,
+      kind: entity instanceof Api.Channel && entity.broadcast ? "channel" : "group",
     };
   }
   async groups() {
@@ -255,7 +263,7 @@ export class TelegramDriver {
     return dialogs.flatMap((d) => {
       const e = d.entity;
       if (!(e instanceof Api.Chat) && !(e instanceof Api.Channel)) return [];
-      if (e instanceof Api.Channel && !e.megagroup) return [];
+      if (e instanceof Api.Channel && !e.megagroup && !e.broadcast) return [];
       if (e.left || (e instanceof Api.Chat && e.deactivated)) return [];
       return [this.groupInfo(e)];
     });
@@ -424,7 +432,7 @@ export class TelegramDriver {
     }
     return this.groupInfo(entity);
   }
-  async group(id: number, invite = false) {
+  async group(id: number, invite = false, allowChannel = invite) {
     const dialogs = await this.client.getDialogs({});
     const entity = dialogs
       .map((d) => d.entity)
@@ -439,10 +447,12 @@ export class TelegramDriver {
         "permission",
         "Grupo não encontrado nos diálogos da sua conta.",
       );
-    if (entity instanceof Api.Channel && !entity.megagroup)
+    if (entity.left || (entity instanceof Api.Chat && entity.deactivated))
+      throw new TelegramError("permission", "A conta não participa mais deste grupo ou canal.");
+    if (entity instanceof Api.Channel && !entity.megagroup && !(allowChannel && entity.broadcast))
       throw new TelegramError(
         "permission",
-        "Este painel trabalha com grupos e supergrupos.",
+        "Escolha um grupo ou supergrupo como origem. Canais podem ser usados como destino.",
       );
     if (
       invite &&
@@ -482,11 +492,16 @@ export class TelegramDriver {
           }),
         );
         const p = r.participant;
-        return (
-          !(p instanceof Api.ChannelParticipantLeft) &&
-          (!(p instanceof Api.ChannelParticipantBanned) ||
-            (!p.left && !p.bannedRights.viewMessages))
-        );
+        if (!p || typeof p !== "object") return false;
+        const expectedId = user instanceof Api.InputUser || user instanceof Api.InputPeerUser
+          ? user.userId.toString() : user instanceof Api.User ? user.id.toString() : "";
+        const actualId = p instanceof Api.ChannelParticipantBanned
+          ? (p.peer instanceof Api.PeerUser ? p.peer.userId.toString() : "")
+          : "userId" in p ? p.userId.toString() : "";
+        if (expectedId && actualId !== expectedId) return false;
+        return p instanceof Api.ChannelParticipant || p instanceof Api.ChannelParticipantSelf ||
+          p instanceof Api.ChannelParticipantCreator || p instanceof Api.ChannelParticipantAdmin ||
+          (p instanceof Api.ChannelParticipantBanned && !p.left && !p.bannedRights.viewMessages);
       }
       const r = await this.client.invoke(
         new Api.messages.GetFullChat({ chatId: group.id }),
@@ -526,7 +541,7 @@ export class TelegramDriver {
     return found;
   }
   async privacy(id: number): Promise<Privacy> {
-    const e = await this.group(id);
+    const e = await this.group(id, false, true);
     const full =
       e instanceof Api.Channel
         ? (
@@ -535,12 +550,16 @@ export class TelegramDriver {
             )
           ).fullChat
         : undefined;
+    return this.privacyInfo(e, full);
+  }
+  private privacyInfo(e: Api.Chat | Api.Channel, full?: Api.TypeChatFull): Privacy {
     return {
-      group_id: id,
+      group_id: Number(utils.getPeerId(e)),
       name: e.title.slice(0, 100),
       private: this.private(e),
       owner: !!e.creator,
-      supergroup: e instanceof Api.Channel,
+      supergroup: e instanceof Api.Channel && !!e.megagroup,
+      kind: e instanceof Api.Channel && e.broadcast ? "channel" : "group",
       members_hidden:
         full instanceof Api.ChannelFull && !!full.participantsHidden,
       content_protected: !!e.noforwards,
@@ -554,7 +573,7 @@ export class TelegramDriver {
     };
   }
   async protect(id: number) {
-    const e = await this.group(id);
+    const e = await this.group(id, false, true);
     if (!e.creator)
       throw new TelegramError(
         "permission",
@@ -571,7 +590,7 @@ export class TelegramDriver {
         await this.client.invoke(
           new Api.channels.DeactivateAllUsernames({ channel: e }),
         );
-      if (!before.members_hidden)
+      if (e.megagroup && !before.members_hidden)
         try {
           await this.client.invoke(
             new Api.channels.ToggleParticipantsHidden({
@@ -608,6 +627,9 @@ export class TelegramDriver {
   async invite(sourceId: number, targetId: number, person: Person) {
     await this.group(sourceId);
     const target = await this.group(targetId, true);
+    return this.inviteMember(target, person);
+  }
+  private async inviteMember(target: Api.Chat | Api.Channel, person: Person, beforeInvite?: () => Promise<unknown>): Promise<MembershipOutcome> {
     const user = this.input(person);
     if (await this.member(target, user))
       return {
@@ -615,21 +637,28 @@ export class TelegramDriver {
         message:
           "Participação no destino já confirmada. Nenhum convite enviado.",
       };
-    const result =
-      target instanceof Api.Channel
+    if (beforeInvite) await beforeInvite();
+    let result: Api.messages.TypeInvitedUsers;
+    try {
+      result = target instanceof Api.Channel
         ? await this.client.invoke(
             new Api.channels.InviteToChannel({
               channel: target,
               users: [user],
-            }),
+            }), undefined, { maxRetryCount: 0, floodSleepThreshold: 0, timeout: 15000 },
           )
         : await this.client.invoke(
             new Api.messages.AddChatUser({
               chatId: target.id,
               userId: user,
               fwdLimit: 0,
-            }),
+            }), undefined, { maxRetryCount: 0, floodSleepThreshold: 0, timeout: 15000 },
           );
+    } catch (error) {
+      const safe = mapError(error);
+      if (safe.code === "privacy") return { state: "privacy", message: safe.message };
+      throw error;
+    }
     if (
       "missingInvitees" in result &&
       result.missingInvitees.some(
@@ -651,5 +680,67 @@ export class TelegramDriver {
       state: "added",
       message: "Inclusão confirmada por consulta à participação no destino.",
     };
+  }
+  async createPrivateChannel(title: string, beforeCreate?: () => Promise<unknown>): Promise<{ channel: Group; privacy: Privacy }> {
+    if (typeof title !== "string" || !title.trim() || title.trim().length > 128 || /[\u0000-\u001f\u007f-\u009f]/.test(title))
+      throw new TelegramError("input", "Use um nome de canal entre 1 e 128 caracteres, sem quebras de linha.");
+    const name = title.trim();
+    const self = await this.me();
+    if (!Number.isSafeInteger(self.id) || self.id <= 0)
+      throw new TelegramError("auth_required", "Reconecte a conta Telegram antes de criar o canal.", 0, 409);
+    if (beforeCreate) await beforeCreate();
+    const created = await this.client.invoke(new Api.channels.CreateChannel({
+      title: name, about: "", broadcast: true, megagroup: false,
+    }), undefined, { maxRetryCount: 0, floodSleepThreshold: 0, timeout: 15000 });
+    const uncertain = () => new TelegramError("uncertain", "O canal pode ter sido criado, mas a configuração não foi confirmada. Confira no Telegram antes de repetir.", 0, 409);
+    const candidates = "chats" in created ? created.chats.filter(
+      (chat): chat is Api.Channel => chat instanceof Api.Channel && !!chat.broadcast && !chat.megagroup &&
+        !!chat.creator && this.private(chat) && chat.title === name,
+    ) : [];
+    if (candidates.length !== 1) throw uncertain();
+    const entity = candidates[0];
+    const full = await this.client.invoke(new Api.channels.GetFullChannel({ channel: entity }));
+    if (!(full.fullChat instanceof Api.ChannelFull) || !full.fullChat.id.equals(entity.id) ||
+        (full.fullChat.linkedChatId && !full.fullChat.linkedChatId.isZero()) ||
+        (typeof full.fullChat.adminsCount === "number" && full.fullChat.adminsCount !== 1)) throw uncertain();
+    const fresh = full.chats.find((chat): chat is Api.Channel => chat instanceof Api.Channel && chat.id.equals(entity.id));
+    if (!fresh || !fresh.broadcast || fresh.megagroup || !fresh.creator || !this.private(fresh)) throw uncertain();
+    const participant = (await this.client.invoke(new Api.channels.GetParticipant({
+      channel: fresh, participant: new Api.InputPeerSelf(),
+    }))).participant;
+    if (!(participant instanceof Api.ChannelParticipantCreator) || participant.userId.toString() !== String(self.id)) throw uncertain();
+    return { channel: this.groupInfo(fresh), privacy: this.privacyInfo(fresh, full.fullChat) };
+  }
+  async testChannelAccount(targetId: number, handle: string, beforeInvite?: () => Promise<unknown>): Promise<ChannelAccountTest> {
+    if (typeof handle !== "string" || !/^@?[A-Za-z0-9_]{3,32}$/.test(handle))
+      throw new TelegramError("input", "Informe o @usuário da conta para o teste de inclusão.");
+    const target = await this.group(targetId, true);
+    if (!(target instanceof Api.Channel) || !target.broadcast || target.megagroup)
+      throw new TelegramError("target_kind", "Escolha o canal privado de destino para este teste.", 0, 409);
+    const resolved = await this.client.invoke(new Api.contacts.ResolveUsername({ username: handle.replace(/^@/, "") }));
+    if (!(resolved.peer instanceof Api.PeerUser))
+      throw new TelegramError("input", "Este @usuário não pertence a uma conta de pessoa.");
+    const userId = resolved.peer.userId;
+    const resolvedUser = resolved.users.find((user): user is Api.User => user instanceof Api.User && user.id.equals(userId));
+    if (!resolvedUser || resolvedUser.bot || resolvedUser.deleted)
+      throw new TelegramError("input", "Escolha uma conta de pessoa ativa para o teste.");
+    const person = this.person(resolvedUser);
+    if (!Number.isSafeInteger(person.user_id) || person.user_id <= 0)
+      throw new TelegramError("input", "O Telegram não confirmou a conta informada.");
+    const user = { id: person.user_id, name: person.name, username: person.username };
+    const self = await this.me();
+    if (self.id === person.user_id) {
+      if (!(await this.member(target, new Api.InputPeerSelf())))
+        throw new TelegramError("uncertain", "A participação da conta conectada ainda não foi confirmada no canal.", 0, 409);
+      return {
+        state: "already", user,
+        message: target.creator
+          ? "Esta é a conta proprietária do canal e sua participação foi confirmada. Nenhum convite enviado."
+          : "Esta é a conta conectada e sua participação no canal foi confirmada. Nenhum convite enviado.",
+      };
+    }
+    if (!resolvedUser.accessHash || resolvedUser.accessHash.isZero())
+      throw new TelegramError("input", "O Telegram não disponibilizou os dados necessários para incluir esta conta.");
+    return { ...(await this.inviteMember(target, person, beforeInvite)), user };
   }
 }

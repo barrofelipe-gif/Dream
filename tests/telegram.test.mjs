@@ -713,10 +713,12 @@ test("ordinary joined groups are listed and accepted as collection origins", asy
     { entity: source },
     { entity: target },
     { entity: channel(3, { left: true }) },
-    { entity: channel(4, { broadcast: true, megagroup: false }) },
+    { entity: channel(4, { broadcast: true, megagroup: false, left: false }) },
   ];
   const groups = await instance.groups();
-  assert.equal(groups.length, 2);
+  assert.equal(groups.length, 3);
+  assert.equal(groups[2].kind, "channel");
+  await assert.rejects(instance.group(groups[2].id), (error) => error.code === "permission");
   assert.equal(groups[0].owner, false);
   assert.equal(await instance.group(groups[0].id), source);
   const user = (id) =>
@@ -1240,4 +1242,51 @@ test("a pending prepared origin cannot survive disconnect or select a group in a
     assert.equal(ui.getElementById("setup-source").value, "-1");
     assert.equal(ui.requests.filter((r) => r.options?.method === "POST").length, 0);
   }
+});
+
+test("channel setup creates only on submit, preselects only the target and tests the exact owned account without acquisition jobs", async () => {
+  const ui = discoveryUI(true, data());
+  await ui.drain();
+  ui.context.crypto = { randomUUID: () => "11111111-1111-4111-8111-111111111111" };
+  runInContext(readFileSync("public/telegram-assets/setup.js", "utf8"), ui.context);
+  runInContext("render();", ui.context);
+  assert.equal(ui.requests.filter((r) => r.options?.method === "POST").length, 0);
+  assert.equal(ui.getElementById("test-channel-form").hidden, true);
+  ui.getElementById("channel-title").value = "BFF Fitness | Atacado VIP";
+  ui.getElementById("create-channel-form").listeners.submit({ preventDefault() {} });
+  await ui.drain();
+  const creation = ui.requests.find((r) => r.url.endsWith("/connection/channel/create"));
+  assert.deepEqual(JSON.parse(creation.options.body), { title: "BFF Fitness | Atacado VIP", requestId: "11111111-1111-4111-8111-111111111111" });
+  runInContext("state.connection.groups.push({id:-30,name:'Private VIP channel',kind:'channel',private:true,can_invite:true});state.connection.channel_setup={creation:{status:'confirmed',requestId:'creation-one',accountId:1},channel:{id:-30,name:'Private VIP channel',kind:'channel'},test:null};", ui.context);
+  ui.resolve({ creation: { message: "Canal confirmado" } });
+  await ui.drain();
+  assert.equal(ui.getElementById("setup-source").value, "-1");
+  assert.equal(ui.getElementById("setup-target").value, "-30");
+  assert.equal(ui.getElementById("setup-source").innerHTML.includes("Private VIP channel"), false);
+  assert.equal(ui.getElementById("test-channel-form").hidden, false);
+  ui.getElementById("setup-target").value = "-2";
+  runInContext("render();", ui.context);
+  assert.equal(ui.getElementById("setup-target").value, "-2", "later manual selection must remain intact");
+  ui.getElementById("channel-test-user").value = "@own_test";
+  ui.getElementById("test-channel-form").listeners.submit({ preventDefault() {} });
+  await ui.drain();
+  const invite = ui.requests.find((r) => r.url.endsWith("/connection/channel/test"));
+  assert.deepEqual(JSON.parse(invite.options.body), { target_id: -30, username: "@own_test", requestId: "11111111-1111-4111-8111-111111111111" });
+  ui.resolve({ state: "added", message: "Inclusão de teste confirmada" });
+  await ui.drain();
+  assert.equal(ui.requests.some((r) => /\/(jobs|collect|selection)$/.test(r.url)), false);
+});
+
+test("uncertain channel creation or invitation disables repetition and does not display a confirmed addition", async () => {
+  const ui = discoveryUI(true, data());
+  await ui.drain();
+  runInContext(readFileSync("public/telegram-assets/setup.js", "utf8"), ui.context);
+  runInContext("state.connection.channel_setup={creation:{status:'uncertain',message:'Confira a criação no Telegram'},test:null,channel:null};render();", ui.context);
+  assert.equal(ui.getElementById("create-channel").disabled, true);
+  assert.equal(ui.getElementById("create-channel-form").hidden, true);
+  assert.equal(ui.getElementById("channel-created").hidden, true);
+  runInContext("state.connection.channel_setup={creation:{status:'confirmed',requestId:'one'},channel:{id:-30,name:'VIP'},test:{status:'uncertain',message:'Inclusão sem confirmação'}};render();", ui.context);
+  assert.equal(ui.getElementById("test-channel").disabled, true);
+  assert.equal(ui.getElementById("channel-test-status").textContent, "Inclusão sem confirmação");
+  assert.equal(ui.requests.filter((r) => r.options?.method === "POST").length, 0);
 });

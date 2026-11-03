@@ -1,6 +1,7 @@
 'use strict';
 let setupLastStage = null, setupGroupsLoaded = false, setupProtectId = null;
 let setupPreferredSource = null, setupSourceRequest = 0;
+let setupChannelApplied = '', channelIntents = {};
 if (typeof window !== 'undefined') window.addEventListener('message',event=>{
   const selected=event.data;
   if (event.origin!==window.location.origin || event.source!==window.parent || selected?.type!=='bff-telegram-source' ||
@@ -15,6 +16,40 @@ function updateCredentialFields() {
   const saved = $('use-saved-credentials').checked && !!state?.connection?.credentials_saved;
   $('api-fields').hidden = saved;
   for (const id of ['api-id','api-hash']) { $(id).disabled=saved; $(id).required=!saved; }
+}
+function channelIntent(action, fingerprint) {
+  if (channelIntents[action]?.fingerprint!==fingerprint)
+    channelIntents[action]={fingerprint,id:crypto.randomUUID()};
+  return channelIntents[action].id;
+}
+function renderChannelSetup(blocked) {
+  const connection=state.connection, connected=connection.state==='connected';
+  const setup=connection.channel_setup || {}, creation=setup.creation, test=setup.test, channel=setup.channel;
+  const creationPending=!!creation && ['pending','uncertain'].includes(creation.status);
+  const testPending=!!test && ['pending','uncertain'].includes(test.status);
+  $('channel-setup').hidden=!connected || !connection.enabled;
+  $('create-channel-form').hidden=!!channel || creationPending;
+  $('channel-title').disabled=blocked || creationPending;
+  $('create-channel').disabled=blocked || creationPending || !!channel;
+  $('channel-create-status').hidden=!creation;
+  $('channel-create-status').textContent=creation?.message || (creationPending?'Confira o Telegram antes de repetir a criação.':'');
+  $('channel-created').hidden=!channel;
+  $('channel-created-name').textContent=channel?.name || '';
+  $('test-channel-form').hidden=!channel;
+  $('channel-test-user').disabled=blocked || testPending;
+  $('test-channel').disabled=blocked || testPending || !channel;
+  $('channel-test-status').hidden=!test;
+  $('channel-test-status').textContent=test?.message || (testPending?'A inclusão ainda não foi confirmada. Confira no Telegram antes de repetir.':'');
+  if (creation?.status==='failed' && channelIntents.create?.id===creation.requestId) delete channelIntents.create;
+  if (test && !testPending && channelIntents.test?.id===test.requestId) delete channelIntents.test;
+  if (!connected) {setupChannelApplied='';channelIntents={};}
+  if (channel && creation?.status==='confirmed') {
+    const key=`${connection.account?.id}:${creation.requestId}`;
+    if (setupChannelApplied!==key && connection.groups.some(g=>g.id===channel.id)) {
+      $('setup-target').value=String(channel.id);
+      setupChannelApplied=key;
+    }
+  }
 }
 function renderSetup(active) {
   const connection=state.connection;
@@ -60,8 +95,8 @@ function renderSetup(active) {
   for (const id of ['start-qr','retry-qr','send-code','restore-session','verify-code','verify-password','load-groups','disconnect-account','check-privacy','confirm-protect']) $(id).disabled=blocked||waiting||!connection.enabled;
   for (const button of document.querySelectorAll('.cancel-connection')) button.disabled=busy;
   $('setup-source').disabled=blocked; $('setup-target').disabled=blocked;
-  syncOptions('setup-source',connection.groups);
-  syncOptions('setup-target',connection.groups.filter(g=>g.can_invite).map(g=>({...g,name:g.name+(g.private?' · privado':' · público')})));
+  syncOptions('setup-source',connection.groups.filter(g=>g.kind!=='channel'));
+  syncOptions('setup-target',connection.groups.filter(g=>g.can_invite).map(g=>({...g,name:g.name+(g.kind==='channel'?' · canal':'')+(g.private?' · privado':' · público')})));
   if (!setupGroupsLoaded && connection.groups.length && (connection.configured||connection.saved_setup)) {
     const saved=connection.saved_setup;
     $('setup-source').value=String((connection.configured?state.sources:saved.sources)[0]?.id || '');
@@ -69,13 +104,16 @@ function renderSetup(active) {
     setupGroupsLoaded=true;
   }
   if (connected && setupPreferredSource && connection.groups.some(g=>g.id===setupPreferredSource.id)) {
-    $('setup-source').value=String(setupPreferredSource.id);
+    if (connection.groups.find(g=>g.id===setupPreferredSource.id).kind!=='channel') $('setup-source').value=String(setupPreferredSource.id);
     setupSourceRequest=setupPreferredSource.request;
     setupPreferredSource=null;
   }
+  renderChannelSetup(blocked || waiting);
   const selected=setupPair(), privacy=connection.privacy?.group_id===selected.target_id?connection.privacy:null;
   if (privacy) {
-    const rows=[['Grupo privado',privacy.private],['Lista de membros oculta',privacy.members_hidden],['Salvamento de conteúdo restrito',privacy.content_protected]];
+    const rows=privacy.kind==='channel'
+      ? [['Canal privado',privacy.private],['Publicação pela administração',true]]
+      : [['Grupo privado',privacy.private],['Lista de membros oculta',privacy.members_hidden],['Salvamento de conteúdo restrito',privacy.content_protected]];
     setHTML('privacy-report',`<h3>${escapeHTML(privacy.name)}</h3><ul class="privacy-list">${rows.map(([label,value])=>`<li><span>${label}</span><span class="pill ${value?'good':'warn'}">${value?'Ativado':'Pendente'}</span></li>`).join('')}</ul>${(privacy.notes||[]).map(n=>`<p class="privacy-warning">${escapeHTML(n)}</p>`).join('')}<p class="hint">Conferido em ${escapeHTML(new Date(privacy.checked_at*1000).toLocaleString('pt-BR'))}.</p>`);
   } else setHTML('privacy-report','<p>Confira o destino antes de ativar a conexão real.</p>');
   $('open-protect').disabled=blocked||!privacy||!privacy.owner;
@@ -83,6 +121,21 @@ function renderSetup(active) {
   $('live-config-hint').textContent=!privacy?'Confira a privacidade do destino.':!privacy.private?'A comunidade precisa ser privada.':selected.source_id===selected.target_id?'Escolha uma origem diferente do destino.':'';
 }
 async function setupAction(action, body={}) { return request('/api/connection/'+action,body); }
+$('create-channel-form').addEventListener('submit',event=>{
+  event.preventDefault();
+  if (busy || state?.connection?.state!=='connected' || !$('channel-title').reportValidity()) return;
+  const title=$('channel-title').value.trim(), account=state.connection.account?.id;
+  const body={title,requestId:channelIntent('create',`${account}:${title}`)};
+  act(async()=>{const result=await setupAction('channel/create',body);notice(result.creation?.message || 'Canal privado confirmado no Telegram.');});
+});
+$('test-channel-form').addEventListener('submit',event=>{
+  event.preventDefault();
+  const channel=state?.connection?.channel_setup?.channel;
+  if (busy || state?.connection?.state!=='connected' || !channel || !$('channel-test-user').reportValidity()) return;
+  const username=$('channel-test-user').value.trim(), account=state.connection.account?.id;
+  const body={target_id:channel.id,username,requestId:channelIntent('test',`${account}:${channel.id}:${username.toLowerCase()}`)};
+  act(async()=>{const result=await setupAction('channel/test',body);notice(result.message || 'Confira o resultado do teste.',!['added','already'].includes(result.state));});
+});
 $('use-saved-credentials').addEventListener('change',updateCredentialFields);
 $('start-qr').addEventListener('click',()=>{const body={use_saved:$('use-saved-credentials').checked};if(!body.use_saved){if(!$('api-id').reportValidity()||!$('api-hash').reportValidity())return;body.api_id=Number($('api-id').value);body.api_hash=$('api-hash').value.trim();}act(async()=>{try{await setupAction('qr',body);notice('Escaneie e confirme o QR Code no Telegram do celular.');}finally{$('api-hash').value='';}});});
 $('retry-qr').addEventListener('click',()=>act(()=>setupAction('qr',{use_pending:true})));

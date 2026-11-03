@@ -98,6 +98,10 @@ export async function POST(request: Request, context: Context) {
     else if (route === "/discover") result = await telegram.discover(userId, data);
     else if (route === "/connection/prepare-origin")
       result = await telegram.prepareOrigin(userId, data);
+    else if (route === "/connection/channel/create")
+      result = await telegram.createChannel(userId, data);
+    else if (route === "/connection/channel/test")
+      result = await telegram.testChannel(userId, data);
     else if (route === "/connection/qr")
       result = await telegram.begin(userId, data, true);
     else if (route === "/connection/start")

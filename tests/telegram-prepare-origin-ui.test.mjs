@@ -112,15 +112,19 @@ test("a late preparation cannot navigate after the discovery screen is unmounted
   assert.equal(h.changed(), 0);
 });
 
-test("prepare origin HTTP endpoint requires operator and CSRF before invoking Telegram", async () => {
+test("origin preparation and channel HTTP endpoints require operator and CSRF before invoking Telegram", async () => {
   class SafeError extends Error {
     constructor(code, status) { super(code); this.code = code; this.status = status; }
   }
   const native = createRequire(import.meta.url);
-  for (const failureAt of ["operator", "csrf", null]) {
+  for (const [action, payload, method] of [
+    ["prepare-origin", { id: -100123 }, "prepareOrigin"],
+    ["channel/create", { title: "Private fitness", requestId: "test-request" }, "createChannel"],
+    ["channel/test", { target_id: -100123, username: "own_test", requestId: "test-request" }, "testChannel"],
+  ]) for (const failureAt of ["operator", "csrf", null]) {
     const calls = [];
-    const request = new Request("https://app.example/api/telegram/connection/prepare-origin", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: -100123 }),
+    const request = new Request(`https://app.example/api/telegram/connection/${action}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
     });
     const dependencies = {
       "@/lib/telegram/access": {
@@ -128,7 +132,7 @@ test("prepare origin HTTP endpoint requires operator and CSRF before invoking Te
         checkPost: (received, userId) => { calls.push("csrf"); assert.equal(received, request); assert.equal(userId, "test-operator"); if (failureAt === "csrf") throw new SafeError("csrf", 403); },
         body: async (received) => { calls.push("body"); return received.json(); },
       },
-      "@/lib/telegram/service": { prepareOrigin: async (userId, input) => { calls.push("prepare"); assert.equal(userId, "test-operator"); assert.deepEqual(input, { id: -100123 }); return { source: { id: -100123, name: "Fitness" }, groups: [] }; } },
+      "@/lib/telegram/service": { [method]: async (userId, input) => { calls.push("operation"); assert.equal(userId, "test-operator"); assert.deepEqual(input, payload); return { ok: true }; } },
       "@/lib/telegram/domain": { TelegramError: SafeError },
       "@/lib/telegram/driver": { mapError: (error) => error },
       "@/lib/telegram/growth": {}, "@/lib/telegram/analytics": {},
@@ -136,9 +140,9 @@ test("prepare origin HTTP endpoint requires operator and CSRF before invoking Te
     const compiled = { exports: {} };
     const code = transformSync(readFileSync("src/app/api/telegram/[...path]/route.ts", "utf8"), { loader: "ts", format: "cjs", target: "node20" }).code;
     new Function("require", "module", "exports", code)((name) => name in dependencies ? dependencies[name] : native(name), compiled, compiled.exports);
-    const response = await compiled.exports.POST(request, { params: Promise.resolve({ path: ["connection", "prepare-origin"] }) });
+    const response = await compiled.exports.POST(request, { params: Promise.resolve({ path: ["connection", ...action.split("/")] }) });
     assert.equal(response.status, failureAt ? 403 : 200);
-    assert.deepEqual(calls, failureAt === "operator" ? ["operator"] : failureAt === "csrf" ? ["operator", "csrf"] : ["operator", "csrf", "body", "prepare"]);
+    assert.deepEqual(calls, failureAt === "operator" ? ["operator"] : failureAt === "csrf" ? ["operator", "csrf"] : ["operator", "csrf", "body", "operation"]);
     assert.match(response.headers.get("cache-control"), /no-store/);
   }
 });

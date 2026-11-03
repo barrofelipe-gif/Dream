@@ -55,6 +55,7 @@ export type Group = {
   owner: boolean;
   can_invite: boolean;
   supergroup: boolean;
+  kind?: "group" | "channel";
 };
 export type Person = {
   user_id: number;
@@ -110,8 +111,47 @@ export type Privacy = {
   supergroup: boolean;
   checked_at: number;
   notes?: string[];
+  kind?: "group" | "channel";
+};
+export type ChannelCreation = {
+  requestId: string;
+  title: string;
+  accountId: number;
+  status: "pending" | "confirmed" | "uncertain" | "failed";
+  startedAt: string;
+  dispatchedAt?: string;
+  finishedAt?: string;
+  channel?: Group;
+  privacy?: Privacy;
+  message?: string;
+};
+export type ChannelTest = {
+  requestId: string;
+  targetId: number;
+  username: string;
+  accountId: number;
+  status: "pending" | "added" | "already" | "privacy" | "uncertain" | "failed";
+  startedAt: string;
+  dispatchedAt?: string;
+  finishedAt?: string;
+  user?: { id: number; name: string; username: string };
+  message?: string;
+};
+export type ChannelSetup = {
+  activeRequest?: { requestId: string; leaseToken: string };
+  creations: ChannelCreation[];
+  tests: ChannelTest[];
+  audit: {
+    action: "create" | "test";
+    requestId: string;
+    accountId: number;
+    at: string;
+    status: string;
+    targetId?: number;
+  }[];
 };
 export type Data = {
+  channelSetup?: ChannelSetup;
   growth?: {
     installedAt?: string;
     syncedAt?: string;
@@ -203,6 +243,13 @@ export function pair(data: Data, source: unknown, target: unknown) {
     throw new TelegramError(
       "permission",
       "Escolha origem e destino cadastrados e diferentes.",
+    );
+  if (data.sources.find((group) => group.id === sourceId)?.kind === "channel")
+    throw new TelegramError(
+      "origin_kind",
+      "Canais não podem ser usados como origem da coleta. Escolha um grupo ou supergrupo.",
+      0,
+      409,
     );
   return { sourceId, targetId };
 }

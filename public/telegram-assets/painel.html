@@ -59,8 +59,24 @@
       <form id="code-form" class="setup-form" hidden autocomplete="off"><label>Código recebido no Telegram<input id="telegram-code" inputmode="numeric" type="text" pattern="[0-9]{4,10}" maxlength="10" autocomplete="one-time-code" required></label><div class="setup-actions"><button id="verify-code" type="submit">Confirmar código</button><button type="button" class="secondary cancel-connection">Cancelar conexão</button></div></form>
       <form id="password-form" class="setup-form" hidden autocomplete="off"><label>Senha de verificação em duas etapas<input id="telegram-password" name="telegram_two_step_password" type="password" maxlength="256" autocomplete="new-password" required></label><p class="hint">Digite sua senha existente do Telegram. O painel não guarda a senha.</p><div class="setup-actions"><button id="verify-password" type="submit">Concluir conexão</button><button type="button" class="secondary cancel-connection">Cancelar conexão</button></div></form>
       <div id="connected-actions" class="setup-actions" hidden><button id="load-groups">Carregar meus grupos</button><button id="disconnect-account" class="secondary">Desconectar Telegram</button></div>
+      <div id="channel-setup" hidden>
+        <hr><h2>Seu canal privado de ofertas</h2>
+        <p>No canal, os assinantes acompanham as publicações da administração. A criação não vincula um grupo de comentários.</p>
+        <form id="create-channel-form" class="setup-form" autocomplete="off">
+          <label>Nome do canal<input id="channel-title" type="text" value="BFF Fitness | Atacado VIP" minlength="3" maxlength="100" required></label>
+          <div class="setup-actions"><button id="create-channel" type="submit">Criar canal privado</button></div>
+        </form>
+        <p id="channel-create-status" role="status" hidden></p>
+        <div id="channel-created" hidden><h3 id="channel-created-name"></h3><p>Canal privado confirmado. Configure este canal como destino da sua operação abaixo.</p></div>
+        <form id="test-channel-form" class="setup-form" autocomplete="off" hidden>
+          <label>Conta de teste no Telegram<input id="channel-test-user" type="text" placeholder="@usuario_teste" pattern="@?[A-Za-z0-9_]{3,32}" maxlength="33" required></label>
+          <p class="hint">Use outra conta sua para conferir uma inclusão. A conta proprietária já participa do canal. Este teste não conta como lead adquirido.</p>
+          <div class="setup-actions"><button id="test-channel" type="submit">Adicionar conta de teste</button></div>
+        </form>
+        <p id="channel-test-status" role="status" hidden></p>
+      </div>
       <div id="group-setup" hidden>
-        <hr><h2>Prepare sua comunidade privada</h2><p>Escolha um grupo de origem da sua conta e sua comunidade de destino. Os clientes podem conversar normalmente no destino.</p>
+        <hr><h2>Prepare sua comunidade privada</h2><p>Escolha um grupo de origem e um grupo ou canal privado de destino. Em canais, somente a administração publica.</p>
         <div class="setup-grid"><label>Consultar participantes de<select id="setup-source"></select></label><label>Minha comunidade de destino<select id="setup-target"></select></label></div>
         <div class="setup-actions"><button id="check-privacy" class="secondary">Conferir privacidade do destino</button></div>
         <div id="privacy-report" class="privacy-report" aria-live="polite"><p>Confira o destino antes de ativar a conexão real.</p></div>
@@ -89,7 +105,7 @@
       <article><span>Inclusões confirmadas</span><strong id="count-added">0</strong><small>Adicionados na operação</small></article>
       <article><span>Já participavam</span><strong id="count-existing">0</strong><small>Sem novo envio</small></article>
     </section>
-    <section class="panel flow"><div class="step">1</div><div class="flow-content"><h2>Escolha os grupos</h2><p>Consulte os participantes que o Telegram disponibilizar para sua conta. A consulta atual mantém o lote de até 500 participantes.</p><div class="controls"><label>Grupo de origem<select id="source" disabled></select></label><span class="arrow" aria-hidden="true">→</span><label>Grupo de destino<select id="target" disabled></select></label><button id="collect" disabled>Consultar participantes</button></div><p id="mode-help" class="hint"></p></div></section>
+    <section class="panel flow"><div class="step">1</div><div class="flow-content"><h2>Escolha os grupos</h2><p>Consulte os participantes que o Telegram disponibilizar para sua conta. A consulta atual mantém o lote de até 500 participantes.</p><div class="controls"><label>Grupo de origem<select id="source" disabled></select></label><span class="arrow" aria-hidden="true">→</span><label>Grupo ou canal de destino<select id="target" disabled></select></label><button id="collect" disabled>Consultar participantes</button></div><p id="mode-help" class="hint"></p></div></section>
     <section class="panel">
       <div class="section-heading"><div><h2>2. Revise sua lista</h2><p>Selecione quem você quer incluir na comunidade de destino.</p></div><div class="actions"><a href="/api/telegram/export/contacts.csv" class="text-link" title="Uma linha por participante e grupo de origem">Baixar lista CSV</a><button id="select-ready" class="secondary" disabled title="Seleciona os participantes da origem atual ainda não confirmados no destino, inclusive fora da busca">Selecionar todos</button></div></div>
       <label class="search-label">Buscar participante<input id="search" type="search" placeholder="Nome, usuário ou ID"></label>
