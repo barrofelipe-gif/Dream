@@ -4,6 +4,8 @@ import { Prisma, type TelegramWorkspace } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { encrypt, decrypt } from "@/lib/crypto";
 import { initialData, TelegramError, type Data } from "./domain";
+import { adoptProfileAccount, rememberContactMetadata } from "./accounts";
+import { assertRequestContext, advanceRequestContext } from "./request-context";
 
 export type Workspace = TelegramWorkspace & { parsed: Data };
 let storageChecked = false;
@@ -37,7 +39,8 @@ export async function mutate<T>(
   fn: (row: Workspace) => T | Promise<T>,
 ): Promise<T> {
   await load(userId);
-  return prisma.$transaction(
+  let committedData: Data | undefined;
+  const result = await prisma.$transaction(
     async (tx) => {
       const schema =
         new URL(process.env.DATABASE_URL!).searchParams.get("schema") ||
@@ -52,7 +55,10 @@ export async function mutate<T>(
         where: { userId },
       });
       const workspace = { ...row, parsed: initialData(row.data) };
+      assertRequestContext(workspace.parsed);
+      rememberContactMetadata(workspace.parsed);
       const result = await fn(workspace);
+      rememberContactMetadata(workspace.parsed);
       await tx.telegramWorkspace.update({
         where: { userId },
         data: {
@@ -68,10 +74,13 @@ export async function mutate<T>(
           version: { increment: 1 },
         },
       });
+      committedData = workspace.parsed;
       return result;
     },
     { timeout: 10000, maxWait: 5000 },
   );
+  if (committedData) advanceRequestContext(committedData);
+  return result;
 }
 export function secret<T>(value: string | null): T | undefined {
   return value ? (JSON.parse(decrypt(value)) as T) : undefined;
@@ -97,6 +106,9 @@ export function finishConnection(
 ) {
   if (row.authAttempt !== attempt)
     throw new TelegramError("cancelled", "A conexão foi cancelada.", 0, 409);
+  const newAuthentication = ["qr", "code", "password"].includes(row.authState);
+  adoptProfileAccount(row, account, newAuthentication);
+  rememberContactMetadata(row.parsed);
   if (!row.parsed.account || row.parsed.account.id !== account.id) {
     row.parsed.sources = [];
     row.parsed.targets = [];
@@ -105,6 +117,10 @@ export function finishConnection(
     row.parsed.privacy = undefined;
     row.parsed.discovery = undefined;
     for (const person of row.parsed.contacts) person.selected = false;
+  }
+  if (newAuthentication) for (const person of row.parsed.contacts) {
+    person.accessHash = "";
+    person.selected = false;
   }
   row.authState = "connected";
   row.sessionEnc = seal(saved);

@@ -180,6 +180,7 @@ const group = (id) => ({
 });
 function data() {
   const d = domain.initialData();
+  d.account = { id: 99, name: "Teste", username: "test_account" };
   d.sources = [group(-1)];
   d.targets = [group(-2), group(-3)];
   d.contacts = [7, 8].map((id) => ({
@@ -187,6 +188,7 @@ function data() {
     name: "Pessoa " + id,
     username: "user" + id,
     accessHash: "PRIVATE-HASH",
+    accountId: 99,
     source_id: -1,
     selected: true,
   }));
@@ -433,11 +435,14 @@ function harness(options = {}) {
     authExpiresAt: new Date(Date.now() + 60000),
     credentialsEnc: "key",
     sessionEnc: "session",
+    busyToken: null,
+    busyUntil: null,
   };
   const job = domain.enqueue(row.parsed, -1, -2, [7, 8]);
   let calls = 0,
     released = 0,
-    loggedOut = 0;
+    loggedOut = 0,
+    leaseSerial = 0;
   const boundary = {
     load: async () => row,
     mutate: async (id, fn) => {
@@ -446,12 +451,20 @@ function harness(options = {}) {
     },
     lease: async () => {
       if (options.busy) throw new domain.TelegramError("busy", "ocupado");
-      return { token: "token", row: structuredClone(row) };
+      if (row.busyToken && row.busyUntil?.getTime() > Date.now())
+        throw new domain.TelegramError("busy", "ocupado");
+      row.busyToken = `token-${++leaseSerial}`;
+      row.busyUntil = new Date(Date.now() + 300000);
+      return { token: row.busyToken, row: structuredClone(row) };
     },
-    release: async () => {
+    release: async (_id, token) => {
       released++;
+      if (row.busyToken === token) { row.busyToken = null; row.busyUntil = null; }
     },
-    secret: (v) => (v === "key" ? { apiId: 1, apiHash: "fake" } : v),
+    secret: (v) => {
+      if (v === "key") return { apiId: 1, apiHash: "fake" };
+      try { return JSON.parse(v); } catch { return v; }
+    },
     seal: (v) => JSON.stringify(v),
     finishConnection: (r, a, account) => {
       if (a !== r.authAttempt)
@@ -489,7 +502,8 @@ function harness(options = {}) {
     async connect() {
       if (options.connect) await options.connect(row);
     }
-    async invite() {
+    async invite(_source, _target, _person, beforeInvite) {
+      if (beforeInvite) await beforeInvite();
       calls++;
       if (options.invite) return options.invite(row);
       return { state: "added", message: "confirmado" };
@@ -499,7 +513,7 @@ function harness(options = {}) {
       return "FAKE-SESSION";
     }
     async me() {
-      return { id: 99, name: "Teste", username: "" };
+      return { id: 99, name: "Teste", username: "test_account" };
     }
   }
   const steps = loader({
@@ -768,7 +782,7 @@ test("platform refusal to list participants is surfaced without a bypass or fall
 });
 test("configure, collect, bulk select and queue work without per-person authorization setup", async () => {
   const row = {
-    parsed: domain.initialData(),
+    parsed: domain.initialData({ account: { id: 99, name: "Teste", username: "test_account" } }),
     authState: "connected",
     authAttempt: null,
     credentialsEnc: "key",

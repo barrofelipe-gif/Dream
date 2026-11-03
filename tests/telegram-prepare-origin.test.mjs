@@ -219,6 +219,7 @@ function serviceBoundary(options = {}) {
       sdk.driver.connect = async () => {};
       sdk.driver.close = async () => {};
       sdk.driver.save = () => "test-session";
+      sdk.driver.me = async () => ({ id: 1, name: "Connected account", username: "account" });
       sdk.driver.client.logOut = async () => {};
       return sdk.driver;
     }

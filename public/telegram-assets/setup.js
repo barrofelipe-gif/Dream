@@ -2,6 +2,7 @@
 let setupLastStage = null, setupGroupsLoaded = false, setupProtectId = null;
 let setupPreferredSource = null, setupSourceRequest = 0;
 let setupChannelApplied = '', channelIntents = {};
+let setupLastContext = null;
 if (typeof window !== 'undefined') window.addEventListener('message',event=>{
   const selected=event.data;
   if (event.origin!==window.location.origin || event.source!==window.parent || selected?.type!=='bff-telegram-source' ||
@@ -54,7 +55,22 @@ function renderChannelSetup(blocked) {
 function renderSetup(active) {
   const connection=state.connection;
   if (!connection) return;
+  if (setupLastContext !== connection.context_id) {
+    if (setupLastContext!==null && setupPreferredSource) {
+      setupSourceRequest=Math.max(setupSourceRequest,setupPreferredSource.request);
+      setupPreferredSource=null;
+    }
+    setupLastContext=connection.context_id;
+    setupLastStage=null; setupGroupsLoaded=false; setupChannelApplied=''; channelIntents={};
+    for (const id of ['api-hash','api-id','telegram-phone','telegram-code','telegram-password','search']) $(id).value='';
+    $('connection-details').open=false;
+  }
   const stage=connection.state, connected=stage==='connected', blocked=busy||active;
+  const accounts=connection.accounts || [], accountLocked=blocked || connection.accounts_locked;
+  setHTML('telegram-account-list',accounts.map(profile=>`<div class="telegram-account-card" data-active="${profile.active?'true':'false'}"><div><strong>${escapeHTML(profile.label)}</strong><small>${escapeHTML(profile.account?.name || 'Aguardando conexão')}${profile.account?.username?' · @'+escapeHTML(profile.account.username):''}</small><small>${escapeHTML(profile.active?'Conta selecionada':profile.state==='connected'?'Sessão salva':setupLabels[profile.state] || 'Conectar conta')}</small></div><button type="button" class="secondary" data-telegram-account="${escapeHTML(profile.id)}" ${profile.active || accountLocked?'disabled':''}>${profile.active?'Em uso':'Usar conta'}</button></div>`).join(''));
+  $('add-telegram-account').disabled=accountLocked || !connection.enabled;
+  $('account-label').disabled=accountLocked;
+  $('account-switch-hint').textContent=connection.accounts_locked?'Conclua ou cancele a conexão ou a operação em andamento antes de trocar de conta.':'As sessões continuam salvas ao trocar. As listas de participantes pertencem à conta que as consultou.';
   if (setupPreferredSource && ((setupLastStage==='connected' && !connected) ||
       (connected && connection.account?.id!==setupPreferredSource.accountId))) {
     setupSourceRequest=setupPreferredSource.request;
@@ -75,7 +91,8 @@ function renderSetup(active) {
   $('qr-image').hidden=!qrValid;
   if(qrValid) {if($('qr-image').getAttribute('src')!==qr.image)$('qr-image').src=qr.image;}
   else $('qr-image').removeAttribute('src');
-  $('qr-status').textContent=stage==='qr_error'?connection.qr_error:qrValid?`Aguardando confirmação no celular. Este código expira em ${new Date(qr.expires_at*1000).toLocaleTimeString('pt-BR')}.`:'Preparando ou atualizando QR Code…';
+  const profileLabel=accounts.find(profile=>profile.active)?.label || 'sua conta';
+  $('qr-status').textContent=stage==='qr_error'?connection.qr_error:qrValid?`Conectando ${profileLabel}. Confirme no celular dessa conta. Este código expira em ${new Date(qr.expires_at*1000).toLocaleTimeString('pt-BR')}.`:`Preparando QR Code para ${profileLabel}…`;
   $('retry-qr').hidden=stage!=='qr_error';
   $('code-form').hidden=stage!=='code'; $('password-form').hidden=stage!=='password';
   $('connected-actions').hidden=!connected;
@@ -121,6 +138,30 @@ function renderSetup(active) {
   $('live-config-hint').textContent=!privacy?'Confira a privacidade do destino.':!privacy.private?'A comunidade precisa ser privada.':selected.source_id===selected.target_id?'Escolha uma origem diferente do destino.':'';
 }
 async function setupAction(action, body={}) { return request('/api/connection/'+action,body); }
+$('telegram-account-list').addEventListener('click',event=>{
+  const button=event.target.closest('[data-telegram-account]');
+  if (!button || button.disabled) return;
+  const id=button.dataset.telegramAccount;
+  act(async()=>{await setupAction('accounts/switch',{id});notice('Conta selecionada. Os grupos e participantes desta conta foram carregados.');});
+});
+$('add-account-form').addEventListener('submit',event=>{
+  event.preventDefault();
+  if (busy || !$('account-label').reportValidity()) return;
+  const label=$('account-label').value.trim();
+  act(async()=>{
+    const created=await setupAction('accounts/add',{label});
+    await refresh();
+    if (state.connection.active_account_id!==created.id || state.connection.context_id!==created.context_id || state.connection.state!=='disconnected')
+      throw new Error('A conta selecionada mudou em outra janela. Confira a conta antes de gerar o QR Code.');
+    if (state.connection.credentials_saved) {
+      await setupAction('qr',{use_saved:true});
+      notice(`Escaneie o QR Code com o Telegram de ${label}.`);
+    } else {
+      $('connection-details').open=true;
+      notice(`Conta ${label} preparada. Conecte o Telegram abaixo.`);
+    }
+  });
+});
 $('create-channel-form').addEventListener('submit',event=>{
   event.preventDefault();
   if (busy || state?.connection?.state!=='connected' || !$('channel-title').reportValidity()) return;

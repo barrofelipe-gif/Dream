@@ -6,6 +6,7 @@ import { mapError } from "@/lib/telegram/driver";
 import { TelegramError } from "@/lib/telegram/domain";
 import * as growth from "@/lib/telegram/growth";
 import { restoreTray } from "@/lib/telegram/analytics";
+import { withRequestContext } from "@/lib/telegram/request-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,7 +66,9 @@ export async function GET(_request: Request, context: Context) {
       return Response.json({ ready: true, mode: "live" }, { headers });
     if (route === "/export/contacts.csv" || route === "/export/results.csv") {
       const results = route.endsWith("results.csv");
-      return new Response(await telegram.csv(userId, results), {
+      const exported = results ? await telegram.csv(userId, true)
+        : await withRequestContext(new URL(_request.url).searchParams.get("account_context"), () => telegram.csv(userId, false));
+      return new Response(exported, {
         headers: {
           ...headers,
           "Content-Type": "text/csv; charset=utf-8",
@@ -87,6 +90,7 @@ export async function POST(request: Request, context: Context) {
     checkPost(request, userId);
     const data = await body(request);
     const route = "/" + (await context.params).path.join("/");
+    return await withRequestContext(request.headers.get("x-telegram-context"), async () => {
     let result: unknown;
     if (route === "/growth/reconnect-tray") result = await restoreTray(userId);
     else if (route === "/growth/links") result = await growth.createLink(userId, data);
@@ -98,6 +102,10 @@ export async function POST(request: Request, context: Context) {
     else if (route === "/discover") result = await telegram.discover(userId, data);
     else if (route === "/connection/prepare-origin")
       result = await telegram.prepareOrigin(userId, data);
+    else if (route === "/connection/accounts/add")
+      result = await telegram.addAccount(userId, data);
+    else if (route === "/connection/accounts/switch")
+      result = await telegram.switchAccount(userId, data);
     else if (route === "/connection/channel/create")
       result = await telegram.createChannel(userId, data);
     else if (route === "/connection/channel/test")
@@ -135,6 +143,7 @@ export async function POST(request: Request, context: Context) {
       result = await telegram.control(userId, data);
     else throw new TelegramError("input", "Operação não encontrada.", 0, 404);
     return Response.json(result, { headers });
+    });
   } catch (error) {
     return failure(error);
   }

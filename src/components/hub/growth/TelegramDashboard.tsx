@@ -152,12 +152,15 @@ export default function TelegramDashboard() {
       headers: {
         "Content-Type": "application/json",
         "x-csrf-token": data.csrf,
+        "x-telegram-context": data.account_context,
       },
       body: JSON.stringify(input),
     });
     const result = await response.json();
-    if (!response.ok)
+    if (!response.ok) {
+      if (result.code === "account_changed") reload();
       throw new Error(result.error || "Não foi possível concluir esta ação.");
+    }
     return result;
   }
   async function action(

@@ -19,6 +19,16 @@
     <section class="panel setup-panel" aria-labelledby="connection-title">
       <div class="section-heading"><div><p class="eyebrow">SUA CONTA + COMUNIDADE PRIVADA</p><h2 id="connection-title">Conecte seu Telegram</h2><p id="connection-summary">Carregando sua conexão…</p></div><span id="connection-badge" class="pill">Verificando conexão…</span></div>
       <p id="connection-error" role="status" hidden></p>
+      <div class="telegram-accounts" aria-labelledby="telegram-accounts-title">
+        <h3 id="telegram-accounts-title">Contas Telegram</h3>
+        <p class="hint">Mantenha os Telegrams de Felipe e Yara salvos. Escolha a conta que vai consultar os grupos e realizar a inclusão.</p>
+        <div id="telegram-account-list" class="telegram-account-list" role="group" aria-label="Escolher conta Telegram"></div>
+        <form id="add-account-form" class="account-add-form" autocomplete="off">
+          <label>Nome para identificar a conta<input id="account-label" type="text" value="Felipe" maxlength="48" required></label>
+          <button id="add-telegram-account" type="submit" class="secondary" disabled>Adicionar outra conta</button>
+        </form>
+        <p id="account-switch-hint" class="hint" role="status"></p>
+      </div>
       <div id="saved-session" class="setup-actions" hidden><button id="restore-session" disabled>Usar sessão salva</button><p class="hint">Confirma sua conta no Telegram sem solicitar outro código.</p></div>
       <aside id="app-setup-guide" class="app-setup-guide" aria-labelledby="app-setup-title" hidden>
         <p class="eyebrow">CONFIGURAÇÃO INICIAL · UMA VEZ</p>
@@ -107,7 +117,7 @@
     </section>
     <section class="panel flow"><div class="step">1</div><div class="flow-content"><h2>Escolha os grupos</h2><p>Consulte os participantes que o Telegram disponibilizar para sua conta. A consulta atual mantém o lote de até 500 participantes.</p><div class="controls"><label>Grupo de origem<select id="source" disabled></select></label><span class="arrow" aria-hidden="true">→</span><label>Grupo ou canal de destino<select id="target" disabled></select></label><button id="collect" disabled>Consultar participantes</button></div><p id="mode-help" class="hint"></p></div></section>
     <section class="panel">
-      <div class="section-heading"><div><h2>2. Revise sua lista</h2><p>Selecione quem você quer incluir na comunidade de destino.</p></div><div class="actions"><a href="/api/telegram/export/contacts.csv" class="text-link" title="Uma linha por participante e grupo de origem">Baixar lista CSV</a><button id="select-ready" class="secondary" disabled title="Seleciona os participantes da origem atual ainda não confirmados no destino, inclusive fora da busca">Selecionar todos</button></div></div>
+      <div class="section-heading"><div><h2>2. Revise sua lista</h2><p>Selecione quem você quer incluir na comunidade de destino.</p></div><div class="actions"><a id="export-contacts" href="/api/telegram/export/contacts.csv" class="text-link" title="Uma linha por participante e grupo de origem">Baixar lista CSV</a><button id="select-ready" class="secondary" disabled title="Seleciona os participantes da origem atual ainda não confirmados no destino, inclusive fora da busca">Selecionar todos</button></div></div>
       <label class="search-label">Buscar participante<input id="search" type="search" placeholder="Nome, usuário ou ID"></label>
       <div class="table-scroll"><table><thead><tr><th scope="col">Selecionar</th><th scope="col">Participante</th><th scope="col">Último resultado</th></tr></thead><tbody id="contacts"><tr><td colspan="3" class="empty">Consulte a origem para montar sua lista.</td></tr></tbody></table></div>
       <div class="list-footer"><span id="selection-label">Nenhum participante selecionado.</span><button id="start" disabled>Iniciar inclusão</button></div>

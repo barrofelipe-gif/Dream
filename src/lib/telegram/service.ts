@@ -24,6 +24,7 @@ import {
 } from "./store";
 import {
   confirmed,
+  contactUsable,
   csvCell,
   enqueue,
   idle,
@@ -41,6 +42,15 @@ import {
 import { connectTelegramQR, runTelegramQueue } from "@/workflows/telegram";
 import { normalizeProspect, recordProspectCheck, saveProspectRecord } from "./prospects";
 import { recordCollection } from "./collection-history";
+import {
+  publicAccountRoster,
+  addDraft,
+  activateAccount,
+  retainedSessionEncs,
+  accountsLocked,
+  activeProfileId,
+} from "./accounts";
+import { accountContext, assertRequestContext } from "./request-context";
 
 export type Login = {
   phone?: string;
@@ -91,6 +101,7 @@ function connectionStamp(row: Workspace) {
     account: row.parsed.account?.id ?? null,
     credentials: row.credentialsEnc,
     session: row.sessionEnc,
+    context: accountContext(row.parsed),
   };
 }
 function sameConnection(row: Workspace, stamp: ReturnType<typeof connectionStamp>) {
@@ -432,6 +443,10 @@ export async function state(userId: string) {
       enabled: true,
       state: row.authState,
       account: data.account || null,
+      accounts: publicAccountRoster(row),
+      active_account_id: activeProfileId(data),
+      context_id: accountContext(data),
+      accounts_locked: accountsLocked(row),
       phone_hint: login?.phone ? "…" + login.phone.slice(-4) : "",
       credentials_saved: !!row.credentialsEnc,
       vault_error: false,
@@ -453,11 +468,32 @@ export async function state(userId: string) {
     },
   };
 }
+export async function addAccount(userId: string, input: Record<string, unknown>) {
+  if (typeof input.label !== "string")
+    throw new TelegramError("input", "Informe um nome para identificar a conta.");
+  const label = input.label;
+  return mutate(userId, (row) => {
+    addDraft(row, label, { seal, secret });
+    return { ok: true, id: activeProfileId(row.parsed), context_id: accountContext(row.parsed) };
+  });
+}
+export async function switchAccount(userId: string, input: Record<string, unknown>) {
+  if (typeof input.id !== "string" || !input.id || input.id.length > 100)
+    throw new TelegramError("input", "Escolha uma conta salva neste painel.");
+  const id = input.id;
+  await mutate(userId, (row) => {
+    activateAccount(row, id, { seal, secret });
+  });
+  return { ok: true };
+}
 export async function begin(
   userId: string,
   input: Record<string, unknown>,
   qr: boolean,
 ) {
+  const phone = typeof input.phone === "string" ? input.phone : "";
+  if (!qr && !/^\+[1-9][0-9]{7,14}$/.test(phone))
+    throw new TelegramError("input", "Informe o número com +, código do país, DDD e número.");
   const attempt = randomUUID();
   await mutate(userId, (row) => {
     idle(row.parsed);
@@ -474,6 +510,7 @@ export async function begin(
     row.authAttempt = attempt;
     row.authExpiresAt = new Date(Date.now() + 250000);
     row.authState = qr ? "qr" : "code";
+    row.sessionEnc = null;
     row.loginEnc = null;
     row.parsed.error = undefined;
   });
@@ -497,14 +534,6 @@ export async function begin(
       );
     }
     return { ok: true };
-  }
-  const phone = input.phone;
-  if (typeof phone !== "string" || !/^\+[1-9][0-9]{7,14}$/.test(phone)) {
-    await cancel(userId);
-    throw new TelegramError(
-      "input",
-      "Informe o número com +, código do país, DDD e número.",
-    );
   }
   try {
     await clientFor(
@@ -577,8 +606,9 @@ async function discardAuthorizedSession(userId: string, attempt: string | null, 
     const retained = async () => {
       const current = await load(userId);
       // A pending old login stores its auth key before becoming authorized.
-      return secret<string>(current.sessionEnc) === saved &&
-        (current.authState === "connected" || current.authAttempt !== attempt);
+      return (secret<string>(current.sessionEnc) === saved &&
+        (current.authState === "connected" || current.authAttempt !== attempt)) ||
+        retainedSessionEncs(current, { seal, secret }).some((encrypted) => secret<string>(encrypted) === saved);
     };
     // Another attempt may already be using this exact MTProto session.
     if (await retained()) return;
@@ -929,6 +959,8 @@ export async function localAction(
           "input",
           "Consulte a origem antes de selecionar.",
         );
+      if (input.selected && !contactUsable(data, person))
+        throw new TelegramError("contact_stale", "Consulte novamente os participantes com a conta atual antes de selecionar.", 0, 409);
       person.selected = input.selected;
       return { ok: true };
     }
@@ -942,7 +974,7 @@ export async function localAction(
       let count = 0;
       for (const person of data.contacts)
         if (person.source_id === sourceId) {
-          person.selected = !confirmed(data, person.user_id, targetId);
+          person.selected = contactUsable(data, person) && !confirmed(data, person.user_id, targetId);
           if (person.selected) count++;
         }
       return { selected: count };
@@ -1033,6 +1065,7 @@ export async function control(userId: string, input: Record<string, unknown>) {
 export async function csv(userId: string, results: boolean) {
   const row = await load(userId),
     data = row.parsed;
+  if (!results) assertRequestContext(data);
   const rows: unknown[][] = results
     ? [
         ["operacao", "participante_id", "nome", "estado", "detalhes", "atualizado_em"],

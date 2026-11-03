@@ -624,10 +624,10 @@ export class TelegramDriver {
     result.notes = [...(result.notes || []), ...notes];
     return result;
   }
-  async invite(sourceId: number, targetId: number, person: Person) {
+  async invite(sourceId: number, targetId: number, person: Person, beforeInvite?: () => Promise<unknown>) {
     await this.group(sourceId);
     const target = await this.group(targetId, true);
-    return this.inviteMember(target, person);
+    return this.inviteMember(target, person, beforeInvite);
   }
   private async inviteMember(target: Api.Chat | Api.Channel, person: Person, beforeInvite?: () => Promise<unknown>): Promise<MembershipOutcome> {
     const user = this.input(person);

@@ -1,13 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { transformSync } from "esbuild";
+import { buildSync } from "esbuild";
 
 const compiled = { exports: {} };
-const code = transformSync(readFileSync("src/lib/telegram/collection-history.ts", "utf8"), {
-  loader: "ts", format: "cjs", target: "node20",
-}).code;
+const code = buildSync({ entryPoints: ["src/lib/telegram/collection-history.ts"], bundle: true,
+  platform: "node", format: "cjs", target: "node20", write: false }).outputFiles[0].text;
 new Function("require", "module", "exports", code)(createRequire(import.meta.url), compiled, compiled.exports);
 const { recordCollection, collectionSummary } = compiled.exports;
 const first = Date.parse("2026-11-01T10:00:00.000Z");
@@ -28,6 +26,7 @@ test("repeat collection updates real participant data, preserves selection and r
   assert.equal(d.contacts.length, 3);
   assert.deepEqual(d.contacts[0], {
     ...updated, source_id: -1, selected: true,
+    accountId: 123,
     firstCollectedAt: iso(first), lastCollectedAt: iso(second),
   });
   assert.equal(d.contacts[2].selected, false);

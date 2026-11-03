@@ -83,6 +83,7 @@ function harness() {
     constructor(credentials, saved) {
       this.credentials = credentials;
       this.saved = saved;
+      this.account = structuredClone(row.parsed.account) || { id: 99, name: "Signed in account", username: "signed_in" };
       this.id = ++serial;
       calls.constructed.push(this.id);
       this.client = {
@@ -96,14 +97,17 @@ function harness() {
     async connect() { this.client.connected = true; await sdk.connect(this); }
     async close() { calls.closed.push(this.id); this.client.connected = false; }
     save() { return this.saved; }
-    async me() { return { id: 99, name: "Signed in account", username: "signed_in" }; }
+    async me() { return this.account; }
     async groups() { return sdk.groups(); }
     async searchGroups() { return sdk.searchGroups(); }
     async privacy() { return sdk.privacy(); }
     async protect() { return sdk.protect(); }
     async collect() { return sdk.collect(); }
     async inspectPublicGroup() { return sdk.inspectPublicGroup(); }
-    async invite() { return sdk.invite(); }
+    async invite(_source, _target, _person, beforeInvite) {
+      if (beforeInvite) await beforeInvite();
+      return sdk.invite();
+    }
   }
   const store = {
     load: async () => structuredClone(row),

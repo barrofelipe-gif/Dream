@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Contact, Data, Person } from "./domain";
+import { collectionContactMetadata } from "./accounts";
 
 /** A snapshot of consulted contacts, not acquisitions, invitations or sales. */
 export type CollectionRun = {
@@ -97,6 +98,7 @@ export function recordCollection(
       existing.name = person.name;
       existing.username = person.username;
       existing.accessHash = person.accessHash;
+      if (data.account) existing.accountId = data.account.id;
       existing.lastCollectedAt = latest(existing.lastCollectedAt, collectedAt);
       // Keep selected and firstCollectedAt exactly as recorded, including absent.
       knownContacts++;
@@ -106,6 +108,7 @@ export function recordCollection(
         name: person.name,
         username: person.username,
         accessHash: person.accessHash,
+        ...(data.account ? { accountId: data.account.id } : {}),
         source_id: sourceId,
         selected: false,
         firstCollectedAt: collectedAt,
@@ -140,7 +143,7 @@ export function collectionSummary(data: Data, sourceId: number): {
   runs: CollectionRun[];
 } {
   const history = data as HistoryData;
-  const contacts = history.contacts.filter((contact) => contact.source_id === sourceId);
+  const contacts = collectionContactMetadata(data).filter((contact) => contact.source_id === sourceId);
   const runs = (history.collectionRuns ?? [])
     .filter((run) => run.sourceId === sourceId)
     .map(snapshot)

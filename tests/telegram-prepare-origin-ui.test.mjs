@@ -136,6 +136,7 @@ test("origin preparation and channel HTTP endpoints require operator and CSRF be
       "@/lib/telegram/domain": { TelegramError: SafeError },
       "@/lib/telegram/driver": { mapError: (error) => error },
       "@/lib/telegram/growth": {}, "@/lib/telegram/analytics": {},
+      "@/lib/telegram/request-context": { withRequestContext: (_expected, work) => work() },
     };
     const compiled = { exports: {} };
     const code = transformSync(readFileSync("src/app/api/telegram/[...path]/route.ts", "utf8"), { loader: "ts", format: "cjs", target: "node20" }).code;

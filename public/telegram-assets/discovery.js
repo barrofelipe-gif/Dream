@@ -7,7 +7,7 @@ let discoveryBusy = false,
 function renderDiscovery(active, limited) {
   const connection = state?.connection;
   const connected = connection?.state === "connected";
-  const scope = connected ? String(connection.account?.id ?? "connected") : "";
+  const scope = connected ? connection.context_id || String(connection.account?.id ?? "connected") : "";
   if (scope !== discoveryScope) {
     discoveryScope = scope;
     discoveryGeneration++;

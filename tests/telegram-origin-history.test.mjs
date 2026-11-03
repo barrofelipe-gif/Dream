@@ -57,6 +57,7 @@ function data() {
   });
 }
 function completedAcquisition(d) {
+  d.account ||= account(1);
   const job = enqueue(d, source.id, target.id, [7]);
   job.state = "completed";
   d.results[0].state = "added";

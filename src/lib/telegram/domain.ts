@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { SavedProspect } from "./prospects";
 import type { CollectionRun } from "./collection-history";
+import type { Accounts, ContactMetadata } from "./accounts";
 
 export class TelegramError extends Error {
   constructor(
@@ -64,6 +65,7 @@ export type Person = {
   accessHash: string;
 };
 export type Contact = Person & {
+  accountId?: number;
   source_id: number;
   selected: boolean;
   firstCollectedAt?: string;
@@ -76,6 +78,7 @@ export type Consent = {
   authorized_at: number;
 };
 export type Result = {
+  accountId?: number;
   job_id: string;
   user_id: number;
   name: string;
@@ -84,6 +87,9 @@ export type Result = {
   updated_at: number;
 };
 export type Job = {
+  accountId?: number;
+  accountProfileId?: string;
+  accountGeneration?: number;
   id: string;
   source_id: number;
   source_name?: string;
@@ -151,6 +157,8 @@ export type ChannelSetup = {
   }[];
 };
 export type Data = {
+  accounts?: Accounts;
+  collectionContacts?: ContactMetadata[];
   channelSetup?: ChannelSetup;
   growth?: {
     installedAt?: string;
@@ -285,9 +293,14 @@ export function eligible(
 ) {
   return (
     data.contacts.some(
-      (p) => p.user_id === userId && p.source_id === sourceId && p.selected,
+      (p) => p.user_id === userId && p.source_id === sourceId && p.selected && contactUsable(data, p),
     ) && !confirmed(data, userId, targetId)
   );
+}
+export function contactUsable(data: Data, contact: Contact): boolean {
+  if (typeof contact.accessHash !== "string" || !contact.accessHash.trim() || contact.accessHash === "0") return false;
+  if (contact.accountId !== undefined) return contact.accountId === data.account?.id;
+  return !data.accounts;
 }
 export function enqueue(
   data: Data,
@@ -297,6 +310,8 @@ export function enqueue(
 ) {
   idle(data);
   limits(data);
+  if (!data.account || !Number.isSafeInteger(data.account.id) || data.account.id <= 0)
+    throw new TelegramError("auth_required", "Confirme a conta Telegram antes de criar uma fila.", 0, 409);
   const { sourceId, targetId } = pair(data, source, target);
   if (
     !Array.isArray(ids) ||
@@ -312,6 +327,9 @@ export function enqueue(
     );
   const users = [...new Set(ids)] as number[];
   const job: Job = {
+    accountId: data.account.id,
+    accountProfileId: data.accounts?.activeId || "primary",
+    accountGeneration: data.accounts?.generation || 0,
     id: randomUUID(),
     source_id: sourceId,
     source_name: data.sources.find((group) => group.id === sourceId)!.name,
@@ -330,6 +348,7 @@ export function enqueue(
   data.jobs.unshift(job);
   data.results.push(
     ...users.map((user_id) => ({
+      accountId: data.account!.id,
       job_id: job.id,
       user_id,
       name: data.contacts.find((c) => c.user_id === user_id && c.source_id === sourceId)!.name,
@@ -364,11 +383,13 @@ export function publicSnapshot(data: Data) {
   }
   return {
     contacts: data.contacts.map((p) => ({
+      accountId: p.accountId,
+      can_use: contactUsable(data, p),
       user_id: p.user_id,
       name: p.name,
       username: p.username,
       source_id: p.source_id,
-      selected: p.selected,
+      selected: p.selected && contactUsable(data, p),
     })),
     jobs: data.jobs.map((job) => {
       const snapshot = { ...job };

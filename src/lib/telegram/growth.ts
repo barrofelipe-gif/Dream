@@ -5,6 +5,7 @@ import { trayGet, getValidAccessToken } from "@/lib/tray";
 import { fetchOrdersSince, type TraySaleOrder } from "@/lib/traySales";
 import { load, mutate } from "./store";
 import { csrf } from "./access";
+import { accountContext } from "./request-context";
 import { canRestoreTray, googleAnalytics } from "./analytics";
 import {
   readGaPurchases,
@@ -127,6 +128,7 @@ export async function dashboard(userId: string, input: URLSearchParams) {
   return {
     ...summarize(links, clicks, sales, workspace.parsed, days, source),
     csrf: csrf(userId),
+    account_context: accountContext(workspace.parsed),
     analytics,
     connection: workspace.authState,
     updatedAt: new Date().toISOString(),

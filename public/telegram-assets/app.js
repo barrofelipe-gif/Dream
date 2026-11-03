@@ -10,7 +10,7 @@ function participants() {
   const {source_id, target_id} = pair();
   const confirmed = new Set(state.confirmed.filter(r=>r.target_id===target_id).map(r=>r.user_id));
   const contacts = state.contacts.filter(p=>p.source_id===source_id);
-  const selected = contacts.filter(p=>p.selected && !confirmed.has(p.user_id));
+  const selected = contacts.filter(p=>p.selected && p.can_use!==false && !confirmed.has(p.user_id));
   return {contacts, confirmed, selected, ready:selected};
 }
 const labels = {queued:'Na fila',running:'Em andamento',paused:'Pausado',paused_restriction:'Aguardando liberação',restricted:'Restrição registrada',completed:'Concluído',cancelled:'Cancelado',interrupted:'Interrompido no reinício',failed:'Interrompido por falha',waiting:'Aguardando',in_progress:'Verificando',added:'Adicionado',already:'Já participava',privacy:'Recusado por privacidade',error:'Falha',uncertain:'Conferir no Telegram',revoked:'Fora da seleção',flood_wait:'Espera solicitada',permission:'Permissão necessária',auth_required:'Reconectar conta'};
@@ -31,7 +31,7 @@ async function request(path, body) {
   const controller = new AbortController();
   const timeout = setTimeout(()=>controller.abort(),35000);
   try {
-    const response = await fetch(path.replace(/^\/api\//,'/api/telegram/'), {signal:controller.signal,...(body === undefined ? {} : {method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':state?.csrf_token || ''},body:JSON.stringify(body)})});
+    const response = await fetch(path.replace(/^\/api\//,'/api/telegram/'), {signal:controller.signal,...(body === undefined ? {} : {method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':state?.csrf_token || '', 'X-Telegram-Context':state?.connection?.context_id || ''},body:JSON.stringify(body)})});
     if(response.redirected&&new URL(response.url).pathname==='/login'){window.top.location.assign('/login?callbackUrl='+encodeURIComponent('/areas/growth/papeis/telegram'));throw new Error('Entre novamente no app BFF Fitness.');}
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Não foi possível concluir a operação.');
@@ -73,6 +73,7 @@ function render() {
   const job = state.jobs[0];
   const active = state.jobs.some(j=>activeStates.includes(j.state));
   const limited = state.limits.restricted || state.limits.not_before>Date.now()/1000;
+  $('export-contacts').href='/api/telegram/export/contacts.csv?account_context='+encodeURIComponent(state.connection?.context_id || '');
   $('mode').textContent = state.connection?.state==='connected' ? 'TELEGRAM CONECTADO' : 'CONECTE SUA CONTA';
   $('mode-help').textContent = state.mode==='demo' ? 'Dados fictícios para conhecer o fluxo. Conecte sua conta acima para escolher seus grupos reais.' : 'Conexão real com sua comunidade privada. Consulte a origem e escolha os participantes.';
   $('count-total').textContent = contacts.length;
@@ -82,7 +83,7 @@ function render() {
   $('count-existing').textContent = job?.already || 0;
   $('collect').disabled = busy || active || limited || !state.connection?.configured || !source_id || !target_id;
   $('start').disabled = busy || active || limited || !ready.length || ready.length!==selected.length;
-  $('select-ready').disabled = busy || active || !contacts.length;
+  $('select-ready').disabled = busy || active || !contacts.some(p=>p.can_use!==false);
   $('source').disabled = busy || active; $('target').disabled = busy || active;
   if (state.limits.restricted) $('mode-help').textContent += ' Restrição registrada: revise a situação da conta antes de continuar.';
   else if (limited) $('mode-help').textContent += ` Espera em vigor até ${new Date(state.limits.not_before*1000).toLocaleString('pt-BR')}.`;
@@ -91,10 +92,11 @@ function render() {
   const shown = contacts.filter(p=>`${p.name} ${p.username} ${p.user_id}`.toLocaleLowerCase('pt-BR').includes(query));
   setHTML('contacts',shown.map(p=>{
     const last = state.last_results.find(r=>r.user_id===p.user_id && r.target_id===target_id);
-    return `<tr><td><input type="checkbox" data-select="${p.user_id}" aria-label="Selecionar ${escapeHTML(p.name)}" ${p.selected&&!confirmed.has(p.user_id)?'checked':''} ${busy||active||confirmed.has(p.user_id)?'disabled':''}></td><td><b>${escapeHTML(p.name || 'Sem nome')}</b><small>${p.username?'@'+escapeHTML(p.username)+' · ':''}${p.user_id}</small></td><td>${last?pill(last.state):confirmed.has(p.user_id)?'<span class="pill good">Confirmado anteriormente</span>':'<span class="pill">Ainda não processado</span>'}</td></tr>`;
+    return `<tr><td><input type="checkbox" data-select="${p.user_id}" aria-label="Selecionar ${escapeHTML(p.name)}" ${p.selected&&p.can_use!==false&&!confirmed.has(p.user_id)?'checked':''} ${busy||active||p.can_use===false||confirmed.has(p.user_id)?'disabled':''}></td><td><b>${escapeHTML(p.name || 'Sem nome')}</b><small>${p.username?'@'+escapeHTML(p.username)+' · ':''}${p.user_id}</small></td><td>${last?pill(last.state):confirmed.has(p.user_id)?'<span class="pill good">Confirmado anteriormente</span>':p.can_use===false?'<span class="pill warn">Consulte a origem novamente</span>':'<span class="pill">Ainda não processado</span>'}</td></tr>`;
   }).join('') || `<tr><td colspan="3" class="empty">${contacts.length?'Nenhum participante encontrado na busca.':'Clique em “Consultar participantes” para começar.'}</td></tr>`);
   setHTML('job-actions',job ? (['queued','running'].includes(job.state)?'<button class="secondary" data-control="pause">Pausar</button>':['paused','paused_restriction'].includes(job.state)?'<button class="secondary" data-control="resume">Retomar restantes</button>':'')+(activeStates.includes(job.state)?'<button class="danger" data-control="cancel">Cancelar</button>':'') : '');
-  setHTML('job-summary',job ? `${pill(job.state)} <b>${job.processed} de ${job.total} processado(s)</b> · ${job.success} participação(ões) confirmada(s) · ${job.failed} ocorrência(s)<div class="progress"><progress max="${job.total}" value="${job.processed}" aria-label="Progresso da operação"></progress></div><span>${escapeHTML(job.message)}</span>${job.not_before>Date.now()/1000?`<p class="hint">Retomada disponível após ${escapeHTML(new Date(job.not_before*1000).toLocaleString('pt-BR'))}. A fila não retoma sozinha.</p>`:''}` : 'Sua próxima operação aparecerá aqui.');
+  const jobAccount=state.connection?.accounts?.find(profile=>profile.account?.id===job?.accountId);
+  setHTML('job-summary',job ? `${pill(job.state)} <b>${job.processed} de ${job.total} processado(s)</b> · ${job.success} participação(ões) confirmada(s) · ${job.failed} ocorrência(s)${jobAccount?`<p class="hint">Conta da operação: ${escapeHTML(jobAccount.label)}</p>`:''}<div class="progress"><progress max="${job.total}" value="${job.processed}" aria-label="Progresso da operação"></progress></div><span>${escapeHTML(job.message)}</span>${job.not_before>Date.now()/1000?`<p class="hint">Retomada disponível após ${escapeHTML(new Date(job.not_before*1000).toLocaleString('pt-BR'))}. A fila não retoma sozinha.</p>`:''}` : 'Sua próxima operação aparecerá aqui.');
   setHTML('results',results.map(r=>`<tr><td>${escapeHTML(r.name)}<small>${r.user_id}</small></td><td>${pill(r.state)}</td><td>${escapeHTML(r.message)}</td></tr>`).join(''));
   if (typeof renderSetup==='function') renderSetup(active);
   if (typeof renderDiscovery==='function') renderDiscovery(active,limited);
