@@ -177,3 +177,34 @@ test("community delivers account-bound source selection on load and on repeated 
   }
   assert.equal(sent.length, 4);
 });
+
+test("an unreadable embedded panel offers the working direct route and can recover after loading", () => {
+  const state = [], frame = { current: { contentDocument: null } };
+  let index = 0;
+  const react = {
+    useCallback: (callback) => callback, useRef: () => frame, useEffect() {},
+    useState: (initial) => {
+      const at = index++;
+      if (!(at in state)) state[at] = initial;
+      return [state[at], (value) => { state[at] = value; }];
+    },
+  };
+  const jsx = (type, props) => ({ type, props }), compiled = { exports: {} };
+  const code = transformSync(readFileSync("src/components/hub/growth/TelegramCommunity.tsx", "utf8"), { loader: "tsx", format: "cjs", jsx: "automatic", target: "node20" }).code;
+  new Function("require", "module", "exports", code)((name) => name === "react" ? react : { jsx, jsxs: jsx }, compiled, compiled.exports);
+  const render = () => { index = 0; return compiled.exports.default({}); };
+  let tree = render(), iframe = nodes(tree).find((node) => node.type === "iframe");
+  iframe.props.onLoad();
+  tree = render();
+  assert.equal(nodes(tree).find((node) => node.type === "iframe").props.hidden, true);
+  const link = nodes(tree).find((node) => node.type === "a");
+  assert.equal(link.props.href, "/api/telegram/painel");
+  assert.equal(link.props.target, "_blank");
+  assert.equal(nodes(tree).some((node) => node.props?.role === "status"), true);
+  frame.current.contentDocument = { getElementById: () => ({}) };
+  iframe = nodes(tree).find((node) => node.type === "iframe");
+  iframe.props.onLoad();
+  tree = render();
+  assert.equal(nodes(tree).find((node) => node.type === "iframe").props.hidden, false);
+  assert.equal(nodes(tree).some((node) => node.props?.role === "status"), false);
+});
