@@ -80,6 +80,8 @@ function sdkBoundary(options = {}) {
           return { participant: new Api.ChannelParticipant({ userId: bigInt(userId), date: 0 }) };
         }
         assert.equal(request.channel, entity);
+        if (request.participant instanceof Api.InputUser)
+          return { participant: new Api.ChannelParticipant({ userId: request.participant.userId, date: 0 }) };
         assert.ok(request.participant instanceof Api.InputPeerSelf);
         if (options.membershipError) throw options.membershipError;
         if (options.malformed) return { participant: {} };
@@ -103,7 +105,7 @@ function sdkBoundary(options = {}) {
       assert.equal(source, entity);
       assert.equal(options.limit, 500);
       enumerations.push({ sourceId: Number(utils.getPeerId(source)), limit: options.limit });
-      yield new Api.User({ id: bigInt(7), accessHash: bigInt(777), firstName: "Collected lead", username: "collected_lead", bot: false, deleted: false });
+      yield Object.assign(new Api.User({ id: bigInt(7), accessHash: bigInt(777), firstName: "Collected lead", username: "collected_lead", bot: false, deleted: false }), { participant: new Api.ChannelParticipant({ userId: bigInt(7), date: 0 }) });
     },
   };
   const id = Number(utils.getPeerId(entity));

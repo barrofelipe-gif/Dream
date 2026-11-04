@@ -368,7 +368,7 @@ export function recount(data: Data, job: Job) {
   job.already = rows.filter((r) => r.state === "already").length;
   job.success = job.added + job.already;
   job.failed = rows.filter(
-    (r) => !["waiting", "in_progress", "added", "already"].includes(r.state),
+    (r) => !["waiting", "in_progress", "added", "already", "excluded_admin", "not_in_source"].includes(r.state),
   ).length;
 }
 export function publicSnapshot(data: Data) {

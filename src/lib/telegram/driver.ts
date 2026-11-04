@@ -20,6 +20,30 @@ export type MembershipOutcome = {
 export type ChannelAccountTest = MembershipOutcome & {
   user: { id: number; name: string; username: string };
 };
+type SourceRole = "member" | "admin" | "owner" | "absent" | "unknown";
+function sourceParticipantRole(
+  source: Api.Chat | Api.Channel,
+  participant: Api.TypeChannelParticipant | Api.TypeChatParticipant | undefined,
+  userId: string,
+): SourceRole {
+  if (!participant) return "unknown";
+  const actualId = participant instanceof Api.ChannelParticipantBanned || participant instanceof Api.ChannelParticipantLeft
+    ? participant.peer instanceof Api.PeerUser ? participant.peer.userId.toString() : ""
+    : "userId" in participant ? participant.userId.toString() : "";
+  if (actualId !== userId) return "unknown";
+  if (source instanceof Api.Chat) {
+    if (participant instanceof Api.ChatParticipantCreator) return "owner";
+    if (participant instanceof Api.ChatParticipantAdmin) return "admin";
+    return participant instanceof Api.ChatParticipant ? "member" : "unknown";
+  }
+  if (participant instanceof Api.ChannelParticipantCreator) return "owner";
+  if (participant instanceof Api.ChannelParticipantAdmin) return "admin";
+  if (participant instanceof Api.ChannelParticipant || participant instanceof Api.ChannelParticipantSelf) return "member";
+  if (participant instanceof Api.ChannelParticipantLeft) return "absent";
+  if (participant instanceof Api.ChannelParticipantBanned)
+    return !participant.left && !participant.bannedRights.viewMessages ? "member" : "absent";
+  return "unknown";
+}
 class QuietLogger extends Logger {
   override log() {}
   override _log() {}
@@ -535,8 +559,11 @@ export class TelegramDriver {
     for await (const user of this.client.iterParticipants(source, {
       limit: 500,
     })) {
-      if (user instanceof Api.User && !user.bot && !user.deleted)
-        found.push(this.person(user));
+      if (!(user instanceof Api.User) || user.bot || user.deleted) continue;
+      const role = sourceParticipantRole(source, user.participant, user.id.toString());
+      if (role === "unknown")
+        throw new TelegramError("source_role", "O Telegram não confirmou a função de um participante na origem. A consulta não foi salva; nenhum convite foi enviado.", 0, 409);
+      if (role === "member") found.push(this.person(user));
     }
     return found;
   }
@@ -625,9 +652,42 @@ export class TelegramDriver {
     return result;
   }
   async invite(sourceId: number, targetId: number, person: Person, beforeInvite?: () => Promise<unknown>) {
-    await this.group(sourceId);
+    const source = await this.group(sourceId);
     const target = await this.group(targetId, true);
-    return this.inviteMember(target, person, beforeInvite);
+    try {
+      return await this.inviteMember(target, person, async () => {
+        const role = await this.sourceRole(source, person);
+        if (role === "admin" || role === "owner")
+          throw new TelegramError("excluded_admin", "Proprietário ou administrador da origem excluído. Nenhum convite enviado.");
+        if (role === "absent")
+          throw new TelegramError("not_in_source", "A pessoa não participa mais da origem. Nenhum convite enviado.");
+        if (role !== "member")
+          throw new TelegramError("source_role", "Não foi possível confirmar que a pessoa é participante comum da origem. Nenhum convite enviado.", 0, 409);
+        if (beforeInvite) await beforeInvite();
+      });
+    } catch (error) {
+      if (error instanceof TelegramError && (error.code === "excluded_admin" || error.code === "not_in_source"))
+        return { state: error.code, message: error.message };
+      throw error;
+    }
+  }
+  private async sourceRole(source: Api.Chat | Api.Channel, person: Person): Promise<SourceRole> {
+    if (source instanceof Api.Channel) {
+      try {
+        const result = await this.client.invoke(new Api.channels.GetParticipant({
+          channel: source, participant: this.input(person),
+        }));
+        return sourceParticipantRole(source, result.participant, String(person.user_id));
+      } catch (error) {
+        if ((error as { errorMessage?: string })?.errorMessage === "USER_NOT_PARTICIPANT") return "absent";
+        throw error;
+      }
+    }
+    const result = await this.client.invoke(new Api.messages.GetFullChat({ chatId: source.id }));
+    if (!(result.fullChat instanceof Api.ChatFull) || !result.fullChat.id.equals(source.id) ||
+        !(result.fullChat.participants instanceof Api.ChatParticipants)) return "unknown";
+    const participant = result.fullChat.participants.participants.find((item) => item.userId.toString() === String(person.user_id));
+    return participant ? sourceParticipantRole(source, participant, String(person.user_id)) : "absent";
   }
   private async inviteMember(target: Api.Chat | Api.Channel, person: Person, beforeInvite?: () => Promise<unknown>): Promise<MembershipOutcome> {
     const user = this.input(person);

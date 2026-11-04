@@ -61,7 +61,7 @@ function harness(options = {}) {
     iterParticipants: async function* (source, params) {
       assert.equal(source, origin);
       assert.equal(params.limit, 500);
-      yield other;
+      yield Object.assign(other, { participant: new Api.ChannelParticipant({ userId: other.id, date: 0 }) });
     },
     invoke: async (request, dcId, callOptions) => {
       calls.push({ request, name: request.className, dcId, options: callOptions });
@@ -89,6 +89,7 @@ function harness(options = {}) {
         };
       }
       if (request instanceof Api.channels.GetParticipant) {
+        if (request.channel === origin) return { participant: new Api.ChannelParticipant({ userId: request.participant.userId, date: 0 }) };
         assert.equal(peerId(request.channel), peerId(target));
         if (request.participant instanceof Api.InputPeerSelf) {
           return { participant: options.selfParticipant || new Api.ChannelParticipantCreator({ userId: self.id, adminRights: new Api.ChatAdminRights({}) }) };

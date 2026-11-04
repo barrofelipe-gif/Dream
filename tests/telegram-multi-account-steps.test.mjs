@@ -134,6 +134,32 @@ test("a correctly pinned queue verifies its SDK account and dispatches once", as
   assert.equal(h.row().parsed.jobs[0].accountGeneration, 4);
 });
 
+for (const state of ["excluded_admin", "not_in_source"]) test(`${state} skips without dispatch, acquisition or failure and clears the stale selection`, async () => {
+  const h = harness();
+  h.settings.skipGuard = true;
+  h.hooks.invite = async () => ({ state, message: "No invitation sent after checking the source role" });
+  assert.equal(await h.steps.queueStep("owner", h.job.id), false);
+  assert.equal(h.counters.invites, 0);
+  assert.equal(h.row().parsed.results[0].state, state);
+  const job = h.row().parsed.jobs[0];
+  assert.deepEqual([job.state, job.processed, job.added, job.already, job.failed], ["completed", 1, 0, 0, 0]);
+  assert.equal(h.row().parsed.contacts[0].selected, false);
+  assert.equal(h.row().parsed.contacts[0].accessHash, "");
+});
+
+test("skipping an administrator continues to the remaining ordinary participant only once", async () => {
+  const h = harness({ people: [7, 8] });
+  h.settings.skipGuard = true;
+  h.hooks.invite = async () => ({ state: "excluded_admin", message: "Excluded source administrator" });
+  assert.equal(await h.steps.queueStep("owner", h.job.id), true);
+  h.settings.skipGuard = false;
+  h.hooks.invite = async () => ({ state: "added", message: "Confirmed ordinary participant" });
+  assert.equal(await h.steps.queueStep("owner", h.job.id), false);
+  assert.equal(h.counters.invites, 1);
+  assert.deepEqual(h.row().parsed.results.map((result) => result.state), ["excluded_admin", "added"]);
+  assert.deepEqual([h.row().parsed.jobs[0].added, h.row().parsed.jobs[0].failed], [1, 0]);
+});
+
 for (const field of ["accountId", "accountProfileId", "accountGeneration"]) {
   test(`a mismatched pinned ${field} refuses the queue before constructing the SDK`, async () => {
     const h = harness();

@@ -428,10 +428,12 @@ export async function queueStep(
       Object.assign(result, outcome, { updated_at: Date.now() / 1000 });
       job.lease = undefined;
       job.lease_until = undefined;
-      if (sameAccount && ["added", "already"].includes(outcome.state))
+      if (sameAccount && ["added", "already", "excluded_admin", "not_in_source"].includes(outcome.state))
         for (const p of data.contacts)
-          if (p.user_id === selectedId && p.source_id === job.source_id)
+          if (p.user_id === selectedId && p.source_id === job.source_id) {
             p.selected = false;
+            if (["excluded_admin", "not_in_source"].includes(outcome.state)) p.accessHash = "";
+          }
       recount(data, job);
       if (!sameAccount) {
         if (job.state !== "cancelled") job.state = job.processed === job.total ? "completed" : "interrupted";

@@ -417,7 +417,9 @@ test("driver never reports added if Telegram returns a missing invitee", async (
   });
   d.group = async () => target;
   d.member = async () => false;
-  d.client.invoke = async () => ({ missingInvitees: [{ userId: bigInt(7) }] });
+  d.client.invoke = async (request) => request instanceof Api.channels.GetParticipant
+    ? { participant: new Api.ChannelParticipant({ userId: bigInt(7), date: 0 }) }
+    : { missingInvitees: [{ userId: bigInt(7) }] };
   assert.equal(
     (await d.invite(-1, -2, { ...data().contacts[0], accessHash: "123" }))
       .state,
@@ -736,11 +738,11 @@ test("ordinary joined groups are listed and accepted as collection origins", asy
   assert.equal(groups[0].owner, false);
   assert.equal(await instance.group(groups[0].id), source);
   const user = (id) =>
-    new Api.User({
+    Object.assign(new Api.User({
       id: bigInt(id),
       accessHash: bigInt(123),
       firstName: "Pessoa " + id,
-    });
+    }), { participant: new Api.ChannelParticipant({ userId: bigInt(id), date: 0 }) });
   instance.client.iterParticipants = async function* () {
     yield user(7);
     yield new Api.User({ id: bigInt(9), bot: true });
