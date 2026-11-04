@@ -17,7 +17,7 @@ test("painel restringe incorporação ao app e não usa JavaScript inline", () =
   assert.match(html, /orbita-user.*a{32}/);
   assert.ok(html.includes(`Órbita ${ORBITA_VERSION} · Growth do app BFF`));
   assert.ok(html.includes(`href="/api/growth/orbita/orbita-${ORBITA_NATIVE_VERSION}.zip"`));
-  if (ORBITA_VERSION !== ORBITA_NATIVE_VERSION) {
+  if (String(ORBITA_VERSION) !== String(ORBITA_NATIVE_VERSION)) {
     assert.equal(html.includes(`href="/api/growth/orbita/orbita-${ORBITA_VERSION}.zip"`), false);
     assert.equal(Object.hasOwn(ORBITA_ASSETS, `orbita-${ORBITA_VERSION}.zip`), false);
   }
