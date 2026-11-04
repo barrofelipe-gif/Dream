@@ -23,6 +23,10 @@
         <h3 id="telegram-accounts-title">Contas Telegram</h3>
         <p class="hint">Mantenha os Telegrams de Felipe e Yara salvos. Escolha a conta que vai consultar os grupos e realizar a inclusão.</p>
         <div id="telegram-account-list" class="telegram-account-list" role="group" aria-label="Escolher conta Telegram"></div>
+        <form id="edit-account-form" class="account-add-form" autocomplete="off">
+          <label>Nome da pessoa nesta conta<input id="selected-account-label" type="text" maxlength="60" required></label>
+          <button id="rename-telegram-account" type="submit" class="secondary" disabled>Salvar nome</button>
+        </form>
         <form id="add-account-form" class="account-add-form" autocomplete="off">
           <label>Nome para identificar a conta<input id="account-label" type="text" value="Felipe" maxlength="48" required></label>
           <button id="add-telegram-account" type="submit" class="secondary" disabled>Adicionar outra conta</button>

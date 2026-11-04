@@ -106,6 +106,8 @@ export async function POST(request: Request, context: Context) {
       result = await telegram.addAccount(userId, data);
     else if (route === "/connection/accounts/switch")
       result = await telegram.switchAccount(userId, data);
+    else if (route === "/connection/accounts/rename")
+      result = await telegram.renameAccount(userId, data);
     else if (route === "/connection/channel/create")
       result = await telegram.createChannel(userId, data);
     else if (route === "/connection/channel/test")

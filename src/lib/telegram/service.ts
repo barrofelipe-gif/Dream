@@ -45,6 +45,7 @@ import { recordCollection } from "./collection-history";
 import {
   publicAccountRoster,
   addDraft,
+  renameAccount as renameProfile,
   activateAccount,
   retainedSessionEncs,
   accountsLocked,
@@ -484,6 +485,10 @@ export async function switchAccount(userId: string, input: Record<string, unknow
   await mutate(userId, (row) => {
     activateAccount(row, id, { seal, secret });
   });
+  return { ok: true };
+}
+export async function renameAccount(userId: string, input: Record<string, unknown>) {
+  await mutate(userId, (row) => { renameProfile(row, input.id, input.label); });
   return { ok: true };
 }
 export async function begin(

@@ -287,17 +287,17 @@ test("QR completion adopts only its active draft and preserves the parked accoun
 });
 
 for (const reusedKey of [false, true]) {
-  test(`QR duplicate account rejection ${reusedKey ? "retains the parked key" : "revokes only the discarded new key"}`, async () => {
+  test(`QR duplicate account reconnects its canonical profile using ${reusedKey ? "the same key" : "the freshly authorized key"}`, async () => {
     const h = harness({ registry: false, queued: false });
     h.qr();
-    const parked = h.row().parsed.accounts.profiles.find((profile) => profile.id === "primary").contextEnc;
     h.settings.authorizedId = 101;
     h.settings.authorizedKey = reusedKey ? "session-A" : "session-new";
     await h.steps.qrStep("owner", "qr-attempt");
-    assert.equal(h.row().authState, "qr_error");
-    assert.equal(h.row().parsed.account, undefined);
-    assert.equal(h.row().parsed.accounts.profiles.find((profile) => profile.id === "primary").contextEnc, parked);
-    assert.deepEqual(h.counters.logOut, reusedKey ? [] : ["session-new"]);
+    assert.equal(h.row().authState, "connected");
+    assert.equal(h.row().parsed.account.id, 101);
+    assert.equal(h.row().parsed.accounts.activeId, "primary");
+    assert.equal(codec.secret(h.row().sessionEnc), reusedKey ? "session-A" : "session-new");
+    assert.deepEqual(h.counters.logOut, []);
   });
 }
 

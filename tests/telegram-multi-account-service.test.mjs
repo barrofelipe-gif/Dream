@@ -181,18 +181,35 @@ test("an invalid phone cannot erase or cancel the active saved session", async (
   assert.deepEqual(h.calls.logOut, []);
 });
 
-test("duplicate account authentication discards only the new authorization and preserves the parked account", async () => {
+test("renaming a saved account is fenced against stale tabs and does not replace its Telegram identity", async () => {
+  const h = harness();
+  await h.service.addAccount("operator", { label: "Other" });
+  await h.service.switchAccount("operator", { id: "primary" });
+  const before = structuredClone(h.row());
+  await context.withRequestContext("primary:0", async () => {
+    await assert.rejects(h.service.renameAccount("operator", { id: "primary", label: "Wrong stale name" }), (error) => error.code === "account_changed");
+  });
+  assert.deepEqual(h.row(), before);
+  await h.service.renameAccount("operator", { id: "primary", label: "Yara" });
+  assert.equal(h.row().parsed.accounts.profiles[0].label, "Yara");
+  assert.deepEqual(h.row().parsed.account, before.parsed.account);
+  assert.equal(h.row().sessionEnc, before.sessionEnc);
+  assert.deepEqual(h.calls.constructed, []);
+});
+
+test("duplicate account authentication reconnects its canonical profile without logging out the accepted session", async () => {
   const h = harness();
   const primary = (await h.service.state("operator")).connection.active_account_id;
-  await h.service.addAccount("operator", { label: "Felipe" });
+  await h.service.addAccount("operator", { label: "Yara" });
   await h.service.begin("operator", { use_saved: true, phone: "+5511999999999" }, false);
-  await assert.rejects(h.service.verify("operator", { code: "12345" }, false), (error) => error.code === "account_exists");
-  assert.equal(h.calls.logOut.length, 1);
-  assert.match(h.calls.logOut[0], /^authorized-session-/);
+  await h.service.verify("operator", { code: "12345" }, false);
+  assert.deepEqual(h.calls.logOut, []);
   assert.equal(h.remote.has("business-session"), true);
-  await h.service.cancel("operator");
-  await h.service.switchAccount("operator", { id: primary });
-  assert.equal(realStore.secret(h.row().sessionEnc), "business-session");
+  assert.equal(h.row().authState, "connected");
+  assert.equal(h.row().parsed.accounts.activeId, primary);
+  assert.equal(h.row().parsed.accounts.profiles[0].label, "Yara");
+  assert.match(realStore.secret(h.row().sessionEnc), /^authorized-session-/);
+  assert.deepEqual(h.row().parsed.groups, [source, target]);
 });
 
 test("discard cleanup never logs out an authorization retained by a parked profile", async () => {

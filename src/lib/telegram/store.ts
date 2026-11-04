@@ -107,7 +107,7 @@ export function finishConnection(
   if (row.authAttempt !== attempt)
     throw new TelegramError("cancelled", "A conexão foi cancelada.", 0, 409);
   const newAuthentication = ["qr", "code", "password"].includes(row.authState);
-  adoptProfileAccount(row, account, newAuthentication);
+  adoptProfileAccount(row, account, newAuthentication, { seal, secret });
   rememberContactMetadata(row.parsed);
   if (!row.parsed.account || row.parsed.account.id !== account.id) {
     row.parsed.sources = [];

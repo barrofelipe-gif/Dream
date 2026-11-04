@@ -3,6 +3,7 @@ let setupLastStage = null, setupGroupsLoaded = false, setupProtectId = null;
 let setupPreferredSource = null, setupSourceRequest = 0;
 let setupChannelApplied = '', channelIntents = {};
 let setupLastContext = null;
+let setupLabelKey = '';
 if (typeof window !== 'undefined') window.addEventListener('message',event=>{
   const selected=event.data;
   if (event.origin!==window.location.origin || event.source!==window.parent || selected?.type!=='bff-telegram-source' ||
@@ -67,7 +68,13 @@ function renderSetup(active) {
   }
   const stage=connection.state, connected=stage==='connected', blocked=busy||active;
   const accounts=connection.accounts || [], accountLocked=blocked || connection.accounts_locked;
-  setHTML('telegram-account-list',accounts.map(profile=>`<div class="telegram-account-card" data-active="${profile.active?'true':'false'}"><div><strong>${escapeHTML(profile.label)}</strong><small>${escapeHTML(profile.account?.name || 'Aguardando conexão')}${profile.account?.username?' · @'+escapeHTML(profile.account.username):''}</small><small>${escapeHTML(profile.active?'Conta selecionada':profile.state==='connected'?'Sessão salva':setupLabels[profile.state] || 'Conectar conta')}</small></div><button type="button" class="secondary" data-telegram-account="${escapeHTML(profile.id)}" ${profile.active || accountLocked?'disabled':''}>${profile.active?'Em uso':'Usar conta'}</button></div>`).join(''));
+  const selectedProfile=accounts.find(profile=>profile.active), profileLabel=selectedProfile?.label || 'sua conta';
+  setHTML('telegram-account-list',accounts.map(profile=>`<div class="telegram-account-card" data-active="${profile.active?'true':'false'}"><div><strong>${escapeHTML(profile.label)}</strong><small>${profile.account?'Nome exibido no Telegram: '+escapeHTML(profile.account.name || 'Sem nome'):'Aguardando conexão'}${profile.account?.username?' · @'+escapeHTML(profile.account.username):''}</small><small>${escapeHTML(profile.active?'Conta selecionada':profile.state==='connected'?'Sessão salva':setupLabels[profile.state] || 'Conectar conta')}</small></div><button type="button" class="secondary" data-telegram-account="${escapeHTML(profile.id)}" ${profile.active || accountLocked?'disabled':''}>${profile.active?'Em uso':'Usar conta'}</button></div>`).join(''));
+  const labelKey=JSON.stringify([selectedProfile?.id,selectedProfile?.label]);
+  if (setupLabelKey!==labelKey) { $('selected-account-label').value=selectedProfile?.label || ''; setupLabelKey=labelKey; }
+  $('edit-account-form').hidden=!selectedProfile;
+  $('selected-account-label').disabled=accountLocked || !connection.enabled;
+  $('rename-telegram-account').disabled=accountLocked || !connection.enabled;
   $('add-telegram-account').disabled=accountLocked || !connection.enabled;
   $('account-label').disabled=accountLocked;
   $('account-switch-hint').textContent=connection.accounts_locked?'Conclua ou cancele a conexão ou a operação em andamento antes de trocar de conta.':'As sessões continuam salvas ao trocar. As listas de participantes pertencem à conta que as consultou.';
@@ -78,7 +85,7 @@ function renderSetup(active) {
   }
   $('connection-badge').textContent=setupLabels[stage] || 'Desconectado';
   $('connection-badge').className='pill '+(connected?'good':stage==='disconnected'?'':'warn');
-  const summaries={disconnected:'Conecte por QR Code ou código para carregar seus grupos e preparar uma comunidade privada.',saved:'Sua sessão está salva no app. Confirme a conexão para continuar.',code:`Digite o código recebido na conta com final ${connection.phone_hint}.`,password:'Sua conta solicita a senha de verificação em duas etapas.',connected:`${connection.account?.name || 'Conta conectada'}${connection.account?.username?' · @'+connection.account.username:''} — conexão protegida no app.`,qr:'Escaneie o QR Code pelo Telegram do seu celular e confirme a conexão.',qr_error:'A conexão por QR Code não foi concluída. Você pode tentar novamente ou cancelar.'};
+  const summaries={disconnected:`Conecte o Telegram de ${profileLabel} por QR Code ou código para carregar os grupos.`,saved:`A sessão de ${profileLabel} está salva no app. Confirme a conexão para continuar.`,code:`Digite o código recebido na conta com final ${connection.phone_hint}.`,password:'Sua conta solicita a senha de verificação em duas etapas.',connected:`${profileLabel}${connection.account?.username?' · @'+connection.account.username:''} — conexão protegida no app.`,qr:`Escaneie o QR Code com o Telegram de ${profileLabel} e confirme a conexão.`,qr_error:'A conexão por QR Code não foi concluída. Você pode tentar novamente ou cancelar.'};
   $('connection-summary').textContent=summaries[stage] || summaries.disconnected;
   const needsAppSetup=connection.enabled&&stage==='disconnected'&&!connection.credentials_saved;
   $('app-setup-guide').hidden=!needsAppSetup;
@@ -91,7 +98,6 @@ function renderSetup(active) {
   $('qr-image').hidden=!qrValid;
   if(qrValid) {if($('qr-image').getAttribute('src')!==qr.image)$('qr-image').src=qr.image;}
   else $('qr-image').removeAttribute('src');
-  const profileLabel=accounts.find(profile=>profile.active)?.label || 'sua conta';
   $('qr-status').textContent=stage==='qr_error'?connection.qr_error:qrValid?`Conectando ${profileLabel}. Confirme no celular dessa conta. Este código expira em ${new Date(qr.expires_at*1000).toLocaleTimeString('pt-BR')}.`:`Preparando QR Code para ${profileLabel}…`;
   $('retry-qr').hidden=stage!=='qr_error';
   $('code-form').hidden=stage!=='code'; $('password-form').hidden=stage!=='password';
@@ -143,6 +149,12 @@ $('telegram-account-list').addEventListener('click',event=>{
   if (!button || button.disabled) return;
   const id=button.dataset.telegramAccount;
   act(async()=>{await setupAction('accounts/switch',{id});notice('Conta selecionada. Os grupos e participantes desta conta foram carregados.');});
+});
+$('edit-account-form').addEventListener('submit',event=>{
+  event.preventDefault();
+  if (busy || !$('selected-account-label').reportValidity()) return;
+  const id=state.connection.active_account_id, label=$('selected-account-label').value.trim();
+  act(async()=>{await setupAction('accounts/rename',{id,label});notice(`Conta identificada como ${label}.`);});
 });
 $('add-account-form').addEventListener('submit',event=>{
   event.preventDefault();

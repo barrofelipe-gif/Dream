@@ -29,6 +29,10 @@ async function harness(initial = snapshot(), raced = false) {
     fetch: async (url, options = {}) => {
       if (!options.method) return { ok: true, json: async () => structuredClone(server) };
       calls.push({ url, headers: options.headers, body: JSON.parse(options.body) });
+      if (url.endsWith("/accounts/rename")) {
+        server = structuredClone(server);
+        server.connection.accounts.find((item) => item.id === JSON.parse(options.body).id).label = JSON.parse(options.body).label;
+      }
       if (url.endsWith("/accounts/add")) {
         server = raced ? snapshot("yara:2", { state: "saved" }) : snapshot("felipe:1", { state: "disconnected", account: null,
           accounts: [initial.connection.accounts[0], { id: "felipe", label: "Felipe", account: null, state: "disconnected", active: true }] });
@@ -41,7 +45,9 @@ async function harness(initial = snapshot(), raced = false) {
   vm.runInContext(readFileSync("public/telegram-assets/setup.js", "utf8"), sandbox);
   await new Promise((resolve) => setImmediate(resolve));
   vm.runInContext("render = () => renderSetup(false); render();", sandbox);
-  return { element, calls, async submit() { element("add-account-form").listeners.submit({ preventDefault() {} }); await new Promise((resolve) => setImmediate(resolve)); }, render: () => vm.runInContext("render();", sandbox) };
+  return { element, calls, async submit() { element("add-account-form").listeners.submit({ preventDefault() {} }); await new Promise((resolve) => setImmediate(resolve)); },
+    async rename() { element("edit-account-form").listeners.submit({ preventDefault() {} }); await new Promise((resolve) => setImmediate(resolve)); },
+    render: () => vm.runInContext("render();", sandbox) };
 }
 
 test("adding Felipe starts an empty profile and requests its QR with the refreshed account context", async () => {
@@ -71,7 +77,26 @@ test("pending login locks the account controls and identifies which Telegram mus
   }));
   assert.equal(h.element("add-telegram-account").disabled, true);
   assert.equal(h.element("account-label").disabled, true);
+  assert.equal(h.element("selected-account-label").disabled, true);
+  assert.equal(h.element("rename-telegram-account").disabled, true);
   assert.match(h.element("qr-status").textContent, /Conectando Yara/);
+});
+
+test("the person's chosen name is separate from Telegram's display name and can be corrected without another account", async () => {
+  const h = await harness(snapshot("primary:0", { account: { id: 1, name: "Moranga BFF" },
+    accounts: [{ id: "primary", label: "Yara", active: true, state: "connected", account: { id: 1, name: "Moranga BFF" } }] }));
+  assert.equal(h.element("selected-account-label").value, "Yara");
+  assert.match(h.element("connection-summary").textContent, /^Yara/);
+  assert.match(h.element("telegram-account-list").innerHTML, /Nome exibido no Telegram: Moranga BFF/);
+  h.element("selected-account-label").value = "Yara pessoal";
+  h.render();
+  assert.equal(h.element("selected-account-label").value, "Yara pessoal", "polling preserves an unfinished label edit");
+  await h.rename();
+  assert.equal(h.calls.length, 1);
+  assert.ok(h.calls[0].url.endsWith("/accounts/rename"));
+  assert.deepEqual(h.calls[0].body, { id: "primary", label: "Yara pessoal" });
+  assert.equal(h.calls[0].headers["X-Telegram-Context"], "primary:0");
+  assert.match(h.element("connection-summary").textContent, /^Yara pessoal/);
 });
 
 test("account identity and labels are escaped before rendering the account chooser", async () => {

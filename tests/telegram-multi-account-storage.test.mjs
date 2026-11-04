@@ -136,16 +136,61 @@ test("cancelled drafts can switch away; parked keys are retained and active pend
   assert.ok(accounts.publicAccountRoster(row).some((profile) => profile.id === draft.id && profile.state === "disconnected"));
 });
 
-test("duplicate identity and corrupted encrypted contexts cannot overwrite a saved account", () => {
+test("a verified duplicate login reconnects the canonical profile with its chosen label and history", () => {
+  const row = fixture(), before = structuredClone(row.parsed);
+  row.parsed.limits = { restricted: true, not_before: Date.now() / 1000 + 600 };
+  const draft = accounts.addDraft(row, "Yara", codec);
+  row.authState = "qr"; row.authAttempt = "duplicate-attempt";
+  store.finishConnection(row, "duplicate-attempt", a, "new-duplicate-key");
+  assert.equal(row.authState, "connected");
+  assert.equal(row.parsed.accounts.activeId, "primary");
+  assert.equal(row.parsed.accounts.profiles[0].label, "Yara");
+  assert.ok(!row.parsed.accounts.profiles.some((item) => item.id === draft.id));
+  assert.equal(codec.secret(row.sessionEnc), "new-duplicate-key");
+  assert.equal(row.parsed.contacts[0].accessHash, "");
+  assert.equal(row.parsed.contacts[0].selected, false);
+  assert.deepEqual(row.parsed.groups, before.groups);
+  assert.deepEqual(row.parsed.collectionRuns, before.collectionRuns);
+  assert.equal(row.parsed.contacts[0].firstCollectedAt, before.contacts[0].firstCollectedAt);
+  assert.equal(row.parsed.limits.restricted, true);
+  assert.ok(row.parsed.limits.not_before > Date.now() / 1000);
+});
+
+test("a corrupt parked context prevents duplicate reconnection without changing the saved profile", () => {
   const row = fixture(); accounts.addDraft(row, "duplicate", codec);
   row.authState = "qr"; row.authAttempt = "duplicate-attempt";
-  const parked = row.parsed.accounts.profiles[0].contextEnc;
-  assert.throws(() => store.finishConnection(row, "duplicate-attempt", a, "new-duplicate-key"), (error) => error.code === "account_exists");
-  assert.equal(row.parsed.accounts.profiles[0].contextEnc, parked);
+  row.parsed.accounts.profiles[0].contextEnc = "tampered";
+  const pending = structuredClone(row);
+  assert.throws(() => store.finishConnection(row, "duplicate-attempt", a, "new-duplicate-key"), (error) => error.code === "account_vault");
+  assert.deepEqual(row, pending);
   row.authState = "disconnected";
   row.parsed.accounts.profiles[0].contextEnc = "tampered";
   const before = structuredClone(row);
   assert.throws(() => accounts.activateAccount(row, "primary", codec), (error) => error.code === "account_vault");
+  assert.deepEqual(row, before);
+});
+
+test("renaming a person preserves the Telegram identity, session, contacts and context generation", () => {
+  const row = fixture();
+  accounts.addDraft(row, "Other", codec);
+  accounts.activateAccount(row, "primary", codec);
+  const before = structuredClone(row);
+  accounts.renameAccount(row, "primary", " Yara ");
+  assert.equal(row.parsed.accounts.profiles[0].label, "Yara");
+  before.parsed.accounts.profiles[0].label = "Yara";
+  assert.deepEqual(row, before);
+  for (const value of ["", "  ", "x".repeat(61), "bad\nname"])
+    assert.throws(() => accounts.renameAccount(row, "primary", value), (error) => error.code === "input");
+  row.authState = "qr";
+  assert.throws(() => accounts.renameAccount(row, "primary", "Other"), (error) => error.code === "busy");
+});
+
+test("a saved profile cannot be replaced by another Telegram identity even when that identity is already saved", () => {
+  const row = fixture();
+  connectB(row);
+  row.authState = "qr"; row.authAttempt = "wrong-account";
+  const before = structuredClone(row);
+  assert.throws(() => store.finishConnection(row, "wrong-account", a, "wrong-key"), (error) => error.code === "account_identity");
   assert.deepEqual(row, before);
 });
 

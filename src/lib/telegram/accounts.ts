@@ -163,6 +163,14 @@ export function addDraft(row: AccountWorkspace, label: unknown, codec: AccountCo
   advance(row);
   return publicAccountRoster(row).find((entry) => entry.active)!;
 }
+export function renameAccount(row: AccountWorkspace, id: unknown, label: unknown) {
+  requireIdle(row);
+  if (typeof label !== "string" || !label.trim() || label.trim().length > 60 || /[\x00-\x1f\x7f]/.test(label))
+    throw new TelegramError("input", "Dê um nome de até 60 caracteres para a conta.");
+  const profile = registry(row).profiles.find((item) => item.id === id);
+  if (!profile) throw new TelegramError("input", "Escolha uma conta salva.", 0, 404);
+  profile.label = label.trim();
+}
 export function activateAccount(row: AccountWorkspace, id: unknown, codec: AccountCodec) {
   requireIdle(row);
   const value = registry(row), target = value.profiles.find((profile) => profile.id === id);
@@ -190,13 +198,37 @@ export function retainedSessionEncs(row: AccountWorkspace, codec: AccountCodec):
   return profiles(row).filter((profile) => profile.id !== activeProfileId(row.parsed) && profile.contextEnc)
     .map((profile) => openContext(profile, codec).sessionEnc);
 }
-export function adoptProfileAccount(row: AccountWorkspace, account: Account, newAuthentication: boolean) {
+export function adoptProfileAccount(row: AccountWorkspace, account: Account, newAuthentication: boolean, codec: AccountCodec) {
   if (!row.parsed.accounts && !newAuthentication) return;
-  const value = registry(row), profile = value.profiles.find((item) => item.id === value.activeId)!;
-  if (value.profiles.some((item) => item.id !== profile.id && item.account?.id === account.id))
-    throw new TelegramError("account_exists", "Esta conta já está salva. Cancele esta conexão e selecione a conta existente.", 0, 409);
+  const value = registry(row);
+  let profile = value.profiles.find((item) => item.id === value.activeId)!;
   if (profile.account && profile.account.id !== account.id)
     throw new TelegramError("account_identity", "Esta conexão pertence a outra conta. Use Adicionar conta para preservá-las.", 0, 409);
+  const existing = value.profiles.find((item) => item.id !== profile.id && item.account?.id === account.id);
+  if (existing) {
+    // A verified login from an empty draft reconnects the same Telegram ID.
+    // Keep the canonical profile/history, adopting the user's chosen label.
+    if (!newAuthentication || profile.account || profile.contextEnc)
+      throw new TelegramError("account_exists", "Esta conta já está salva. Selecione a conta existente.", 0, 409);
+    const context = existing.contextEnc ? openContext(existing, codec) : undefined;
+    const priorLimits = context?.limits || existing.limits;
+    const draftLimits = row.parsed.limits;
+    rememberContactMetadata(row.parsed);
+    if (context) Object.assign(row.parsed, {
+      account: context.account, sources: context.sources, targets: context.targets,
+      groups: context.groups, contacts: context.contacts, privacy: context.privacy,
+      discovery: context.discovery, authorizedIds: context.authorizedIds, authorizations: context.authorizations,
+    });
+    row.parsed.limits = {
+      restricted: !!priorLimits?.restricted || draftLimits.restricted,
+      not_before: Math.max(priorLimits?.not_before || 0, draftLimits.not_before),
+    };
+    existing.label = profile.label;
+    delete existing.contextEnc;
+    value.profiles = value.profiles.filter((item) => item.id !== profile.id);
+    value.activeId = existing.id;
+    profile = existing;
+  }
   profile.account = structuredClone(account);
   delete profile.contextEnc;
   if (newAuthentication) advance(row);
