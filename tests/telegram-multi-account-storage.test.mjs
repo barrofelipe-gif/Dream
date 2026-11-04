@@ -59,9 +59,9 @@ function connectB(row) {
   return draft.id;
 }
 
-test("legacy primary is a virtual roster using its real Telegram name without inventing another account", () => {
+test("legacy primary uses a neutral label instead of interpreting Telegram's display name as the person's name", () => {
   const row = fixture(), before = structuredClone(row);
-  assert.deepEqual(accounts.publicAccountRoster(row), [{ id: "primary", label: a.name, account: a, state: "connected", active: true }]);
+  assert.deepEqual(accounts.publicAccountRoster(row), [{ id: "primary", label: "Conta principal", account: a, state: "connected", active: true }]);
   assert.equal(accounts.activeProfileId(row.parsed), "primary");
   assert.equal(requestContext.accountContext(row.parsed), "primary:0");
   assert.deepEqual(row, before);

@@ -87,7 +87,8 @@ test("the person's chosen name is separate from Telegram's display name and can 
     accounts: [{ id: "primary", label: "Yara", active: true, state: "connected", account: { id: 1, name: "Moranga BFF" } }] }));
   assert.equal(h.element("selected-account-label").value, "Yara");
   assert.match(h.element("connection-summary").textContent, /^Yara/);
-  assert.match(h.element("telegram-account-list").innerHTML, /Nome exibido no Telegram: Moranga BFF/);
+  assert.ok(!h.element("telegram-account-list").innerHTML.includes("Moranga BFF"));
+  assert.match(h.element("telegram-account-list").innerHTML, /Conta Telegram identificada/);
   h.element("selected-account-label").value = "Yara pessoal";
   h.render();
   assert.equal(h.element("selected-account-label").value, "Yara pessoal", "polling preserves an unfinished label edit");

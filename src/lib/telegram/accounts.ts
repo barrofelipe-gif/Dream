@@ -48,7 +48,7 @@ export function activeProfileId(data: Data): string {
   return data.accounts?.activeId || "primary";
 }
 function profiles(row: AccountWorkspace): AccountProfile[] {
-  return row.parsed.accounts?.profiles || [{ id: "primary", label: row.parsed.account?.name || "Conta principal", ...(row.parsed.account ? { account: row.parsed.account } : {}) }];
+  return row.parsed.accounts?.profiles || [{ id: "primary", label: "Conta principal", ...(row.parsed.account ? { account: row.parsed.account } : {}) }];
 }
 function registry(row: AccountWorkspace): Accounts {
   if (!row.parsed.accounts) row.parsed.accounts = { activeId: "primary", generation: 0, profiles: structuredClone(profiles(row)) };
