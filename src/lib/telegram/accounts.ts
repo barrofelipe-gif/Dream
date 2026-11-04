@@ -207,7 +207,7 @@ export function adoptProfileAccount(row: AccountWorkspace, account: Account, new
   const existing = value.profiles.find((item) => item.id !== profile.id && item.account?.id === account.id);
   if (existing) {
     // A verified login from an empty draft reconnects the same Telegram ID.
-    // Keep the canonical profile/history, adopting the user's chosen label.
+    // Keep the canonical profile/history and any name already chosen for it.
     if (!newAuthentication || profile.account || profile.contextEnc)
       throw new TelegramError("account_exists", "Esta conta já está salva. Selecione a conta existente.", 0, 409);
     const context = existing.contextEnc ? openContext(existing, codec) : undefined;
@@ -223,7 +223,8 @@ export function adoptProfileAccount(row: AccountWorkspace, account: Account, new
       restricted: !!priorLimits?.restricted || draftLimits.restricted,
       not_before: Math.max(priorLimits?.not_before || 0, draftLimits.not_before),
     };
-    existing.label = profile.label;
+    if (existing.label === existing.account?.name || existing.label === "Conta principal")
+      existing.label = profile.label;
     delete existing.contextEnc;
     value.profiles = value.profiles.filter((item) => item.id !== profile.id);
     value.activeId = existing.id;

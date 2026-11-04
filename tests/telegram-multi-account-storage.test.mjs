@@ -170,6 +170,17 @@ test("a corrupt parked context prevents duplicate reconnection without changing 
   assert.deepEqual(row, before);
 });
 
+test("scanning an already named account from another person's draft preserves the canonical person's name", () => {
+  const row = fixture();
+  accounts.renameAccount(row, "primary", "Yara");
+  accounts.addDraft(row, "Felipe", codec);
+  row.authState = "qr"; row.authAttempt = "same-yara-id";
+  store.finishConnection(row, "same-yara-id", a, "new-yara-key");
+  assert.equal(row.parsed.accounts.activeId, "primary");
+  assert.equal(row.parsed.accounts.profiles[0].label, "Yara");
+  assert.equal(row.parsed.account.id, a.id);
+});
+
 test("renaming a person preserves the Telegram identity, session, contacts and context generation", () => {
   const row = fixture();
   accounts.addDraft(row, "Other", codec);
