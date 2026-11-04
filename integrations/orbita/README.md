@@ -1,6 +1,6 @@
 # Órbita no Growth
 
-Painel web e extensão nativa/download 0.20.1. Entrada: `/areas/growth/papeis/instagram#crescimento`.
+Painel web e extensão nativa/download 0.20.2. Entrada: `/areas/growth/papeis/instagram#crescimento`.
 
 Preferências oferece **Executar a qualquer hora (24h)** para ações e consultas da rotina. O modo começa desligado; ligar preserva a janela guardada e não muda teto, intervalo ou tentativas por sessão. A UI exige `GET_STATE.capabilities.allDaySchedule === true`, recurso nativo 0.19.1. A extensão 0.19.0 mantém os outros recursos, com o controle 24h indisponível; uma configuração 24h sem suporte confirmado fica pendente. A revisão do modal é vinculada às preferências/capability atuais e é conferida novamente durante as gravações, antes de ativar. Mudanças observadas de preferências ou capacidade invalidam a confirmação anterior no modal; a sequência é revalidada após cada etapa.
 
@@ -10,7 +10,11 @@ Rotina contínua de fontes de seguidores, comentários e curtidas, com política
 
 O componente `InstagramOrbita` oferece a entrada para `/api/growth/orbita/painel`, um painel completo no mesmo app e login, com link de volta ao Growth. A entrada não depende de iframe; uma falha de recarga observada na incorporação motivou essa escolha. HTML, JavaScript, CSS, ícone, download e verificação de sessão exigem o login de administrador. A regra específica do Next permite iframe somente do próprio app; o restante mantém os cabeçalhos existentes. `outputFileTracingIncludes` inclui explicitamente os arquivos da integração no pacote serverless. Nenhuma tabela, credencial ou variável de ambiente nova.
 
-Os arquivos compilados ficam em `assets/`, fora de `public/`, e são servidos por uma lista fixa no Route Handler. O painel hospedado usa um bundle único esbuild, sem import dinâmico de chunks externos. `setup.css` pertence à integração do app. O fonte desta atualização acompanha a pasta em `orbita-codigo-fonte-0.20.1.zip`, com package/UI e manifest nativo 0.20.1. Para reproduzir a entrega, extraia em um checkout separado, instale com `npm ci`, execute `npm test` e `npm run build`. O comando `npm run build:web` permanece disponível para alterações somente do painel. Na integração, copie hosted.js/CSS e o novo ZIP nativo apenas após validação; preserve os ZIPs já publicados. Atualizar a instalação e ativar uma política são etapas separadas da publicação.
+Os arquivos compilados ficam em `assets/`, fora de `public/`, e são servidos por uma lista fixa no Route Handler. O painel hospedado usa um bundle único esbuild, sem import dinâmico de chunks externos. `setup.css` pertence à integração do app. O fonte desta atualização acompanha a pasta em `orbita-codigo-fonte-0.20.2.zip`, com package/UI e manifest nativo 0.20.2. Para reproduzir a entrega, extraia em um checkout separado, instale com `npm ci`, execute `npm test` e `npm run build`. O comando `npm run build:web` permanece disponível para alterações somente do painel. Na integração, copie hosted.js/CSS e o novo ZIP nativo apenas após validação; preserve os ZIPs já publicados. Atualizar a instalação e ativar uma política são etapas separadas da publicação.
+
+## Prontidão da rotina 0.20.2
+
+A primeira passagem real da 0.20.1 expôs identidade ainda não carregada tratada como troca de sessão e lista Curtidas vazia tratada como encerrada. A 0.20.2 aguarda dentro dos mesmos prazos, mantém a conferência de conta/rotas e registra divergências reais na central. Suíte da Órbita: 539 testes aprovados, TypeScript/build aprovados. A rotina real ficou pausada e o modo 24h autorizado foi preservado, com 5 tentativas por dia, 5 por sessão e intervalo de 5 minutos. A correção nativa precisa ser carregada legitimamente antes da validação real. Segunda opinião Claude e detalhes em docs/CORRECAO-PRONTIDAO-0.20.2.md no fonte.
 
 ## Revisão integral 0.20.1
 
