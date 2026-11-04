@@ -1,4 +1,4 @@
-import { ORBITA_VERSION } from "@/lib/orbita-hosting";
+import { ORBITA_NATIVE_VERSION } from "@/lib/orbita-hosting";
 
 export default function InstagramOrbita() {
   return (
@@ -28,10 +28,10 @@ export default function InstagramOrbita() {
           Abrir painel da Órbita →
         </a>
         <a
-          href={`/api/growth/orbita/orbita-${ORBITA_VERSION}.zip`}
+          href={`/api/growth/orbita/orbita-${ORBITA_NATIVE_VERSION}.zip`}
           className="inline-flex min-h-12 items-center justify-center rounded-xl border border-violet-200 bg-white px-5 py-3 text-sm font-semibold text-violet-800 hover:bg-violet-50"
         >
-          Baixar extensão {ORBITA_VERSION}
+          Baixar extensão {ORBITA_NATIVE_VERSION}
         </a>
       </div>
       <p className="max-w-2xl text-xs leading-6 text-slate-600">

@@ -1,4 +1,5 @@
-export const ORBITA_VERSION = "0.19.0";
+export const ORBITA_VERSION = "0.19.1";
+export const ORBITA_NATIVE_VERSION = "0.19.0";
 export const ORBITA_CSP =
   "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' https://cdninstagram.com https://*.cdninstagram.com https://fbcdn.net https://*.fbcdn.net; font-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'";
 export const ORBITA_ASSETS: Record<
@@ -33,9 +34,9 @@ export function orbitaPanel(userScope: string): string {
     <details class="hosted-install">
       <summary>Instalação e conexão</summary>
       <div id="orbita-installation" class="hosted-install-content">
-        <h2>Instalar e conectar a extensão · ${ORBITA_VERSION}</h2>
+        <h2>Instalar e conectar a extensão · ${ORBITA_NATIVE_VERSION}</h2>
         <ol>
-          <li><a href="/api/growth/orbita/orbita-${ORBITA_VERSION}.zip">Baixar extensão Órbita ${ORBITA_VERSION}</a>. Descompacte o ZIP em uma pasta permanente.</li>
+          <li><a href="/api/growth/orbita/orbita-${ORBITA_NATIVE_VERSION}.zip">Baixar extensão Órbita ${ORBITA_NATIVE_VERSION}</a>. Descompacte o ZIP em uma pasta permanente.</li>
           <li>No Chrome, abra <code>chrome://extensions</code>; no Edge, <code>edge://extensions</code>. Ative o modo do desenvolvedor, escolha <strong>Carregar sem compactação</strong> e selecione a pasta <code>dist</code>.</li>
           <li>Se já usa a Órbita, exporte seus backups, substitua os arquivos na mesma pasta instalada e use <strong>Recarregar</strong> na extensão. Assim você mantém o armazenamento da instalação existente.</li>
           <li>Salve os formulários abertos e <a href="/api/growth/orbita/painel">volte à escolha de conexão</a>. Clique em <strong>Conectar extensão neste navegador</strong>.</li>

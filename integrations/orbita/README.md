@@ -1,12 +1,14 @@
 # Órbita no Growth
 
-Versão 0.19.0. Entrada: `/areas/growth/papeis/instagram#crescimento`.
+Painel web 0.19.1 · extensão nativa/download 0.19.0. Entrada: `/areas/growth/papeis/instagram#crescimento`.
+
+O hotfix web 0.19.1 usa o agendamento efetivo do executor no resumo e mostra por fonte somente uma consulta possível a partir desse horário. Não altera scheduler, fila, autorizações ou limites. Não exige atualizar/recarregar a extensão e não gera um novo ZIP nativo. `ORBITA_VERSION` identifica a versão web; `ORBITA_NATIVE_VERSION` controla todos os links para o ZIP imutável 0.19.0.
 
 Rotina contínua de fontes de seguidores, comentários e curtidas, com política explícita de somente coletar ou seguir novos elegíveis. O painel aceita a extensão 0.18.0 ou posterior; o mínimo de conexão e suas mensagens permanecem 0.18.0. Só os controles da rotina exigem `capabilities.continuousSources === true`, disponível na extensão 0.19.0 ou posterior. As consultas são periódicas e parciais, não em tempo real nem de todas as publicações. A validação da rotina em sessão real ainda está pendente. Uma resposta vencida após envio é tratada como resultado desconhecido, sem reenvio ou cancelamento fictício.
 
 O componente `InstagramOrbita` oferece a entrada para `/api/growth/orbita/painel`, um painel completo no mesmo app e login, com link de volta ao Growth. A entrada não depende de iframe; uma falha de recarga observada na incorporação motivou essa escolha. HTML, JavaScript, CSS, ícone, download e verificação de sessão exigem o login de administrador. A regra específica do Next permite iframe somente do próprio app; o restante mantém os cabeçalhos existentes. `outputFileTracingIncludes` inclui explicitamente os arquivos da integração no pacote serverless. Nenhuma tabela, credencial ou variável de ambiente nova.
 
-Os arquivos compilados ficam em `assets/`, fora de `public/`, e são servidos por uma lista fixa no Route Handler. O painel hospedado usa um bundle único esbuild, sem import dinâmico de chunks externos. `setup.css` pertence à integração do app. O código-fonte completo da Órbita acompanha a pasta em `orbita-codigo-fonte-0.19.0.zip`; para atualizar, extraia em um checkout separado, instale com `npm ci` e execute `npm test` e `npm run build`. Copie `dist/hosted.js`, `dist/hosted.css`, `public/orbita.svg` e o ZIP da extensão para `assets/`. Atualize juntos a versão e a lista de arquivos em `src/lib/orbita-hosting.ts`.
+Os arquivos compilados ficam em `assets/`, fora de `public/`, e são servidos por uma lista fixa no Route Handler. O painel hospedado usa um bundle único esbuild, sem import dinâmico de chunks externos. `setup.css` pertence à integração do app. O fonte desta atualização acompanha a pasta em `orbita-codigo-fonte-0.19.1.zip`, com package/UI web 0.19.1 e manifest nativo 0.19.0. Para reproduzir somente o painel, extraia em um checkout separado, instale com `npm ci`, execute `npm test` e `npm run build:web`, e copie apenas `dist/hosted.js`/`hosted.css` para `assets/`. Não copie arquivos para a instalação nativa nem substitua o ZIP 0.19.0. O build completo continua disponível para entregas nativas futuras.
 
 ## Funcionamento e limites do teste
 

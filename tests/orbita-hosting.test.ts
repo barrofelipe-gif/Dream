@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   ORBITA_ASSETS,
   ORBITA_CSP,
+  ORBITA_NATIVE_VERSION,
+  ORBITA_VERSION,
   orbitaPanel,
 } from "../src/lib/orbita-hosting";
 
@@ -13,6 +15,13 @@ test("painel restringe incorporação ao app e não usa JavaScript inline", () =
   assert.match(html, /id="connect-extension"/);
   assert.match(html, /id="manual-mode"/);
   assert.match(html, /orbita-user.*a{32}/);
+  assert.ok(html.includes(`Órbita ${ORBITA_VERSION} · Growth do app BFF`));
+  assert.ok(html.includes(`href="/api/growth/orbita/orbita-${ORBITA_NATIVE_VERSION}.zip"`));
+  if (ORBITA_VERSION !== ORBITA_NATIVE_VERSION) {
+    assert.equal(html.includes(`href="/api/growth/orbita/orbita-${ORBITA_VERSION}.zip"`), false);
+    assert.equal(Object.hasOwn(ORBITA_ASSETS, `orbita-${ORBITA_VERSION}.zip`), false);
+  }
+  assert.ok(Object.hasOwn(ORBITA_ASSETS, `orbita-${ORBITA_NATIVE_VERSION}.zip`));
   assert.equal((html.match(/<script/g) || []).length, 1);
   assert.match(
     html,
