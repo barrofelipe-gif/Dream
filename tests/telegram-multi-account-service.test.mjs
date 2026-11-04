@@ -50,7 +50,7 @@ function harness() {
     }),
   };
   let serial = 0;
-  const calls = { constructed: [], logOut: [], workflows: [] };
+  const calls = { constructed: [], logOut: [], workflows: [], loads: 0, mutations: 0 };
   const remote = new Set(["business-session"]);
   const settings = { account: { id: 1, name: "Conta comercial de teste", username: "business_test" } };
   class SentCode { constructor(input) { Object.assign(this, input); } }
@@ -76,15 +76,17 @@ function harness() {
     async connect() {}
     async close() {}
     save() { return this.saved; }
-    async me() { return settings.account; }
+    async me() { if (settings.meError) throw settings.meError; return settings.account; }
   }
   const store = {
-    load: async () => structuredClone(row),
+    load: async () => { calls.loads++; return structuredClone(row); },
     mutate: async (_id, fn) => {
       context.assertRequestContext(row.parsed);
+      await settings.beforeMutate?.();
       const draft = structuredClone(row);
       const result = await fn(draft);
       row = draft;
+      calls.mutations++;
       context.advanceRequestContext(row.parsed);
       return result;
     },
@@ -106,6 +108,67 @@ function harness() {
   })("src/lib/telegram/service.ts");
   return { service, row: () => row, calls, remote, settings, Driver };
 }
+
+test("normal connection polling reads once without writing or taking the workspace mutation lock", async () => {
+  for (const authState of ["connected", "qr", "code", "password"]) {
+    const h = harness();
+    h.row().authState = authState;
+    h.row().authExpiresAt = authState === "connected" ? null : new Date(Date.now() + 60000);
+    const before = structuredClone(h.row());
+    const value = await h.service.state("operator");
+    assert.equal(value.connection.state, authState);
+    assert.equal(h.calls.loads, 1);
+    assert.equal(h.calls.mutations, 0);
+    assert.deepEqual(h.row(), before);
+  }
+});
+
+test("an expired login is repaired once and later polls remain read-only", async () => {
+  const h = harness();
+  h.row().authState = "qr";
+  h.row().authExpiresAt = new Date(Date.now() - 1000);
+  h.row().busyToken = "expired-lease";
+  h.row().busyUntil = new Date(Date.now() - 1000);
+  const value = await h.service.state("operator");
+  assert.equal(value.connection.state, "qr_error");
+  assert.match(value.connection.qr_error, /prazo da conexão/);
+  assert.equal(h.row().busyToken, null);
+  assert.equal(h.calls.mutations, 1);
+  await h.service.state("operator");
+  assert.equal(h.calls.mutations, 1);
+});
+
+test("an expiry detected before the lock cannot expire a newer successful authentication", async () => {
+  const h = harness();
+  h.row().authState = "qr";
+  h.row().authExpiresAt = new Date(Date.now() - 1000);
+  h.settings.beforeMutate = () => {
+    h.row().authState = "connected";
+    h.row().authAttempt = "new-authentication";
+    h.row().authExpiresAt = null;
+    h.row().sessionEnc = realStore.seal("new-retained-key");
+  };
+  const value = await h.service.state("operator");
+  assert.equal(value.connection.state, "connected");
+  assert.equal(h.row().authAttempt, "new-authentication");
+  assert.equal(realStore.secret(h.row().sessionEnc), "new-retained-key");
+  assert.equal(h.row().loginEnc, null);
+});
+
+test("polling still interrupts an expired in-progress invitation without resending it", async () => {
+  const h = harness();
+  const job = domain.enqueue(h.row().parsed, source.id, target.id, [7]);
+  job.lease_until = Date.now() / 1000 - 10;
+  h.row().parsed.results[0].state = "in_progress";
+  await h.service.state("operator");
+  assert.equal(h.row().parsed.jobs[0].state, "interrupted");
+  assert.equal(h.row().parsed.results[0].state, "uncertain");
+  assert.equal(h.calls.mutations, 1);
+  assert.deepEqual(h.calls.workflows, []);
+  assert.deepEqual(h.calls.constructed, []);
+  await h.service.state("operator");
+  assert.equal(h.calls.mutations, 1);
+});
 
 test("adding a labeled account parks the legacy business session and opens an empty draft with saved app keys only", async () => {
   const h = harness(), before = structuredClone(h.row());
@@ -210,6 +273,21 @@ test("duplicate account authentication reconnects its canonical profile without 
   assert.equal(h.row().parsed.accounts.profiles[0].label, "Yara");
   assert.match(realStore.secret(h.row().sessionEnc), /^authorized-session-/);
   assert.deepEqual(h.row().parsed.groups, [source, target]);
+});
+
+test("a temporary identity lookup failure while restoring a saved session cannot revoke that session", async () => {
+  const h = harness();
+  h.row().authState = "saved";
+  h.settings.meError = new Error("Temporary identity lookup failure");
+  await assert.rejects(h.service.restore("operator"), /Temporary identity lookup failure/);
+  assert.equal(h.row().authState, "saved");
+  assert.equal(realStore.secret(h.row().sessionEnc), "business-session");
+  assert.equal(h.remote.has("business-session"), true);
+  assert.deepEqual(h.calls.logOut, []);
+  h.settings.meError = null;
+  await h.service.restore("operator");
+  assert.equal(h.row().authState, "connected");
+  assert.equal(h.remote.has("business-session"), true);
 });
 
 test("discard cleanup never logs out an authorization retained by a parked profile", async () => {

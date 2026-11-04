@@ -152,7 +152,7 @@ export async function qrStep(userId: string, attempt: string) {
         }),
         230000,
       );
-    const account = await driver.me(),
+    const account = await deadline(driver.me()),
       saved = driver.save();
     if (!(await isAdministrator(userId)))
       throw new TelegramError(

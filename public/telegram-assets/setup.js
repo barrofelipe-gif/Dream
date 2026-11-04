@@ -4,6 +4,26 @@ let setupPreferredSource = null, setupSourceRequest = 0;
 let setupChannelApplied = '', channelIntents = {};
 let setupLastContext = null;
 let setupLabelKey = '';
+let setupQrExpiryTimer = null;
+function renderQrCode(connection, profileLabel) {
+  if (setupQrExpiryTimer!==null) clearTimeout(setupQrExpiryTimer);
+  setupQrExpiryTimer=null;
+  const qr=connection.qr, stage=connection.state;
+  const expiresAt=Number(qr?.expires_at)*1000;
+  const valid=stage==='qr' && !!qr?.image && Number.isFinite(expiresAt) && expiresAt>Date.now();
+  $('qr-image').hidden=!valid;
+  if (valid) {
+    if ($('qr-image').getAttribute('src')!==qr.image) $('qr-image').src=qr.image;
+    const context=connection.context_id, image=qr.image, expiry=qr.expires_at;
+    setupQrExpiryTimer=setTimeout(()=>{
+      setupQrExpiryTimer=null;
+      const current=state?.connection;
+      if (current?.state==='qr' && current.context_id===context && current.qr?.image===image && current.qr.expires_at===expiry)
+        renderQrCode(current,current.accounts?.find(profile=>profile.active)?.label || profileLabel);
+    },Math.max(1,expiresAt-Date.now()));
+  } else $('qr-image').removeAttribute('src');
+  $('qr-status').textContent=stage==='qr_error'?connection.qr_error:valid?`Conectando ${profileLabel}. Confirme no celular dessa conta. Este código expira em ${new Date(expiresAt).toLocaleTimeString('pt-BR')}.`:qr?.image?'O QR Code venceu. Aguardando o próximo código…':`Preparando QR Code para ${profileLabel}…`;
+}
 if (typeof window !== 'undefined') window.addEventListener('message',event=>{
   const selected=event.data;
   if (event.origin!==window.location.origin || event.source!==window.parent || selected?.type!=='bff-telegram-source' ||
@@ -94,11 +114,7 @@ function renderSetup(active) {
   $('connection-details').hidden=!connection.enabled||stage!=='disconnected';
   $('saved-session').hidden=stage!=='saved';
   $('qr-connection').hidden=!['qr','qr_error'].includes(stage);
-  const qr=connection.qr, qrValid=stage==='qr' && qr?.image && qr.expires_at>Date.now()/1000;
-  $('qr-image').hidden=!qrValid;
-  if(qrValid) {if($('qr-image').getAttribute('src')!==qr.image)$('qr-image').src=qr.image;}
-  else $('qr-image').removeAttribute('src');
-  $('qr-status').textContent=stage==='qr_error'?connection.qr_error:qrValid?`Conectando ${profileLabel}. Confirme no celular dessa conta. Este código expira em ${new Date(qr.expires_at*1000).toLocaleTimeString('pt-BR')}.`:`Preparando QR Code para ${profileLabel}…`;
+  renderQrCode(connection,profileLabel);
   $('retry-qr').hidden=stage!=='qr_error';
   $('code-form').hidden=stage!=='code'; $('password-form').hidden=stage!=='password';
   $('connected-actions').hidden=!connected;

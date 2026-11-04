@@ -109,7 +109,7 @@ function harness({ registry = true, queued = true, people = [7] } = {}) {
   }
   const steps = loader({
     "./domain": domain, "./accounts": accounts, "./store": store,
-    "./driver": { TelegramDriver: Driver, deadline: async (promise) => promise, mapError: (error) => error },
+    "./driver": { TelegramDriver: Driver, deadline: async (promise, milliseconds) => hooks.deadline ? hooks.deadline(promise,milliseconds) : promise, mapError: (error) => error },
     "qrcode": { toDataURL: async () => "data:image/png;base64,test-only-image" },
   })("src/lib/telegram/steps.ts");
   return {
@@ -284,6 +284,27 @@ test("QR completion adopts only its active draft and preserves the parked accoun
   assert.equal(h.row().parsed.account.id, 303);
   assert.equal(h.row().parsed.accounts.profiles.find((profile) => profile.id === "primary").contextEnc, parked);
   assert.deepEqual(h.counters.logOut, []);
+});
+
+test("an identity lookup that hangs after QR authorization releases the lease and cannot adopt a late result",async()=>{
+  const h=harness({registry:false,queued:false});
+  h.qr();
+  let resolveIdentity;
+  const identity=new Promise(resolve=>{resolveIdentity=resolve;});
+  h.hooks.connect=async(driver)=>{driver.me=()=>identity;};
+  h.hooks.deadline=(promise,milliseconds)=>milliseconds===undefined
+    ? Promise.race([promise,new Promise((_,reject)=>setTimeout(()=>reject(new domain.TelegramError("uncertain","Identity lookup timed out")),5))])
+    : promise;
+  await h.steps.qrStep("owner","qr-attempt");
+  assert.equal(h.row().authState,"qr_error");
+  assert.equal(h.row().sessionEnc,null);
+  assert.equal(h.row().busyToken,null);
+  assert.equal(h.counters.closed,1);
+  assert.deepEqual(h.counters.logOut,["session-new"]);
+  const after=structuredClone(h.row());
+  resolveIdentity({id:303,name:"Late identity",username:"late_test"});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(h.row(),after);
 });
 
 for (const reusedKey of [false, true]) {

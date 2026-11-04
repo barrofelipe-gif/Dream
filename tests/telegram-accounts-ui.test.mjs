@@ -12,6 +12,12 @@ function snapshot(context = "primary:0", extra = {}) {
 }
 async function harness(initial = snapshot(), raced = false) {
   const elements = new Map(), calls = [];
+  const timers = new Map();
+  let now = Date.now(), nextTimer = 0;
+  class ClockDate extends Date {
+    constructor(...args) { super(...(args.length ? args : [now])); }
+    static now() { return now; }
+  }
   let server = initial;
   function element(id) {
     if (!elements.has(id)) elements.set(id, {
@@ -22,8 +28,9 @@ async function harness(initial = snapshot(), raced = false) {
     return elements.get(id);
   }
   const sandbox = vm.createContext({
-    AbortController, URL, Date, console, crypto: { randomUUID: () => "test-only-request" },
-    setTimeout: () => 1, clearTimeout() {},
+    AbortController, URL, Date: ClockDate, console, crypto: { randomUUID: () => "test-only-request" },
+    setTimeout: (fn, delay) => { const id=++nextTimer; timers.set(id,{fn,at:now+delay}); return id; },
+    clearTimeout: (id) => timers.delete(id),
     document: { hidden: false, getElementById: element, querySelectorAll: () => [] },
     window: { location: { origin: "https://app.example" }, addEventListener() {} },
     fetch: async (url, options = {}) => {
@@ -47,7 +54,9 @@ async function harness(initial = snapshot(), raced = false) {
   vm.runInContext("render = () => renderSetup(false); render();", sandbox);
   return { element, calls, async submit() { element("add-account-form").listeners.submit({ preventDefault() {} }); await new Promise((resolve) => setImmediate(resolve)); },
     async rename() { element("edit-account-form").listeners.submit({ preventDefault() {} }); await new Promise((resolve) => setImmediate(resolve)); },
-    render: () => vm.runInContext("render();", sandbox) };
+    render: () => vm.runInContext("render();", sandbox),
+    update(value) { server=value; sandbox.refreshed=structuredClone(value); vm.runInContext("state=refreshed;render();",sandbox); },
+    advance(ms) { now+=ms; for (const [id,timer] of [...timers]) if (timer.at<=now && timers.delete(id)) timer.fn(); } };
 }
 
 test("adding Felipe starts an empty profile and requests its QR with the refreshed account context", async () => {
@@ -98,6 +107,30 @@ test("the person's chosen name is separate from Telegram's display name and can 
   assert.deepEqual(h.calls[0].body, { id: "primary", label: "Yara pessoal" });
   assert.equal(h.calls[0].headers["X-Telegram-Context"], "primary:0");
   assert.match(h.element("connection-summary").textContent, /^Yara pessoal/);
+});
+
+test("an expired QR disappears on time even if the next server response never arrives", async () => {
+  const initial=snapshot("iara:1",{state:"qr",qr:{image:"data:image/png;base64,old",expires_at:(Date.now()+200)/1000}});
+  const h=await harness(initial);
+  assert.equal(h.element("qr-image").hidden,false);
+  h.advance(1000);
+  assert.equal(h.element("qr-image").hidden,true);
+  assert.match(h.element("qr-status").textContent,/venceu.*próximo código/);
+  assert.deepEqual(h.calls,[],"expiry never starts a login or requests a new token");
+});
+
+test("an older QR expiry cannot hide a newer token or reappear after an account change",async()=>{
+  const initial=snapshot("iara:1",{state:"qr",qr:{image:"data:image/png;base64,old",expires_at:(Date.now()+200)/1000}});
+  const h=await harness(initial);
+  const newer=snapshot("iara:1",{state:"qr",qr:{image:"data:image/png;base64,new",expires_at:(Date.now()+2000)/1000}});
+  h.update(newer);
+  h.advance(1000);
+  assert.equal(h.element("qr-image").hidden,false);
+  assert.equal(h.element("qr-image").src,newer.connection.qr.image);
+  h.update(snapshot("felipe:2"));
+  h.advance(1100);
+  assert.equal(h.element("qr-image").hidden,true);
+  assert.deepEqual(h.calls,[]);
 });
 
 test("account identity and labels are escaped before rendering the account chooser", async () => {

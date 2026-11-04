@@ -394,45 +394,57 @@ export async function testChannel(userId: string, input: Record<string, unknown>
   }
 }
 export async function state(userId: string) {
-  await mutate(userId, (row) => {
-    if (
-      row.authExpiresAt &&
-      row.authExpiresAt.getTime() < Date.now() &&
-      ["qr", "code", "password"].includes(row.authState)
-    ) {
-      row.authState = "qr_error";
-      row.loginEnc = seal({
-        error: "O prazo da conexão terminou. Gere outro QR Code ou reconecte.",
-      });
-      if (!row.busyUntil || row.busyUntil.getTime() < Date.now()) {
-        row.busyToken = null;
-        row.busyUntil = null;
-      }
-    }
-    // Um passo interrompido nunca é reenviado automaticamente.
-    for (const job of row.parsed.jobs)
+  let row = await load(userId);
+  const needsRepair = (current: Workspace) => {
+    const now = Date.now();
+    return !!(current.authExpiresAt && current.authExpiresAt.getTime() < now &&
+      ["qr", "code", "password"].includes(current.authState)) ||
+      current.parsed.jobs.some((job) => !!job.lease_until && job.lease_until < now / 1000 &&
+        current.parsed.results.some((result) => result.job_id === job.id && result.state === "in_progress"));
+  };
+  // Normal polling reads the snapshot without competing with QR/login writes.
+  // Repairs still recheck the latest row inside the transaction's lock.
+  if (needsRepair(row)) {
+    await mutate(userId, (row) => {
       if (
-        job.lease_until &&
-        job.lease_until < Date.now() / 1000 &&
-        row.parsed.results.some(
-          (r) => r.job_id === job.id && r.state === "in_progress",
-        )
+        row.authExpiresAt &&
+        row.authExpiresAt.getTime() < Date.now() &&
+        ["qr", "code", "password"].includes(row.authState)
       ) {
-        for (const result of row.parsed.results)
-          if (result.job_id === job.id && result.state === "in_progress") {
-            result.state = "uncertain";
-            result.message =
-              "Processamento interrompido. Confira no Telegram antes de repetir.";
-            result.updated_at = Date.now() / 1000;
-          }
-        job.state = "interrupted";
-        job.message =
-          "Operação interrompida. Nenhum convite foi reenviado automaticamente.";
-        recount(row.parsed, job);
+        row.authState = "qr_error";
+        row.loginEnc = seal({
+          error: "O prazo da conexão terminou. Gere outro QR Code ou reconecte.",
+        });
+        if (!row.busyUntil || row.busyUntil.getTime() < Date.now()) {
+          row.busyToken = null;
+          row.busyUntil = null;
+        }
       }
-  });
-  const row = await load(userId),
-    data = row.parsed,
+      // Um passo interrompido nunca é reenviado automaticamente.
+      for (const job of row.parsed.jobs)
+        if (
+          job.lease_until &&
+          job.lease_until < Date.now() / 1000 &&
+          row.parsed.results.some(
+            (r) => r.job_id === job.id && r.state === "in_progress",
+          )
+        ) {
+          for (const result of row.parsed.results)
+            if (result.job_id === job.id && result.state === "in_progress") {
+              result.state = "uncertain";
+              result.message =
+                "Processamento interrompido. Confira no Telegram antes de repetir.";
+              result.updated_at = Date.now() / 1000;
+            }
+          job.state = "interrupted";
+          job.message =
+            "Operação interrompida. Nenhum convite foi reenviado automaticamente.";
+          recount(row.parsed, job);
+        }
+    });
+    row = await load(userId);
+  }
+  const data = row.parsed,
     login = secret<Login>(row.loginEnc);
   return {
     csrf_token: csrf(userId),
@@ -612,7 +624,7 @@ async function discardAuthorizedSession(userId: string, attempt: string | null, 
       const current = await load(userId);
       // A pending old login stores its auth key before becoming authorized.
       return (secret<string>(current.sessionEnc) === saved &&
-        (current.authState === "connected" || current.authAttempt !== attempt)) ||
+        (["connected", "saved"].includes(current.authState) || current.authAttempt !== attempt)) ||
         retainedSessionEncs(current, { seal, secret }).some((encrypted) => secret<string>(encrypted) === saved);
     };
     // Another attempt may already be using this exact MTProto session.
