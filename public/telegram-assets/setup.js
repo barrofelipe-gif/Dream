@@ -10,7 +10,7 @@ function renderQrCode(connection, profileLabel) {
   setupQrExpiryTimer=null;
   const qr=connection.qr, stage=connection.state;
   const expiresAt=Number(qr?.expires_at)*1000;
-  const valid=stage==='qr' && !!qr?.image && Number.isFinite(expiresAt) && expiresAt>Date.now();
+  const valid=connection.enabled!==false && stage==='qr' && !!qr?.image && Number.isFinite(expiresAt) && expiresAt>Date.now();
   $('qr-image').hidden=!valid;
   if (valid) {
     if ($('qr-image').getAttribute('src')!==qr.image) $('qr-image').src=qr.image;
@@ -23,6 +23,7 @@ function renderQrCode(connection, profileLabel) {
     },Math.max(1,expiresAt-Date.now()));
   } else $('qr-image').removeAttribute('src');
   $('qr-status').textContent=stage==='qr_error'?connection.qr_error:valid?`Conectando ${profileLabel}. Confirme no celular dessa conta. Este código expira em ${new Date(expiresAt).toLocaleTimeString('pt-BR')}.`:qr?.image?'O QR Code venceu. Aguardando o próximo código…':`Preparando QR Code para ${profileLabel}…`;
+  if(connection.operation_notice) $('qr-status').textContent=connection.operation_notice;
 }
 if (typeof window !== 'undefined') window.addEventListener('message',event=>{
   const selected=event.data;
@@ -103,10 +104,11 @@ function renderSetup(active) {
     setupSourceRequest=setupPreferredSource.request;
     setupPreferredSource=null;
   }
-  $('connection-badge').textContent=setupLabels[stage] || 'Desconectado';
+  $('connection-badge').textContent=connection.operation_notice?'Operações pausadas':setupLabels[stage] || 'Desconectado';
   $('connection-badge').className='pill '+(connected?'good':stage==='disconnected'?'':'warn');
   const summaries={disconnected:`Conecte o Telegram de ${profileLabel} por QR Code ou código para carregar os grupos.`,saved:`A sessão de ${profileLabel} está salva no app. Confirme a conexão para continuar.`,code:`Digite o código recebido na conta com final ${connection.phone_hint}.`,password:'Sua conta solicita a senha de verificação em duas etapas.',connected:`${profileLabel}${connection.account?.username?' · @'+connection.account.username:''} — conexão protegida no app.`,qr:`Escaneie o QR Code com o Telegram de ${profileLabel} e confirme a conexão.`,qr_error:'A conexão por QR Code não foi concluída. Você pode tentar novamente ou cancelar.'};
   $('connection-summary').textContent=summaries[stage] || summaries.disconnected;
+  if(connection.operation_notice) $('connection-summary').textContent=connection.operation_notice;
   const needsAppSetup=connection.enabled&&stage==='disconnected'&&!connection.credentials_saved;
   $('app-setup-guide').hidden=!needsAppSetup;
   $('connection-form-summary').textContent=needsAppSetup?'Já tenho as chaves — conectar Telegram':'Conectar minha conta';
@@ -114,8 +116,11 @@ function renderSetup(active) {
   $('connection-details').hidden=!connection.enabled||stage!=='disconnected';
   $('saved-session').hidden=stage!=='saved';
   $('qr-connection').hidden=!['qr','qr_error'].includes(stage);
+  $('qr-connection-title').textContent=connection.operation_notice?'Conexão pausada':'Conectar pelo celular';
+  $('qr-instructions').hidden=!connection.enabled;
+  $('qr-help').hidden=!connection.enabled;
   renderQrCode(connection,profileLabel);
-  $('retry-qr').hidden=stage!=='qr_error';
+  $('retry-qr').hidden=!connection.enabled || stage!=='qr_error';
   $('code-form').hidden=stage!=='code'; $('password-form').hidden=stage!=='password';
   $('connected-actions').hidden=!connected;
   $('group-setup').hidden=!connected||!connection.groups.length;
@@ -129,8 +134,8 @@ function renderSetup(active) {
   }
   updateCredentialFields();
   const waiting=connection.retry_at>Date.now()/1000;
-  $('connection-error').hidden=!connection.vault_error&&!waiting;
-  $('connection-error').textContent=waiting?`O Telegram pediu uma espera até ${new Date(connection.retry_at*1000).toLocaleString('pt-BR')}. Não será solicitado outro código automaticamente.`:'Não foi possível abrir as credenciais salvas. Faça uma nova conexão no app.';
+  $('connection-error').hidden=!connection.vault_error&&!waiting&&!connection.operation_notice;
+  $('connection-error').textContent=connection.operation_notice || (waiting?`O Telegram pediu uma espera até ${new Date(connection.retry_at*1000).toLocaleString('pt-BR')}. Não será solicitado outro código automaticamente.`:'Não foi possível abrir as credenciais salvas. Faça uma nova conexão no app.');
   for (const id of ['start-qr','retry-qr','send-code','restore-session','verify-code','verify-password','load-groups','disconnect-account','check-privacy','confirm-protect']) $(id).disabled=blocked||waiting||!connection.enabled;
   for (const button of document.querySelectorAll('.cancel-connection')) button.disabled=busy;
   $('setup-source').disabled=blocked; $('setup-target').disabled=blocked;

@@ -3,6 +3,7 @@ import { TelegramClient, Api, utils } from "teleproto";
 import { StringSession } from "teleproto/sessions";
 import { Logger } from "teleproto/extensions";
 import bigInt from "big-integer";
+import { assertTelegramNetwork } from "./network";
 import {
   TelegramError,
   type Group,
@@ -216,6 +217,7 @@ export class TelegramDriver {
     readonly credentials: Credentials,
     session = "",
   ) {
+    assertTelegramNetwork();
     this.session = new StringSession(session);
     this.client = new TelegramClient(
       this.session,

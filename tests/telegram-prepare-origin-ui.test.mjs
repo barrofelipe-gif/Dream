@@ -135,6 +135,7 @@ test("origin preparation and channel HTTP endpoints require operator and CSRF be
       "@/lib/telegram/service": { [method]: async (userId, input) => { calls.push("operation"); assert.equal(userId, "test-operator"); assert.deepEqual(input, payload); return { ok: true }; } },
       "@/lib/telegram/domain": { TelegramError: SafeError },
       "@/lib/telegram/driver": { mapError: (error) => error },
+      "@/lib/telegram/network": { telegramNetworkStatus: () => ({ enabled: true, region: "gru1" }) },
       "@/lib/telegram/growth": {}, "@/lib/telegram/analytics": {},
       "@/lib/telegram/request-context": { withRequestContext: (_expected, work) => work() },
     };

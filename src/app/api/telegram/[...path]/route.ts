@@ -7,6 +7,7 @@ import { TelegramError } from "@/lib/telegram/domain";
 import * as growth from "@/lib/telegram/growth";
 import { restoreTray } from "@/lib/telegram/analytics";
 import { withRequestContext } from "@/lib/telegram/request-context";
+import { telegramNetworkStatus } from "@/lib/telegram/network";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -63,7 +64,7 @@ export async function GET(_request: Request, context: Context) {
     if (route === "/state")
       return Response.json(await telegram.state(userId), { headers });
     if (route === "/health")
-      return Response.json({ ready: true, mode: "live" }, { headers });
+      return Response.json({ ready: true, mode: "live", telegram: telegramNetworkStatus() }, { headers });
     if (route === "/export/contacts.csv" || route === "/export/results.csv") {
       const results = route.endsWith("results.csv");
       const exported = results ? await telegram.csv(userId, true)

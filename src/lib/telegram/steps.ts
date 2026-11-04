@@ -13,6 +13,7 @@ import {
 } from "./store";
 import { eligible, recount, TelegramError, type Data, type Job, type Contact } from "./domain";
 import { activeProfileId, retainedSessionEncs } from "./accounts";
+import { telegramNetworkStatus } from "./network";
 
 function accountIdentity(data: Data) {
   const generation = data.accounts?.generation ?? 0;
@@ -240,6 +241,12 @@ export async function queueStep(
       if (!job || !["queued", "running"].includes(job.state)) return null;
       if (!scope || !sameWorker(row, scope) || !jobPin(data, job)) {
         interruptQueue(data, job, "A conta ou sessão desta operação não corresponde à conta selecionada. Recrie a operação na conta correta.");
+        return null;
+      }
+      const network = telegramNetworkStatus();
+      if (!network.enabled) {
+        job.state = "paused";
+        job.message = network.notice;
         return null;
       }
       if (

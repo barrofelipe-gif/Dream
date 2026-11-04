@@ -52,6 +52,7 @@ test("the HTTP boundary rejects missing and stale account headers before any Tel
       "@/lib/telegram/request-context": scope,
       "@/lib/telegram/domain": domain,
       "@/lib/telegram/driver": { mapError: (error) => error },
+      "@/lib/telegram/network": { telegramNetworkStatus: () => ({ enabled: true, region: "gru1" }) },
       "@/lib/telegram/service": { groups: async () => { scope.assertRequestContext(account("yara", 2)); calls++; return { groups: [] }; } },
       "@/lib/telegram/growth": {}, "@/lib/telegram/analytics": {},
     });
@@ -70,6 +71,7 @@ test("an old download link cannot export the participant list of another selecte
     "@/lib/telegram/access": { operator: async () => "operator" },
     "@/lib/telegram/request-context": scope, "@/lib/telegram/domain": domain,
     "@/lib/telegram/driver": { mapError: (error) => error },
+    "@/lib/telegram/network": { telegramNetworkStatus: () => ({ enabled: true, region: "gru1" }) },
     "@/lib/telegram/service": { csv: async () => { scope.assertRequestContext(account("yara", 2)); exports++; return "test-only-csv"; } },
     "@/lib/telegram/growth": {}, "@/lib/telegram/analytics": {},
   });

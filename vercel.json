@@ -1,4 +1,17 @@
 {
+  "env": {
+    "TELEGRAM_NETWORK_PAUSED": "1"
+  },
+  "functions": {
+    "src/app/api/telegram/**/route.ts": {
+      "regions": ["gru1"],
+      "functionFailoverRegions": []
+    },
+    "src/app/.well-known/workflow/v1/flow/route.js": {
+      "regions": ["gru1"],
+      "functionFailoverRegions": []
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/sync-gmail",

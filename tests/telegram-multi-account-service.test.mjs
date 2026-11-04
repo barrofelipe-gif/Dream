@@ -109,6 +109,64 @@ function harness() {
   return { service, row: () => row, calls, remote, settings, Driver };
 }
 
+test("paused networking blocks login, restore, group loading and enqueue before changing a saved session",async()=>{
+  const h=harness(), before=structuredClone(h.row()), previous=process.env.TELEGRAM_NETWORK_PAUSED;
+  process.env.TELEGRAM_NETWORK_PAUSED="1";
+  try{
+    const value=await h.service.state("operator");
+    assert.equal(value.connection.enabled,false);
+    assert.match(value.connection.operation_notice,/pausadas/);
+    for(const work of [()=>h.service.begin("operator",{use_saved:true},true),()=>h.service.restore("operator"),()=>h.service.groups("operator"),()=>h.service.createJob("operator",{source_id:source.id,target_id:target.id,user_ids:[7]}),()=>h.service.control("operator",{job_id:"job",action:"resume"})])
+      await assert.rejects(work,error=>error.code==="operations_paused");
+    assert.deepEqual(h.row(),before);
+    assert.equal(h.calls.mutations,0);
+    assert.deepEqual(h.calls.constructed,[]);
+    assert.deepEqual(h.calls.workflows,[]);
+    assert.equal(h.remote.has("business-session"),true);
+  }finally{if(previous===undefined)delete process.env.TELEGRAM_NETWORK_PAUSED;else process.env.TELEGRAM_NETWORK_PAUSED=previous;}
+});
+
+test("pausing networking still allows cancelling queued work locally",async()=>{
+  const h=harness(),job=domain.enqueue(h.row().parsed,source.id,target.id,[7]),previous=process.env.TELEGRAM_NETWORK_PAUSED;
+  process.env.TELEGRAM_NETWORK_PAUSED="1";
+  try{
+    await h.service.control("operator",{job_id:job.id,action:"cancel"});
+    assert.equal(h.row().parsed.jobs[0].state,"cancelled");
+    assert.deepEqual(h.calls.constructed,[]);
+    assert.deepEqual(h.calls.workflows,[]);
+  }finally{if(previous===undefined)delete process.env.TELEGRAM_NETWORK_PAUSED;else process.env.TELEGRAM_NETWORK_PAUSED=previous;}
+});
+
+test("a pending login can still be cancelled locally while networking is paused",async()=>{
+  const h=harness(), previous=process.env.TELEGRAM_NETWORK_PAUSED;
+  await h.service.addAccount("operator",{label:"Iara"});
+  h.row().authState="qr";h.row().authAttempt="pending-qr";h.row().sessionEnc=realStore.seal("pending-key");
+  process.env.TELEGRAM_NETWORK_PAUSED="1";
+  try{
+    await h.service.cancel("operator");
+    assert.equal(h.row().authState,"disconnected");
+    assert.equal(h.row().sessionEnc,null);
+    await h.service.switchAccount("operator",{id:"primary"});
+    assert.equal(realStore.secret(h.row().sessionEnc),"business-session");
+    assert.equal(h.remote.has("business-session"),true);
+    assert.deepEqual(h.calls.constructed,[]);
+    assert.deepEqual(h.calls.logOut,[]);
+  }finally{if(previous===undefined)delete process.env.TELEGRAM_NETWORK_PAUSED;else process.env.TELEGRAM_NETWORK_PAUSED=previous;}
+});
+
+test("QR and invitation workflows are explicitly pinned to Brazil",async()=>{
+  const qr=harness();
+  qr.row().authState="saved";
+  await qr.service.begin("operator",{use_saved:true},true);
+  assert.deepEqual(qr.calls.workflows[0][2],{region:"gru1"});
+  const queue=harness();
+  const job=await queue.service.createJob("operator",{source_id:source.id,target_id:target.id,user_ids:[7]});
+  assert.deepEqual(queue.calls.workflows[0][2],{region:"gru1"});
+  await queue.service.control("operator",{job_id:job.id,action:"pause"});
+  await queue.service.control("operator",{job_id:job.id,action:"resume"});
+  assert.deepEqual(queue.calls.workflows[1][2],{region:"gru1"});
+});
+
 test("normal connection polling reads once without writing or taking the workspace mutation lock", async () => {
   for (const authState of ["connected", "qr", "code", "password"]) {
     const h = harness();

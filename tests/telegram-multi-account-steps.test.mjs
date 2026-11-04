@@ -124,6 +124,20 @@ function harness({ registry = true, queued = true, people = [7] } = {}) {
   };
 }
 
+test("paused networking stops a worker before selecting a participant or creating a Telegram client",async()=>{
+  const h=harness(),previous=process.env.TELEGRAM_NETWORK_PAUSED;
+  process.env.TELEGRAM_NETWORK_PAUSED="1";
+  try{
+    assert.equal(await h.steps.queueStep("owner",h.job.id),false);
+    assert.equal(h.row().parsed.jobs[0].state,"paused");
+    assert.equal(h.row().parsed.results[0].state,"waiting");
+    assert.equal(h.row().busyToken,null);
+    assert.equal(h.counters.constructed,0);
+    assert.equal(h.counters.invites,0);
+    assert.deepEqual(h.counters.logOut,[]);
+  }finally{if(previous===undefined)delete process.env.TELEGRAM_NETWORK_PAUSED;else process.env.TELEGRAM_NETWORK_PAUSED=previous;}
+});
+
 test("a correctly pinned queue verifies its SDK account and dispatches once", async () => {
   const h = harness();
   assert.equal(await h.steps.queueStep("owner", h.job.id), false);

@@ -322,3 +322,48 @@ test("the ordinary queue invite path shares channel verification while still val
   await assert.rejects(wrongSource.driver.invite(peerId(wrongSource.target), peerId(wrongSource.origin), wrongSource.driver.person(wrongSource.other)), (error) => error.code === "permission");
   assert.deepEqual(wrongSource.names(), []);
 });
+
+test("cloud Telegram networking fails closed outside São Paulo or while operations are paused", () => {
+  const {telegramNetworkStatus}=loader()("src/lib/telegram/network.ts");
+  assert.equal(telegramNetworkStatus({VERCEL:"1",VERCEL_REGION:"gru1"}).enabled,true);
+  for (const env of [{VERCEL:"1",VERCEL_REGION:"iad1"},{VERCEL:"1"},{VERCEL_ENV:"preview",VERCEL_REGION:"sfo1"},{NODE_ENV:"production"},{NODE_ENV:"production",VERCEL_REGION:"iad1"}])
+    assert.equal(telegramNetworkStatus(env).enabled,false);
+  const paused=telegramNetworkStatus({VERCEL:"1",VERCEL_REGION:"gru1",TELEGRAM_NETWORK_PAUSED:"1"});
+  assert.equal(paused.enabled,false);
+  assert.equal(paused.paused,true);
+  assert.match(paused.notice,/pausadas/);
+});
+
+test("the network guard rejects before constructing or decoding a Telegram session", () => {
+  let clients=0,sessions=0;
+  const {TelegramDriver:GuardedDriver}=loader({
+    teleproto:{TelegramClient:class{constructor(){clients++;}},Api:{},utils:{}},
+    "teleproto/sessions":{StringSession:class{constructor(){sessions++;}}},
+    "teleproto/extensions":{Logger:class{}},
+  })("src/lib/telegram/driver.ts");
+  const keys=["VERCEL","VERCEL_REGION","TELEGRAM_NETWORK_PAUSED"], before=Object.fromEntries(keys.map(key=>[key,process.env[key]]));
+  try {
+    process.env.VERCEL="1"; process.env.TELEGRAM_NETWORK_PAUSED="0";
+    for(const region of ["iad1",undefined]) {
+      if(region)process.env.VERCEL_REGION=region;else delete process.env.VERCEL_REGION;
+      assert.throws(()=>new GuardedDriver({apiId:1,apiHash:"a".repeat(32)},"test-only-session"),error=>error.code==="region_required");
+    }
+    process.env.VERCEL_REGION="gru1"; process.env.TELEGRAM_NETWORK_PAUSED="1";
+    assert.throws(()=>new GuardedDriver({apiId:1,apiHash:"a".repeat(32)},"test-only-session"),error=>error.code==="operations_paused");
+    assert.equal(clients,0); assert.equal(sessions,0);
+    process.env.TELEGRAM_NETWORK_PAUSED="0";
+    new GuardedDriver({apiId:1,apiHash:"a".repeat(32)},"test-only-session");
+    assert.equal(clients,1); assert.equal(sessions,1);
+  } finally { for(const key of keys)if(before[key]===undefined)delete process.env[key];else process.env[key]=before[key]; }
+});
+
+test("deployment pins both Telegram handlers to Brazil, keeps other functions unchanged and starts paused",()=>{
+  const config=JSON.parse(readFileSync("vercel.json","utf8"));
+  assert.equal(config.regions,undefined);
+  assert.equal(config.env.TELEGRAM_NETWORK_PAUSED,"1");
+  for(const route of ["src/app/api/telegram/**/route.ts","src/app/.well-known/workflow/v1/flow/route.js"]){
+    assert.deepEqual(config.functions[route].regions,["gru1"]);
+    assert.deepEqual(config.functions[route].functionFailoverRegions,[]);
+  }
+  assert.ok(config.crons.length>0);
+});

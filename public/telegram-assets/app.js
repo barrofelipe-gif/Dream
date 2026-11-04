@@ -74,15 +74,15 @@ function render() {
   const active = state.jobs.some(j=>activeStates.includes(j.state));
   const limited = state.limits.restricted || state.limits.not_before>Date.now()/1000;
   $('export-contacts').href='/api/telegram/export/contacts.csv?account_context='+encodeURIComponent(state.connection?.context_id || '');
-  $('mode').textContent = state.connection?.state==='connected' ? 'TELEGRAM CONECTADO' : 'CONECTE SUA CONTA';
+  $('mode').textContent = state.connection?.operation_notice ? 'TELEGRAM PAUSADO' : state.connection?.state==='connected' ? 'TELEGRAM CONECTADO' : 'CONECTE SUA CONTA';
   $('mode-help').textContent = state.mode==='demo' ? 'Dados fictícios para conhecer o fluxo. Conecte sua conta acima para escolher seus grupos reais.' : 'Conexão real com sua comunidade privada. Consulte a origem e escolha os participantes.';
   $('count-total').textContent = contacts.length;
   $('count-ready').textContent = ready.length;
   const results = job ? state.results.filter(r=>r.job_id===job.id) : [];
   $('count-added').textContent = job?.added || 0;
   $('count-existing').textContent = job?.already || 0;
-  $('collect').disabled = busy || active || limited || !state.connection?.configured || !source_id || !target_id;
-  $('start').disabled = busy || active || limited || !ready.length || ready.length!==selected.length;
+  $('collect').disabled = busy || active || limited || !!state.connection?.operation_notice || !state.connection?.configured || !source_id || !target_id;
+  $('start').disabled = busy || active || limited || !!state.connection?.operation_notice || !ready.length || ready.length!==selected.length;
   $('select-ready').disabled = busy || active || !contacts.some(p=>p.can_use!==false);
   $('source').disabled = busy || active; $('target').disabled = busy || active;
   if (state.limits.restricted) $('mode-help').textContent += ' Restrição registrada: revise a situação da conta antes de continuar.';
@@ -95,6 +95,7 @@ function render() {
     return `<tr><td><input type="checkbox" data-select="${p.user_id}" aria-label="Selecionar ${escapeHTML(p.name)}" ${p.selected&&p.can_use!==false&&!confirmed.has(p.user_id)?'checked':''} ${busy||active||p.can_use===false||confirmed.has(p.user_id)?'disabled':''}></td><td><b>${escapeHTML(p.name || 'Sem nome')}</b><small>${p.username?'@'+escapeHTML(p.username)+' · ':''}${p.user_id}</small></td><td>${last?pill(last.state):confirmed.has(p.user_id)?'<span class="pill good">Confirmado anteriormente</span>':p.can_use===false?'<span class="pill warn">Consulte a origem novamente</span>':'<span class="pill">Ainda não processado</span>'}</td></tr>`;
   }).join('') || `<tr><td colspan="3" class="empty">${contacts.length?'Nenhum participante encontrado na busca.':'Clique em “Consultar participantes” para começar.'}</td></tr>`);
   setHTML('job-actions',job ? (['queued','running'].includes(job.state)?'<button class="secondary" data-control="pause">Pausar</button>':['paused','paused_restriction'].includes(job.state)?'<button class="secondary" data-control="resume">Retomar restantes</button>':'')+(activeStates.includes(job.state)?'<button class="danger" data-control="cancel">Cancelar</button>':'') : '');
+  for(const button of document.querySelectorAll('[data-control="resume"]')) button.disabled=!!state.connection?.operation_notice;
   const jobAccount=typeof job?.accountId==='number' ? state.connection?.accounts?.find(profile=>profile.account?.id===job.accountId) : undefined;
   setHTML('job-summary',job ? `${pill(job.state)} <b>${job.processed} de ${job.total} processado(s)</b> · ${job.success} participação(ões) confirmada(s) · ${job.failed} ocorrência(s)${jobAccount?`<p class="hint">Conta da operação: ${escapeHTML(jobAccount.label)}</p>`:''}<div class="progress"><progress max="${job.total}" value="${job.processed}" aria-label="Progresso da operação"></progress></div><span>${escapeHTML(job.message)}</span>${job.not_before>Date.now()/1000?`<p class="hint">Retomada disponível após ${escapeHTML(new Date(job.not_before*1000).toLocaleString('pt-BR'))}. A fila não retoma sozinha.</p>`:''}` : 'Sua próxima operação aparecerá aqui.');
   setHTML('results',results.map(r=>`<tr><td>${escapeHTML(r.name)}<small>${r.user_id}</small></td><td>${pill(r.state)}</td><td>${escapeHTML(r.message)}</td></tr>`).join(''));

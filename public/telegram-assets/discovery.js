@@ -6,7 +6,7 @@ let discoveryBusy = false,
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function renderDiscovery(active, limited) {
   const connection = state?.connection;
-  const connected = connection?.state === "connected";
+  const connected = connection?.state === "connected" && connection.enabled !== false;
   const scope = connected ? connection.context_id || String(connection.account?.id ?? "connected") : "";
   if (scope !== discoveryScope) {
     discoveryScope = scope;
@@ -19,13 +19,13 @@ function renderDiscovery(active, limited) {
   $("discovery-query").disabled = discoveryBusy;
   for (const button of document.querySelectorAll("[data-discovery-term]"))
     button.disabled = discoveryBusy;
-  $("discovery-hint").textContent = !connected
+  $("discovery-hint").textContent = connection?.operation_notice || (!connected
     ? "Conecte sua conta acima para pesquisar no Telegram."
     : active
       ? "Encerre a operação em andamento antes de pesquisar."
       : limited
         ? "Aguarde a liberação da sua conta pelo Telegram antes de pesquisar."
-        : "Pesquise quando quiser. A pesquisa não entra em grupos nem altera sua comunidade.";
+        : "Pesquise quando quiser. A pesquisa não entra em grupos nem altera sua comunidade.");
 }
 function discoveryCards(groups) {
   return groups

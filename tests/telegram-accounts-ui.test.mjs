@@ -55,6 +55,7 @@ async function harness(initial = snapshot(), raced = false) {
   return { element, calls, async submit() { element("add-account-form").listeners.submit({ preventDefault() {} }); await new Promise((resolve) => setImmediate(resolve)); },
     async rename() { element("edit-account-form").listeners.submit({ preventDefault() {} }); await new Promise((resolve) => setImmediate(resolve)); },
     render: () => vm.runInContext("render();", sandbox),
+    discovery() { vm.runInContext(readFileSync("public/telegram-assets/discovery.js","utf8"),sandbox); vm.runInContext("renderDiscovery(false,false);",sandbox); },
     update(value) { server=value; sandbox.refreshed=structuredClone(value); vm.runInContext("state=refreshed;render();",sandbox); },
     advance(ms) { now+=ms; for (const [id,timer] of [...timers]) if (timer.at<=now && timers.delete(id)) timer.fn(); } };
 }
@@ -107,6 +108,24 @@ test("the person's chosen name is separate from Telegram's display name and can 
   assert.deepEqual(h.calls[0].body, { id: "primary", label: "Yara pessoal" });
   assert.equal(h.calls[0].headers["X-Telegram-Context"], "primary:0");
   assert.match(h.element("connection-summary").textContent, /^Yara pessoal/);
+});
+
+test("a paused Telegram shows the reason and hides QR without requesting another connection",async()=>{
+  const h=await harness(snapshot("iara:1",{enabled:false,state:"qr",operation_notice:"Operações Telegram pausadas após o relato de suspensão.",qr:{image:"data:image/png;base64,old",expires_at:Date.now()/1000+30}}));
+  assert.equal(h.element("connection-badge").textContent,"Operações pausadas");
+  assert.equal(h.element("connection-error").hidden,false);
+  assert.match(h.element("connection-error").textContent,/pausadas/);
+  assert.equal(h.element("qr-connection").hidden,false,"the local cancellation control stays reachable");
+  assert.equal(h.element("qr-instructions").hidden,true);
+  assert.equal(h.element("qr-help").hidden,true);
+  assert.equal(h.element("qr-image").hidden,true);
+  assert.equal(h.element("start-qr").disabled,true);
+  assert.equal(h.element("retry-qr").disabled,true);
+  h.update(snapshot("iara:1",{enabled:false,state:"connected",operation_notice:"Operações Telegram pausadas."}));
+  h.discovery();
+  assert.equal(h.element("discovery-submit").disabled,true);
+  assert.match(h.element("discovery-hint").textContent,/pausadas/);
+  assert.deepEqual(h.calls,[]);
 });
 
 test("an expired QR disappears on time even if the next server response never arrives", async () => {

@@ -52,6 +52,7 @@ import {
   activeProfileId,
 } from "./accounts";
 import { accountContext, assertRequestContext } from "./request-context";
+import { assertTelegramNetwork, telegramNetworkStatus } from "./network";
 
 export type Login = {
   phone?: string;
@@ -117,6 +118,7 @@ async function clientFor<T>(
   required = true,
   persistSession = true,
 ) {
+  assertTelegramNetwork();
   const { token, row } = await lease(userId);
   let driver: TelegramDriver | undefined;
   let active = true;
@@ -445,7 +447,8 @@ export async function state(userId: string) {
     row = await load(userId);
   }
   const data = row.parsed,
-    login = secret<Login>(row.loginEnc);
+    login = secret<Login>(row.loginEnc),
+    network = telegramNetworkStatus();
   return {
     csrf_token: csrf(userId),
     mode: "live",
@@ -453,7 +456,9 @@ export async function state(userId: string) {
     targets: data.targets,
     ...publicSnapshot(data),
     connection: {
-      enabled: true,
+      enabled: network.enabled,
+      operation_notice: network.notice,
+      execution_region: network.region,
       state: row.authState,
       account: data.account || null,
       accounts: publicAccountRoster(row),
@@ -508,6 +513,7 @@ export async function begin(
   input: Record<string, unknown>,
   qr: boolean,
 ) {
+  assertTelegramNetwork();
   const phone = typeof input.phone === "string" ? input.phone : "";
   if (!qr && !/^\+[1-9][0-9]{7,14}$/.test(phone))
     throw new TelegramError("input", "Informe o número com +, código do país, DDD e número.");
@@ -533,7 +539,7 @@ export async function begin(
   });
   if (qr) {
     try {
-      await start(connectTelegramQR, [userId, attempt]);
+      await start(connectTelegramQR, [userId, attempt], { region: "gru1" });
     } catch {
       await mutate(userId, (row) => {
         if (row.authAttempt === attempt) {
@@ -1003,6 +1009,7 @@ export async function createJob(
   userId: string,
   input: Record<string, unknown>,
 ) {
+  assertTelegramNetwork();
   const job = await mutate(userId, (row) => {
     usable(row);
     notBusy(row);
@@ -1014,7 +1021,7 @@ export async function createJob(
     );
   });
   try {
-    await start(runTelegramQueue, [userId, job.id]);
+    await start(runTelegramQueue, [userId, job.id], { region: "gru1" });
   } catch {
     await mutate(userId, (row) => {
       const current = row.parsed.jobs.find((j) => j.id === job.id)!;
@@ -1032,6 +1039,7 @@ export async function createJob(
   return job;
 }
 export async function control(userId: string, input: Record<string, unknown>) {
+  if (input.action === "resume") assertTelegramNetwork();
   const result = await mutate(userId, (row) => {
     const j = row.parsed.jobs.find((j) => j.id === input.job_id);
     if (!j) throw new TelegramError("input", "Operação não encontrada.");
@@ -1059,7 +1067,7 @@ export async function control(userId: string, input: Record<string, unknown>) {
   });
   if (input.action === "resume") {
     try {
-      await start(runTelegramQueue, [userId, result.id]);
+      await start(runTelegramQueue, [userId, result.id], { region: "gru1" });
     } catch {
       await mutate(userId, (row) => {
         const job = row.parsed.jobs.find((j) => j.id === result.id);
