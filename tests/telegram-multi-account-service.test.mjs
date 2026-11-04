@@ -167,6 +167,21 @@ test("QR and invitation workflows are explicitly pinned to Brazil",async()=>{
   assert.deepEqual(queue.calls.workflows[1][2],{region:"gru1"});
 });
 
+test("a local flood-wait cannot shorten the stored cooldown or permit enqueue and resume",async()=>{
+  const h=harness(),until=Date.now()/1000+600;
+  h.row().parsed.limits.not_before=until;
+  await assert.rejects(h.service.discover("operator",{query:"fitness"}),error=>error.code==="flood_wait");
+  assert.equal(h.row().parsed.limits.not_before,until);
+  await assert.rejects(h.service.createJob("operator",{source_id:source.id,target_id:target.id,user_ids:[7]}),error=>error.code==="flood_wait");
+  assert.equal(h.row().parsed.limits.not_before,until);
+  assert.deepEqual(h.calls.workflows,[]);
+  const resume=harness(),job=domain.enqueue(resume.row().parsed,source.id,target.id,[7]);
+  job.state="paused_restriction";resume.row().parsed.limits.not_before=until;
+  await assert.rejects(resume.service.control("operator",{job_id:job.id,action:"resume"}),error=>error.code==="flood_wait");
+  assert.equal(resume.row().parsed.limits.not_before,until);
+  assert.deepEqual(resume.calls.workflows,[]);
+});
+
 test("normal connection polling reads once without writing or taking the workspace mutation lock", async () => {
   for (const authState of ["connected", "qr", "code", "password"]) {
     const h = harness();

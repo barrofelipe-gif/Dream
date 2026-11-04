@@ -113,7 +113,7 @@ export function mapError(error: unknown): TelegramError {
       Math.max(1, e.seconds || 60),
       409,
     );
-  if (/PEER_FLOOD|FROZEN|USER_RESTRICTED/.test(code))
+  if (["PHONE_NUMBER_BANNED", "USER_DEACTIVATED_BAN"].includes(code) || /PEER_FLOOD|FROZEN|USER_RESTRICTED/.test(code))
     return new TelegramError(
       "restricted",
       "O Telegram restringiu a conta. Novas inclusões foram interrompidas.",

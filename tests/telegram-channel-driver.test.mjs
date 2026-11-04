@@ -323,6 +323,12 @@ test("the ordinary queue invite path shares channel verification while still val
   assert.deepEqual(wrongSource.names(), []);
 });
 
+test("explicit account bans are classified as restrictions",()=>{
+  for(const errorMessage of ["PHONE_NUMBER_BANNED","USER_DEACTIVATED_BAN"])
+    assert.equal(mapError({errorMessage}).code,"restricted");
+  assert.equal(mapError({errorMessage:"PHONE_CODE_INVALID"}).code,"code");
+});
+
 test("cloud Telegram networking fails closed outside São Paulo or while operations are paused", () => {
   const {telegramNetworkStatus}=loader()("src/lib/telegram/network.ts");
   assert.equal(telegramNetworkStatus({VERCEL:"1",VERCEL_REGION:"gru1"}).enabled,true);
@@ -357,10 +363,10 @@ test("the network guard rejects before constructing or decoding a Telegram sessi
   } finally { for(const key of keys)if(before[key]===undefined)delete process.env[key];else process.env[key]=before[key]; }
 });
 
-test("deployment pins both Telegram handlers to Brazil, keeps other functions unchanged and starts paused",()=>{
+test("deployment enables Telegram only in Brazil and keeps other functions unchanged",()=>{
   const config=JSON.parse(readFileSync("vercel.json","utf8"));
   assert.equal(config.regions,undefined);
-  assert.equal(config.env.TELEGRAM_NETWORK_PAUSED,"1");
+  assert.equal(config.env.TELEGRAM_NETWORK_PAUSED,"0");
   for(const route of ["src/app/api/telegram/**/route.ts","src/app/.well-known/workflow/v1/flow/route.js"]){
     assert.deepEqual(config.functions[route].regions,["gru1"]);
     assert.deepEqual(config.functions[route].functionFailoverRegions,[]);

@@ -138,6 +138,29 @@ test("paused networking stops a worker before selecting a participant or creatin
   }finally{if(previous===undefined)delete process.env.TELEGRAM_NETWORK_PAUSED;else process.env.TELEGRAM_NETWORK_PAUSED=previous;}
 });
 
+test("an invitation flood-wait preserves a longer stored cooldown",async()=>{
+  const h=harness(),until=Date.now()/1000+600;
+  h.hooks.invite=async()=>{h.row().parsed.limits.not_before=until;throw new domain.TelegramError("flood_wait","Wait",5,409);};
+  assert.equal(await h.steps.queueStep("owner",h.job.id),false);
+  assert.equal(h.row().parsed.limits.not_before,until);
+  assert.equal(h.row().parsed.jobs[0].not_before,until);
+  assert.equal(h.row().parsed.jobs[0].state,"paused_restriction");
+});
+
+test("QR errors preserve cooldowns and restrictions while retaining parked sessions",async()=>{
+  for(const code of ["flood_wait","restricted"]){
+    const h=harness({registry:false,queued:false});h.qr();
+    const until=Date.now()/1000+600;h.row().parsed.limits.not_before=until;
+    h.hooks.signIn=async()=>{throw new domain.TelegramError(code,"Stopped",5,409);};
+    await h.steps.qrStep("owner","qr-attempt");
+    assert.equal(h.row().authState,"qr_error");
+    assert.equal(h.row().parsed.limits.not_before,until);
+    assert.equal(h.row().parsed.limits.restricted,code==="restricted");
+    assert.ok(!h.counters.logOut.includes("session-A"));
+    assert.deepEqual(accounts.retainedSessionEncs(h.row(),codec).map(value=>codec.secret(value)),["session-A"]);
+  }
+});
+
 test("a correctly pinned queue verifies its SDK account and dispatches once", async () => {
   const h = harness();
   assert.equal(await h.steps.queueStep("owner", h.job.id), false);

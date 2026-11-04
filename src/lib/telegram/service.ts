@@ -83,7 +83,7 @@ function usable(row: Workspace) {
 function recordError(row: Workspace, error: TelegramError) {
   row.parsed.error = error.message;
   if (error.code === "flood_wait")
-    row.parsed.limits.not_before = Date.now() / 1000 + error.wait;
+    row.parsed.limits.not_before = Math.max(row.parsed.limits.not_before, Date.now() / 1000 + Math.max(0, error.wait));
   if (error.code === "restricted") row.parsed.limits.restricted = true;
   if (error.code === "auth_required") {
     row.authState = "disconnected";

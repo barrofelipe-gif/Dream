@@ -183,7 +183,8 @@ export async function qrStep(userId: string, attempt: string) {
         row.authState = "qr_error";
         row.loginEnc = seal({ error: safe.message });
         if (safe.code === "flood_wait")
-          row.parsed.limits.not_before = Date.now() / 1000 + safe.wait;
+          row.parsed.limits.not_before = Math.max(row.parsed.limits.not_before, Date.now() / 1000 + Math.max(0, safe.wait));
+        if (safe.code === "restricted") row.parsed.limits.restricted = true;
       }
     });
     console.info("[telegram] qr: encerrado", { code: safe.code });
@@ -486,7 +487,7 @@ export async function queueStep(
         result.updated_at = Date.now() / 1000;
       }
       if (safe.code === "flood_wait") {
-        row.parsed.limits.not_before = Date.now() / 1000 + safe.wait;
+        row.parsed.limits.not_before = Math.max(row.parsed.limits.not_before, Date.now() / 1000 + Math.max(0, safe.wait));
         job.not_before = row.parsed.limits.not_before;
         job.state = "paused_restriction";
       } else if (safe.code === "restricted") {
