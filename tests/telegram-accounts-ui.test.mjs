@@ -10,7 +10,7 @@ function snapshot(context = "primary:0", extra = {}) {
       accounts: [{ id: "primary", label: "BFF", account: { id: 1, name: "BFF" }, active: true, state: "connected" }], ...extra },
   };
 }
-async function harness(initial = snapshot(), raced = false) {
+async function harness(initial = snapshot(), raced = false, failAfterWrite = false) {
   const elements = new Map(), calls = [];
   const timers = new Map();
   let now = Date.now(), nextTimer = 0;
@@ -34,6 +34,7 @@ async function harness(initial = snapshot(), raced = false) {
     document: { hidden: false, getElementById: element, querySelectorAll: () => [] },
     window: { location: { origin: "https://app.example" }, addEventListener() {} },
     fetch: async (url, options = {}) => {
+      if (!options.method && failAfterWrite && calls.length) throw new Error("Synthetic state refresh failure");
       if (!options.method) return { ok: true, json: async () => structuredClone(server) };
       calls.push({ url, headers: options.headers, body: JSON.parse(options.body) });
       if (url.endsWith("/accounts/rename")) {
@@ -51,14 +52,35 @@ async function harness(initial = snapshot(), raced = false) {
   vm.runInContext(readFileSync("public/telegram-assets/app.js", "utf8"), sandbox);
   vm.runInContext(readFileSync("public/telegram-assets/setup.js", "utf8"), sandbox);
   await new Promise((resolve) => setImmediate(resolve));
+  const renderAll=vm.runInContext("render",sandbox);
   vm.runInContext("render = () => renderSetup(false); render();", sandbox);
   return { element, calls, async submit() { element("add-account-form").listeners.submit({ preventDefault() {} }); await new Promise((resolve) => setImmediate(resolve)); },
     async rename() { element("edit-account-form").listeners.submit({ preventDefault() {} }); await new Promise((resolve) => setImmediate(resolve)); },
     render: () => vm.runInContext("render();", sandbox),
+    renderAll: () => renderAll(),
+    async recover() { failAfterWrite=false; await vm.runInContext("refresh();",sandbox); },
     discovery() { vm.runInContext(readFileSync("public/telegram-assets/discovery.js","utf8"),sandbox); vm.runInContext("renderDiscovery(false,false);",sandbox); },
     update(value) { server=value; sandbox.refreshed=structuredClone(value); vm.runInContext("state=refreshed;render();",sandbox); },
     advance(ms) { now+=ms; for (const [id,timer] of [...timers]) if (timer.at<=now && timers.delete(id)) timer.fn(); } };
 }
+
+test("a successful write followed by a failed refresh stays acknowledged and blocks a new inclusion until recovery",async()=>{
+  const initial=snapshot();
+  initial.contacts=[{user_id:7,source_id:-1,name:"Test contact",username:"test",selected:true,can_use:true}];
+  initial.sources=[{id:-1,name:"Source"}];initial.targets=[{id:-2,name:"Target"}];initial.connection.configured=true;
+  const h=await harness(initial,false,true);
+  h.element("source").value="-1";h.element("target").value="-2";h.renderAll();
+  assert.equal(h.element("start").disabled,false);
+  h.element("selected-account-label").value="Iara";
+  await h.rename();h.renderAll();
+  assert.equal(h.calls.length,1);
+  assert.match(h.element("notice").textContent,/Ação registrada/);
+  assert.notEqual(h.element("notice").className,"error");
+  assert.equal(h.element("start").disabled,true);
+  await h.recover();h.renderAll();
+  assert.equal(h.element("start").disabled,false);
+  assert.equal(h.calls.length,1,"recovery only reads status; it never repeats the write");
+});
 
 test("adding Felipe starts an empty profile and requests its QR with the refreshed account context", async () => {
   const h = await harness();

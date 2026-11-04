@@ -44,7 +44,13 @@ async function request(path, body) {
 async function act(fn) {
   if (busy) return;
   busy = true; render();
-  try { await fn(); await refresh(); } catch (error) { try { await refresh(); } catch {} notice(error.message,true); }
+  let recorded = false;
+  try { await fn(); recorded = true; await refresh(); }
+  catch (error) {
+    let refreshed = false;
+    try { await refresh(); refreshed = true; } catch {}
+    notice(recorded ? (refreshed ? 'Ação registrada. Painel atualizado.' : 'Ação registrada. Aguarde a reconexão do painel antes de repetir.') : error.message, !recorded);
+  }
   finally { busy = false; render(); }
 }
 async function refresh() {
@@ -82,7 +88,7 @@ function render() {
   $('count-added').textContent = job?.added || 0;
   $('count-existing').textContent = job?.already || 0;
   $('collect').disabled = busy || active || limited || !!state.connection?.operation_notice || !state.connection?.configured || !source_id || !target_id;
-  $('start').disabled = busy || active || limited || !!state.connection?.operation_notice || !ready.length || ready.length!==selected.length;
+  $('start').disabled = busy || disconnected || active || limited || !!state.connection?.operation_notice || !ready.length || ready.length!==selected.length;
   $('select-ready').disabled = busy || active || !contacts.some(p=>p.can_use!==false);
   $('source').disabled = busy || active; $('target').disabled = busy || active;
   if (state.limits.restricted) $('mode-help').textContent += ' Restrição registrada: revise a situação da conta antes de continuar.';
