@@ -269,6 +269,45 @@ export function respostaDevolucaoBff(ultima: string, historico: Mensagem[]): Res
   return { tipo: "resposta", partes: [DEVOLUCAO_MOTIVO], kind: "faq", id: 9011, confianca: "alta" };
 }
 
+/** Black da loja física (Felipe, 05/11/2026): vale até domingo 08/11, fim do dia em Brasília (UTC-3). */
+const BLACK_LOJA_FIM = Date.UTC(2026, 10, 9, 3, 0, 0);
+export const BLACK_LOJA_BFF = [
+  [
+    "🖤 BLACK EXCLUSIVO NA LOJA 🖤",
+    "",
+    "SEXTA, SÁBADO e DOMINGO",
+    "Mais de 500 conjuntos a R$ 50,00 TODOS OS DIAS, até DOMINGO, dia 08 😱",
+    "",
+    "• Blusinhas a R$ 20,00",
+    "• Macacão e macaquinho a R$ 60,00",
+    "• Conjuntos a R$ 50,00",
+    "",
+    "⚠️ Não enviamos fotos: a promoção é só na LOJA FÍSICA, presencialmente.",
+    "👉 Pedido mínimo de R$ 350,00 em compras na Black.",
+    "",
+    "Endereço: Rua Celso Calmon, 172, loja 2, Praia do Canto, Vitória/ES.",
+  ].join("\n"),
+];
+const REGEX_BLACK = /\bblack\b/;
+// "Legging black", "cor black": é cor da peça, não a promoção (Black Friday sempre vale).
+const REGEX_BLACK_COR = /\b(cor|legging|calca|short|top|conjunto|macacao|body)s? (na cor )?black\b(?! friday)|\bblack (preto|preta)\b/;
+const REGEX_PROMO_LOJA = /promo|oferta|liquida|conjunto.*(50|cinquenta)|(50|cinquenta).*conjunto/;
+const REGEX_LOJA_FISICA = /loja fisica|fisica|presencial|ai na loja|ai em vitoria|praia do canto/;
+const REGEX_ONLINE = /\bonline\b|\bsite\b|\bapp\b|aplicativo/;
+
+/**
+ * Black da loja física: quem pergunta da Black ou da promoção da loja física recebe sempre o texto oficial
+ * (preços, "não enviamos fotos" e pedido mínimo de R$ 350), nunca uma resposta genérica.
+ */
+export function respostaBlackLojaBff(ultima: string, agora = new Date()): Resposta | null {
+  if (agora.getTime() >= BLACK_LOJA_FIM) return null;
+  const t = semAcento(ultima);
+  const black = REGEX_BLACK.test(t) && !REGEX_BLACK_COR.test(t);
+  const promoLoja = REGEX_PROMO_LOJA.test(t) && REGEX_LOJA_FISICA.test(t) && !REGEX_ONLINE.test(t);
+  if (!black && !promoLoja) return null;
+  return { tipo: "resposta", partes: BLACK_LOJA_BFF, kind: "faq", id: 9014, confianca: "alta" };
+}
+
 /** Peça citada → categoria do app. Quem procura um produto é sempre mandada olhar a categoria, sem dizer que "não tem". */
 const CATEGORIAS_BFF: { regex: RegExp; nome: string }[] = [
   { regex: /\bmacac(a|ao|oes|aozinho)\b|\bmacaquinh/, nome: "Macacão" },
@@ -408,6 +447,11 @@ export async function responder(
   if (loja === "bff") {
     const dev = respostaDevolucaoBff(opts.ultimaMensagem ?? contexto, historico);
     if (dev) return dev;
+  }
+  // BFF: Black da loja física (texto oficial, até 08/11).
+  if (loja === "bff") {
+    const black = respostaBlackLojaBff(opts.ultimaMensagem ?? contexto);
+    if (black) return black;
   }
   // BFF: quem diz que não consegue baixar o app recebe o argumento do pedido mínimo (site R$ 700 x app R$ 350) e o link do site.
   if (loja === "bff" && REGEX_SEM_APP.test(opts.ultimaMensagem ?? contexto)) {
