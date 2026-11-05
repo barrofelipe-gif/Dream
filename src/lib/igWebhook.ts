@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { randomUUID } from "node:crypto";
 import { comLinksNoTexto, dentroDaJanela, enviarDm } from "@/lib/instagram";
-import { responder, escreverApoio, escreverInfoCompra, ATACADO_BFF, type Mensagem } from "@/lib/igBot";
+import { responder, escreverApoio, escreverInfoCompra, soCumprimento, ATACADO_BFF, type Mensagem } from "@/lib/igBot";
 import { atualizarPerfil } from "@/lib/igPerfil";
 import { etiquetar, TAG } from "@/lib/igTags";
 import { aplicarRegras } from "@/lib/igRegras";
@@ -386,6 +386,12 @@ export async function tratarEvento(ev: Evento, opts: { retomada?: { id: string; 
   }
 
   // ── Conversa normal ─────────────────────────────────────────────────────────
+  // Modo "só boas-vindas" (Felipe, 05/11/2026): o robô responde apenas ao primeiro "oi"; o resto fica para a equipe.
+  // Para voltar a responder tudo, é só definir IG_SO_BOAS_VINDAS=0 na Vercel (ou trocar o padrão abaixo).
+  if (process.env.IG_SO_BOAS_VINDAS !== "0" && !(primeiroContato && soCumprimento(text))) {
+    await prisma.igConversation.update({ where: { id: conversa.id }, data: { naoLida: true } });
+    return;
+  }
   // Só a execução da ÚLTIMA mensagem do cliente responde (duas mensagens seguidas disparam duas execuções).
   const souAUltima = async () => {
     const ultimaEntrada = await prisma.igMessage.findFirst({
